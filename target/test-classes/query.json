@@ -1,0 +1,5 @@
+{
+  "statement": "LOAD CSV FROM {file} AS csvFile\nCREATE (n:Node)",
+  "parameters": {
+  }
+}
