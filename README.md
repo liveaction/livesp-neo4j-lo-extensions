@@ -82,3 +82,13 @@ The request returns a json file:
   }
 }
 ```
+
+## How to use:
+
+Copy neo4j-lo-extensions-1.0.jar file to neo4j plugins folder.
+
+Edit neo4j-server.properties to setup extensions base url:
+
+```properties
+org.neo4j.server.thirdparty_jaxrs_classes=com.livingobjects.neo4j=/unmanaged
+```
