@@ -18,9 +18,22 @@ Requires a "Content-Type:multipart/mixed" with two body parts in this order:
 
 - The cypher query with its parameters (json) :
 
+The {file} token is automatically replaced by the uploaded CSV file URL.
+
 ```json
 {
-    "statement": "LOAD CSV FROM {file} AS csvFile\nCREATE (n:Node)",
+    "statement": "LOAD CSV WITH HEADERS FROM {file} AS csvFile\nCREATE (n:Node)",
+    "parameters": {
+        ...
+    }
+}
+```
+
+You can also use PERIODIC COMMIT :
+
+```json
+{
+    "statement": "USING PERIODIC COMMIT 10000 LOAD CSV WITH HEADERS FROM {file} AS csvFile\nCREATE (n:Node)",
     "parameters": {
         ...
     }
@@ -46,12 +59,12 @@ The request returns a json file:
     "relationshipsCreated": 0,
     "relationshipsDeleted": 0,
     "propertiesSet": 0,
-    "labelsAdded": 3,
+    "labelsAdded": 2,
     "labelsRemoved": 0,
     "indexesAdded": 0,
     "indexesRemoved": 0,
     "constraintsAdded": 0,
-    "nodesCreated": 3,
+    "nodesCreated": 2,
     "constraintsRemoved": 0,
     "deletedNodes": 0,
     "deletedRelationships": 0
