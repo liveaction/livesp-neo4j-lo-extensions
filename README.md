@@ -29,22 +29,43 @@ Requires a "Content-Type:multipart/mixed" with two body parts in this order:
 
 - The CSV file to upload and import
 
-Example REST call using httpie :
+Example REST call using curl :
 
 ```shell
 curl -H "Content-Type:multipart/mixed" -F "content=@src/test/resources/query.json" -F "content=@src/test/resources/import.csv" -X POST http://localhost:7474/unmanaged/load-csv -i -v
 ```
 
-Returns :
+The request returns a json file:
 
-When execution succeeds :
+- When execution succeeds (code 200) :
 
 ```json
-{"stats":{"nodesDeleted":0,"relationshipsCreated":0,"relationshipsDeleted":0,"propertiesSet":0,"labelsAdded":3,"labelsRemoved":0,"indexesAdded":0,"indexesRemoved":0,"constraintsAdded":0,"nodesCreated":3,"constraintsRemoved":0,"deletedNodes":0,"deletedRelationships":0}}
+{
+  "stats": {
+    "nodesDeleted": 0,
+    "relationshipsCreated": 0,
+    "relationshipsDeleted": 0,
+    "propertiesSet": 0,
+    "labelsAdded": 3,
+    "labelsRemoved": 0,
+    "indexesAdded": 0,
+    "indexesRemoved": 0,
+    "constraintsAdded": 0,
+    "nodesCreated": 3,
+    "constraintsRemoved": 0,
+    "deletedNodes": 0,
+    "deletedRelationships": 0
+  }
+}
 ```
 
-When execution fails :
+- When execution fails (code 500) :
 
 ```json
-{"error":{"code":"org.neo4j.kernel.impl.query.QueryExecutionKernelException","message":"Invalid input ''': expected whitespace, comment, WITH or FROM (line 1, column 10 (offset: 9))\n\"LOAD CSV 'file:/tmp/rep4588354198555724947tmp' AS csvFile\"\n          ^"}}
+{
+  "error": {
+    "code": "org.neo4j.kernel.impl.query.QueryExecutionKernelException",
+    "message": "Invalid input ''': expected whitespace, comment, WITH or FROM (line 1, column 10 (offset: 9))\n\"LOAD CSV 'file:/tmp/rep4588354198555724947tmp' AS csvFile\"\n          ^"
+  }
+}
 ```
