@@ -21,7 +21,7 @@
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>2.2.6</neo4j.version>
+        <neo4j.version>2.3.0</neo4j.version>
         <jersey.version>1.19</jersey.version>
         <jackson.version>1.9.13</jackson.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
