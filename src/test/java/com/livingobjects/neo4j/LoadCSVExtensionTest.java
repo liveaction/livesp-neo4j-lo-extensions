@@ -108,7 +108,7 @@ public class LoadCSVExtensionTest {
             JsonFluentAssert
                     .assertThatJson(content(response))
                     .ignoring("%IGNORE%")
-                    .isEqualTo("{\"stats\":{\"nodesDeleted\":0,\"relationshipsCreated\":0,\"relationshipsDeleted\":0,\"propertiesSet\":6,\"labelsAdded\":2,\"nodesCreated\":2,\"labelsRemoved\":0,\"indexesAdded\":0,\"indexesRemoved\":0,\"constraintsAdded\":0,\"constraintsRemoved\":0,\"deletedNodes\":0,\"deletedRelationships\":0}}");
+                    .isEqualTo("{\"stats\":{\"nodes_deleted\":0,\"relationships_created\":0,\"relationships_deleted\":0,\"properties_set\":6,\"labels_added\":2,\"nodes_created\":2,\"labels_removed\":0,\"indexes_added\":0,\"indexes_removed\":0,\"constraints_added\":0,\"constraints_removed\":0,\"deleted_nodes\":0,\"deleted_relationships\":0}}");
         }
     }
 
@@ -144,7 +144,7 @@ public class LoadCSVExtensionTest {
             JsonFluentAssert
                     .assertThatJson(content(response))
                     .ignoring("%IGNORE%")
-                    .isEqualTo("{\"stats\":{\"nodesDeleted\":0,\"relationshipsCreated\":0,\"relationshipsDeleted\":0,\"propertiesSet\":6,\"labelsAdded\":2,\"nodesCreated\":2,\"labelsRemoved\":0,\"indexesAdded\":0,\"indexesRemoved\":0,\"constraintsAdded\":0,\"constraintsRemoved\":0,\"deletedNodes\":0,\"deletedRelationships\":0}}");
+                    .isEqualTo("{\"stats\":{\"nodes_deleted\":0,\"relationships_created\":0,\"relationships_deleted\":0,\"properties_set\":6,\"labels_added\":2,\"nodes_created\":2,\"labels_removed\":0,\"indexes_added\":0,\"indexes_removed\":0,\"constraints_added\":0,\"constraints_removed\":0,\"deleted_nodes\":0,\"deleted_relationships\":0}}");
         }
     }
 
