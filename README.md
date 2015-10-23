@@ -55,19 +55,19 @@ The request returns a json file:
 ```json
 {
   "stats": {
-    "nodesDeleted": 0,
-    "relationshipsCreated": 0,
-    "relationshipsDeleted": 0,
-    "propertiesSet": 0,
-    "labelsAdded": 2,
-    "labelsRemoved": 0,
-    "indexesAdded": 0,
-    "indexesRemoved": 0,
-    "constraintsAdded": 0,
-    "nodesCreated": 2,
-    "constraintsRemoved": 0,
-    "deletedNodes": 0,
-    "deletedRelationships": 0
+    "nodes_deleted": 0,
+    "relationships_created": 0,
+    "relationships_deleted": 0,
+    "properties_set": 0,
+    "labels_added": 2,
+    "labels_removed": 0,
+    "indexes_added": 0,
+    "indexes_removed": 0,
+    "constraints_added": 0,
+    "nodes_created": 2,
+    "constraints_removed": 0,
+    "deleted_nodes": 0,
+    "deleted_relationships": 0
   }
 }
 ```
