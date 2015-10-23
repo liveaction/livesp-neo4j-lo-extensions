@@ -3,6 +3,7 @@ package com.livingobjects.neo4j;
 import com.sun.jersey.multipart.BodyPart;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.PropertyNamingStrategy;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.QueryExecutionException;
 import org.neo4j.graphdb.QueryStatistics;
@@ -29,7 +30,9 @@ public final class LoadCSVExtension {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
 
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategy.CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES);
+
     public static final String FILE_TOKEN = "{file}";
 
     private final GraphDatabaseService graphDb;
