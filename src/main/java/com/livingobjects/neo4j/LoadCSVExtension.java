@@ -68,11 +68,15 @@ public final class LoadCSVExtension {
 
     public Neo4jResult loadCSV(Neo4jQuery query, File csvFile) throws QueryExecutionException, MalformedURLException {
         URL csvUrl = csvFile.toURI().toURL();
-        LOGGER.info("Loading CSV file '{}'", csvUrl);
+        LOGGER.debug("Loading CSV file '{}'", csvUrl);
         String statement = query.statement.replace(FILE_TOKEN, "'" + csvUrl + "'");
         Result result = graphDb.execute(statement, query.parameters);
         QueryStatistics queryStatistics = result.getQueryStatistics();
-        LOGGER.info("CSV loaded : {}", queryStatistics);
+        LOGGER.debug("CSV loaded (nodes created : {}, rels created : {}, properties set : {})",
+                queryStatistics.getNodesCreated(),
+                queryStatistics.getRelationshipsCreated(),
+                queryStatistics.getPropertiesSet());
+        LOGGER.trace("Detailed query stats : {}", queryStatistics);
         return new Neo4jResult(queryStatistics);
     }
 
