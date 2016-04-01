@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j;
 
+import com.livingobjects.neo4j.model.Neo4jQuery;
 import net.javacrumbs.jsonunit.fluent.JsonFluentAssert;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
@@ -73,7 +74,7 @@ public class LoadCSVExtensionTest {
             JsonFluentAssert
                     .assertThatJson(content(response))
                     .ignoring("%IGNORE%")
-                    .isEqualTo("{\"error\":{\"code\":\"org.neo4j.kernel.impl.query.QueryExecutionKernelException\",\"message\":\"%IGNORE%\"}}");
+                    .isEqualTo("{\"error\":{\"code\":\"org.neo4j.graphdb.QueryExecutionException\",\"message\":\"%IGNORE%\"}}");
         }
     }
 

@@ -1,4 +1,4 @@
-package com.livingobjects.neo4j;
+package com.livingobjects.neo4j.model;
 
 import org.codehaus.jackson.annotate.JsonProperty;
 
