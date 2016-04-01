@@ -92,3 +92,9 @@ Edit neo4j-server.properties to setup extensions base url:
 ```properties
 org.neo4j.server.thirdparty_jaxrs_classes=com.livingobjects.neo4j=/unmanaged
 ```
+
+## To build and deploy to your internal repository :
+ 
+```shell
+mvn deploy -DaltDeploymentRepository=nexus::default::http://XXX.XXX.XXX.XXX:8081/nexus/content/repositories/releases
+```
