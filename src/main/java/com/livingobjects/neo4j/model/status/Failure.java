@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.status;
 import com.livingobjects.neo4j.model.Neo4jError;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-public class Failure extends Terminated {
+public class Failure extends Status {
 
     @JsonProperty("error")
     public final Neo4jError error;
@@ -14,7 +14,7 @@ public class Failure extends Terminated {
     }
 
     @Override
-    public <T> T visit(Terminated.Visitor<T> visitor) {
+    public <T> T visit(Status.Visitor<T> visitor) {
         return visitor.failure(error);
     }
 

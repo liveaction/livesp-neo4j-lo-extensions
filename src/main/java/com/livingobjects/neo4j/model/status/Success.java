@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.status;
 import com.livingobjects.neo4j.model.Neo4jResult;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-public class Success extends Terminated {
+public class Success extends Status {
 
     @JsonProperty("result")
     public final Neo4jResult result;
@@ -14,7 +14,7 @@ public class Success extends Terminated {
     }
 
     @Override
-    public <T> T visit(Terminated.Visitor<T> visitor) {
+    public <T> T visit(Status.Visitor<T> visitor) {
         return visitor.success(result);
     }
 }

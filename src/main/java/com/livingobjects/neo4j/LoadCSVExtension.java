@@ -7,7 +7,6 @@ import com.livingobjects.neo4j.model.status.Failure;
 import com.livingobjects.neo4j.model.status.InProgress;
 import com.livingobjects.neo4j.model.status.Status;
 import com.livingobjects.neo4j.model.status.Success;
-import com.livingobjects.neo4j.model.status.Terminated;
 import com.sun.jersey.multipart.BodyPart;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -53,7 +52,7 @@ public final class LoadCSVExtension {
 
     private final GraphDatabaseService graphDb;
 
-    private final ConcurrentHashMap<String, Status> processes = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Status> processes = new ConcurrentHashMap<>();
 
     private final ExecutorService executor = Executors.newFixedThreadPool(20);
 
@@ -72,28 +71,13 @@ public final class LoadCSVExtension {
                 String uuid = UUID.randomUUID().toString();
                 processes.put(uuid, new InProgress());
                 executor.submit((Runnable) () -> {
-                    Terminated status = executeLoadCSV(cypherQuery, csvFile);
+                    Status status = executeLoadCSV(cypherQuery, csvFile);
                     processes.put(uuid, status);
                 });
                 return Response.ok().entity(uuid).type(MediaType.APPLICATION_JSON).build();
             } else {
-                Terminated status = executeLoadCSV(cypherQuery, csvFile);
-                return status.visit(new Terminated.Visitor<Response>() {
-                    @Override
-                    public Response success(Neo4jResult result) {
-                        try {
-                            String json = JSON_MAPPER.writeValueAsString(result);
-                            return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
-                        } catch (IOException e) {
-                            return errorResponse(asError(e));
-                        }
-                    }
-
-                    @Override
-                    public Response failure(Neo4jError error) {
-                        return errorResponse(error);
-                    }
-                });
+                Status status = executeLoadCSV(cypherQuery, csvFile);
+                return response(status);
             }
         } catch (IllegalArgumentException e) {
             LOGGER.error("load-csv extension : bad input format", e);
@@ -101,12 +85,42 @@ public final class LoadCSVExtension {
         }
     }
 
+    private Response response(Status status) {
+        return status.visit(new Status.Visitor<Response>() {
+
+            @Override
+            public Response inProgress() {
+                return null;
+            }
+
+            @Override
+            public Response success(Neo4jResult result) {
+                try {
+                    String json = JSON_MAPPER.writeValueAsString(result);
+                    return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
+                } catch (IOException e) {
+                    return errorResponse(asError(e));
+                }
+            }
+
+            @Override
+            public Response failure(Neo4jError error) {
+                return errorResponse(error);
+            }
+        });
+    }
+
     @GET
     @javax.ws.rs.Path("/{uuid}")
     public Response status(@PathParam("uuid") String uuid) throws IOException, ServletException {
         Status status = processes.get(uuid);
         if (status != null) {
-            return Response.ok().entity(status).type(MediaType.APPLICATION_JSON).build();
+            try {
+                String json = JSON_MAPPER.writeValueAsString(status);
+                return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
+            } catch (IOException e) {
+                return errorResponse(asError(e));
+            }
         } else {
             return Response.status(Response.Status.NOT_FOUND).entity(uuid).type(MediaType.APPLICATION_JSON).build();
         }
@@ -123,7 +137,7 @@ public final class LoadCSVExtension {
         }
     }
 
-    private Terminated executeLoadCSV(Neo4jQuery cypherQuery, File csvFile) {
+    private Status executeLoadCSV(Neo4jQuery cypherQuery, File csvFile) {
         try {
             Neo4jResult result = loadCSV(cypherQuery, csvFile);
             return new Success(result);
