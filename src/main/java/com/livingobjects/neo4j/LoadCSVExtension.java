@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j;
 
+import com.livingobjects.neo4j.iwan.IWanTopologyLoader;
 import com.sun.jersey.multipart.BodyPart;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -14,10 +15,12 @@ import org.slf4j.LoggerFactory;
 import javax.servlet.ServletException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
+import javax.ws.rs.Path;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
@@ -25,7 +28,7 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
-@javax.ws.rs.Path("/load-csv")
+@Path("/load-csv")
 public final class LoadCSVExtension {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
@@ -46,20 +49,29 @@ public final class LoadCSVExtension {
     public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
         try {
             checkMultipartBody(multiPart);
-            Neo4jQuery cypherQuery = getQueryPart(multiPart);
-            File csvFile = getCSVFilePart(multiPart);
-            try {
-                Neo4jResult result = loadCSV(cypherQuery, csvFile);
+
+            BodyPart part = multiPart.getBodyParts().get(1);
+            File csvEntity = part.getEntityAs(File.class);
+            try (InputStream is = new FileInputStream(csvEntity)) {
+                Neo4jResult result = new IWanTopologyLoader(graphDb).loadFromStream(is);
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
-            } catch (QueryExecutionException | MalformedURLException e) {
-                LOGGER.error("load-csv extension : unable to execute query", e);
-                if (e.getCause() != null) {
-                    return errorResponse(e.getCause());
-                } else {
-                    return errorResponse(e);
-                }
             }
+
+//            Neo4jQuery cypherQuery = getQueryPart(multiPart);
+//            File csvFile = getCSVFilePart(multiPart);
+//            try {
+//                Neo4jResult result = loadCSV(cypherQuery, csvFile);
+//                String json = JSON_MAPPER.writeValueAsString(result);
+//                return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
+//            } catch (QueryExecutionException | MalformedURLException e) {
+//                LOGGER.error("load-csv extension : unable to execute query", e);
+//                if (e.getCause() != null) {
+//                    return errorResponse(e.getCause());
+//                } else {
+//                    return errorResponse(e);
+//                }
+//            }
         } catch (IllegalArgumentException e) {
             LOGGER.error("load-csv extension : bad input format", e);
             return errorResponse(e);
