@@ -1,6 +1,8 @@
 package com.livingobjects.neo4j.iwan;
 
 import au.com.bytecode.opencsv.CSVReader;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
@@ -47,7 +49,9 @@ public final class IWanTopologyLoader {
     private static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final String CARDINALITY_MULTIPLE = "0..n";
+    private static final String KEYTYPE_SEPARATOR = ":";
 
+    private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
     private final UniqueNodeFactory networkElementFactory;
 
@@ -59,8 +63,8 @@ public final class IWanTopologyLoader {
 
     private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
 
-    public IWanTopologyLoader(GraphDatabaseService graphDb) {
-        Stopwatch sw = Stopwatch.createStarted();
+    public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
+        this.metrics = metrics;
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
 
@@ -72,7 +76,7 @@ public final class IWanTopologyLoader {
             ImmutableList.Builder<String> scopesBldr = ImmutableList.builder();
             graphDb.findNodes(LABEL_ATTRIBUTE).forEachRemaining(n -> {
                 String keytype = n.getProperty(_TYPE).toString();
-                String key = keytype + ':' + n.getProperty(NAME).toString();
+                String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
                 attributesBldr.put(key, n);
                 if (KEY_TYPES.contains(keytype)) {
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
@@ -92,11 +96,9 @@ public final class IWanTopologyLoader {
             this.parentRelations = parentRelationsBldr.build();
             this.scopes = scopesBldr.build();
         }
-        LOGGER.info("IWanTopologyLoader: {}ms", sw.elapsed(TimeUnit.MILLISECONDS));
     }
 
     public Neo4jResult loadFromStream(InputStream is) throws IOException {
-        Stopwatch sw = Stopwatch.createStarted();
         CSVReader reader = new CSVReader(new InputStreamReader(is));
         IwanMappingStrategy strategy = IwanMappingStrategy.captureHeader(reader);
 
@@ -134,7 +136,6 @@ public final class IWanTopologyLoader {
 
         final int created = imported - errors.size();
         final int error = errors.size();
-        LOGGER.info("loadFromStream: {}ms", sw.elapsed(TimeUnit.MILLISECONDS));
         return new Neo4jResult(new QueryStatistics() {
             @Override
             public int getNodesCreated() {
@@ -222,67 +223,69 @@ public final class IWanTopologyLoader {
     }
 
     private void importLine(String[] line, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
+        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
+            // Create elements
+            Map<String, Node> nodes = lineage.keySet().stream()
+                    .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
+                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
-        // Create elements
-        Map<String, Node> nodes = lineage.keySet().stream()
-                .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
-                .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+            // Create Connect link
+            for (String keytype : nodes.keySet()) {
+                int relCount = linkToParents(keytype, nodes);
+                if (!startKeytypes.isEmpty() && !scopes.contains(keytype) && relCount <= 0) {
+                    throw new IllegalStateException("No parent element found for type " + keytype);
+                }
+            }
 
-        // Create Connect link
-        for (String keytype : nodes.keySet()) {
-            int relCount = linkToParents(keytype, nodes);
-            if (!startKeytypes.isEmpty() && !scopes.contains(keytype) && relCount <= 0) {
-                throw new IllegalStateException("No parent element found for type " + keytype);
+            // Create planet link
+            ImmutableMultimap<String, Node> planets;
+            for (String keytype : startKeytypes) {
+                String id = nodes.get(keytype).getProperty("id").toString();
+                String name = keytype.substring(keytype.indexOf(KEYTYPE_SEPARATOR) + 1);
+                planets = getPlanetsForClient(name + KEYTYPE_SEPARATOR + id);
+
+                for (Entry<String, Node> entry : nodes.entrySet()) {
+                    planets.get(entry.getKey()).forEach(n ->
+                            createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
+                }
+            }
+
+            if (startKeytypes.isEmpty()) {
+                planets = getPlanets();
+                for (Entry<String, Node> entry : nodes.entrySet()) {
+                    planets.get(entry.getKey()).forEach(n ->
+                            createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
+                }
             }
         }
-
-        // Create planet link
-        ImmutableMultimap<String, Node> planets;
-        for (String keytype : startKeytypes) {
-            String id = nodes.get(keytype).getProperty("id").toString();
-            String name = keytype.substring(keytype.indexOf(':') + 1);
-            planets = getPlanetsForClient(name + ':' + id);
-
-            for (Entry<String, Node> entry : nodes.entrySet()) {
-                planets.get(entry.getKey()).forEach(n ->
-                        createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
-            }
-        }
-
-        if (startKeytypes.isEmpty()) {
-            planets = getPlanets();
-            for (Entry<String, Node> entry : nodes.entrySet()) {
-                planets.get(entry.getKey()).forEach(n ->
-                        createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
-            }
-        }
-
     }
 
     private int linkToParents(String keytype, Map<String, Node> nodes) {
-        Node node = nodes.get(keytype);
-        if (node == null) {
-            return -1;
-        }
-
-        ImmutableList<Relationship> relationships = parentRelations.get(keytype);
-        if (relationships == null || relationships.isEmpty()) {
-            return -1;
-        }
-
-        int relCount = 0;
-        for (Relationship relationship : relationships) {
-            String toKeytype = relationship.getEndNode().getProperty(_TYPE).toString() + ':' +
-                    relationship.getEndNode().getProperty(NAME).toString();
-            Node parent = nodes.get(toKeytype);
-            if (parent == null) {
-                continue;
+        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
+            Node node = nodes.get(keytype);
+            if (node == null) {
+                return -1;
             }
-            ++relCount;
-            createUniqueLink(node, parent, Direction.OUTGOING, LINK_CONNECT);
-        }
 
-        return relCount;
+            ImmutableList<Relationship> relationships = parentRelations.get(keytype);
+            if (relationships == null || relationships.isEmpty()) {
+                return -1;
+            }
+
+            int relCount = 0;
+            for (Relationship relationship : relationships) {
+                String toKeytype = relationship.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR +
+                        relationship.getEndNode().getProperty(NAME).toString();
+                Node parent = nodes.get(toKeytype);
+                if (parent == null) {
+                    continue;
+                }
+                ++relCount;
+                createUniqueLink(node, parent, Direction.OUTGOING, LINK_CONNECT);
+            }
+
+            return relCount;
+        }
     }
 
     private Relationship createUniqueLink(Node node, Node parent, Direction outgoing, RelationshipType linkConnect) {
@@ -298,85 +301,87 @@ public final class IWanTopologyLoader {
     }
 
     private Node createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
-        Set<String> todelete = parentRelations.get(elementName).stream()
-                .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY)))
-                .map(r -> r.getEndNode().getProperty(_TYPE).toString() + ':' + r.getEndNode().getProperty(NAME).toString())
-                .collect(Collectors.toSet());
+        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
+            Set<String> todelete = parentRelations.get(elementName).stream()
+                    .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY)))
+                    .map(r -> r.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
+                    .collect(Collectors.toSet());
 
-        ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
-        HeaderElement tagHeader = elementHeaders.stream()
-                .filter(h -> TAG.equals(h.propertyName))
-                .findAny()
-                .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
-        String tag = line[tagHeader.index];
-        UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(TAG, tag);
-        Node elementNode = uniqueEntity.entity();
+            ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
+            HeaderElement tagHeader = elementHeaders.stream()
+                    .filter(h -> TAG.equals(h.propertyName))
+                    .findAny()
+                    .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
+            String tag = line[tagHeader.index];
+            UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(TAG, tag);
+            Node elementNode = uniqueEntity.entity();
 
-        if (uniqueEntity.wasCreated()) {
-            if (scopes.contains(elementName)) {
-                elementNode.addLabel(LABEL_SCOPE);
-            }
-            elementNode.setProperty(_TYPE, elementName);
-        } else {
-            elementNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
-
-            elementNode.getRelationships(Direction.OUTGOING, LINK_CONNECT).forEach(r -> {
-                if (todelete.contains(r.getEndNode().getProperty(_TYPE).toString())) {
-                    r.delete();
+            if (uniqueEntity.wasCreated()) {
+                if (scopes.contains(elementName)) {
+                    elementNode.addLabel(LABEL_SCOPE);
                 }
-            });
+                elementNode.setProperty(_TYPE, elementName);
+            } else {
+                elementNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
+
+                elementNode.getRelationships(Direction.OUTGOING, LINK_CONNECT).forEach(r -> {
+                    if (todelete.contains(r.getEndNode().getProperty(_TYPE).toString())) {
+                        r.delete();
+                    }
+                });
+            }
+
+            elementHeaders.stream()
+                    .filter(h -> !TAG.equals(h.propertyName))
+                    .forEach(h -> elementNode.setProperty(h.propertyName, line[h.index]));
+
+            return elementNode;
         }
-
-        elementHeaders.stream()
-                .filter(h -> !TAG.equals(h.propertyName))
-                .forEach(h -> elementNode.setProperty(h.propertyName, line[h.index]));
-
-        return elementNode;
     }
 
     private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) {
-        Stopwatch sw = Stopwatch.createStarted();
         ImmutableMultimap<String, Node> planets = planetsByClient.get(clientAttribute);
         if (planets == null) {
-            Node attClientNode = attributeNodes.get(clientAttribute);
-            ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
-            attClientNode.getRelationships(Direction.INCOMING, LINK_ATTRIBUTE).forEach(r -> {
-                Node planet = r.getStartNode();
-                if (!planet.hasLabel(LABEL_PLANET)) {
-                    return;
-                }
+            try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-getPlanetsForClient").time()) {
+                Node attClientNode = attributeNodes.get(clientAttribute);
+                ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
+                attClientNode.getRelationships(Direction.INCOMING, LINK_ATTRIBUTE).forEach(r -> {
+                    Node planet = r.getStartNode();
+                    if (!planet.hasLabel(LABEL_PLANET)) {
+                        return;
+                    }
 
-                planet.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE)
-                        .forEach(l -> getRelationshipConsumer(l, bldr, planet));
+                    planet.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE)
+                            .forEach(l -> getRelationshipConsumer(l, bldr, planet));
 
-            });
-            planets = bldr.build();
-            planetsByClient.put(clientAttribute, planets);
+                });
+                planets = bldr.build();
+                planetsByClient.put(clientAttribute, planets);
+            }
         }
 
-        LOGGER.info("getPlanetsForClient: {}ms", sw.elapsed(TimeUnit.MILLISECONDS));
         return planets;
     }
 
     private ImmutableMultimap<String, Node> getPlanets() {
-        Stopwatch sw = Stopwatch.createStarted();
-        ImmutableMultimap<String, Node> planets = planetsByClient.get(":");
+        ImmutableMultimap<String, Node> planets = planetsByClient.get(KEYTYPE_SEPARATOR);
         if (planets == null) {
-            ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
-            graphDb.findNodes(LABEL_PLANET).forEachRemaining(planet -> {
-                if (!planet.hasLabel(LABEL_PLANET)) {
-                    return;
-                }
+            try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-getPlanets").time()) {
+                ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
+                graphDb.findNodes(LABEL_PLANET).forEachRemaining(planet -> {
+                    if (!planet.hasLabel(LABEL_PLANET)) {
+                        return;
+                    }
 
-                planet.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE)
-                        .forEach(l -> getRelationshipConsumer(l, bldr, planet));
+                    planet.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE)
+                            .forEach(l -> getRelationshipConsumer(l, bldr, planet));
 
-            });
-            planets = bldr.build();
-            planetsByClient.put(":", planets);
+                });
+                planets = bldr.build();
+                planetsByClient.put(KEYTYPE_SEPARATOR, planets);
+            }
         }
 
-        LOGGER.info("getPlanets: {}ms", sw.elapsed(TimeUnit.MILLISECONDS));
         return planets;
     }
 
@@ -385,7 +390,7 @@ public final class IWanTopologyLoader {
         if (attribute.hasLabel(LABEL_ATTRIBUTE)) {
             String type = attribute.getProperty(_TYPE).toString();
             if (KEY_TYPES.contains(type)) {
-                bldr.put(type + ':' + attribute.getProperty(NAME), planet);
+                bldr.put(type + KEYTYPE_SEPARATOR + attribute.getProperty(NAME), planet);
             }
         }
         return bldr;

@@ -1,5 +1,8 @@
 package com.livingobjects.neo4j;
 
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Slf4jReporter;
+import com.codahale.metrics.Timer;
 import com.livingobjects.neo4j.iwan.IWanTopologyLoader;
 import com.sun.jersey.multipart.BodyPart;
 import com.sun.jersey.multipart.MultiPart;
@@ -24,6 +27,7 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Path("/load-csv")
 public final class LoadCSVExtension {
@@ -35,6 +39,13 @@ public final class LoadCSVExtension {
 
     private final GraphDatabaseService graphDb;
 
+    private final MetricRegistry metrics = new MetricRegistry();
+    private final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
+            .outputTo(LoggerFactory.getLogger("com.livingobjects.neo4j"))
+            .convertRatesTo(TimeUnit.SECONDS)
+            .convertDurationsTo(TimeUnit.MILLISECONDS)
+            .build();
+
     public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
     }
@@ -42,7 +53,7 @@ public final class LoadCSVExtension {
     @POST
     @Consumes("multipart/mixed")
     public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
-        try {
+        try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
             File csvEntity = null;
             if (multiPart.getBodyParts().size() < 1) {
                 csvEntity = multiPart.getEntityAs(File.class);
@@ -51,7 +62,7 @@ public final class LoadCSVExtension {
                 csvEntity = part.getEntityAs(File.class);
             }
             try (InputStream is = new FileInputStream(csvEntity)) {
-                Neo4jResult result = new IWanTopologyLoader(graphDb).loadFromStream(is);
+                Neo4jResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
@@ -66,6 +77,8 @@ public final class LoadCSVExtension {
         } catch (IllegalArgumentException e) {
             LOGGER.error("load-csv extension : bad input format", e);
             return errorResponse(e);
+        } finally {
+            reporter.report();
         }
     }
 
