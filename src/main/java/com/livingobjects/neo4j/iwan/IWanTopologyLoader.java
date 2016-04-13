@@ -328,7 +328,8 @@ public final class IWanTopologyLoader {
                 elementNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
 
                 elementNode.getRelationships(Direction.OUTGOING, LINK_CONNECT).forEach(r -> {
-                    if (todelete.contains(r.getEndNode().getProperty(_TYPE).toString())) {
+                    String type = r.getEndNode().getProperty(_TYPE, SCOPE_GLOBAL_ATTRIBUTE).toString();
+                    if (todelete.contains(type)) {
                         r.delete();
                     }
                 });
