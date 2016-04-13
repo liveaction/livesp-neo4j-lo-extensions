@@ -14,4 +14,9 @@ public final class IwanModelConstants {
     public static final Label LABEL_ATTRIBUTE = DynamicLabel.label(GraphNodeLabel.ATTRIBUTE);
     public static final Label LABEL_SCOPE = DynamicLabel.label(GraphNodeLabel.SCOPE);
     public static final Label LABEL_PLANET = DynamicLabel.label(GraphNodeLabel.PLANET);
+    public static final Label LABEL_NETWORK_ELEMENT = DynamicLabel.label(GraphNodeLabel.NETWORK_ELEMENT);
+
+    public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
+    public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
+    public static final char KEYTYPE_SEPARATOR = ':';
 }

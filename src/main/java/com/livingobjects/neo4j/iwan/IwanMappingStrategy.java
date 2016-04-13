@@ -1,14 +1,11 @@
 package com.livingobjects.neo4j.iwan;
 
 import au.com.bytecode.opencsv.CSVReader;
-import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableCollection;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
@@ -20,9 +17,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.livingobjects.cosmos.shared.model.GraphNodeProperties.NAME;
 import static com.livingobjects.cosmos.shared.model.GraphNodeProperties._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 
 public final class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
@@ -46,7 +46,7 @@ public final class IwanMappingStrategy {
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
-        LOGGER.warn(Arrays.toString(mapping.keySet().toArray(new String[mapping.size()])));
+        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[mapping.keySet().size()])));
 
 
         return new IwanMappingStrategy(mapping);
@@ -56,11 +56,14 @@ public final class IwanMappingStrategy {
         return mapping.get(name);
     }
 
-    public ImmutableMap<String, List<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
-        Map<String, List<String>> collect = Maps.newHashMap();
-        scopes.stream().filter(this::isScope).forEach(s -> {
-            collect.putAll(addChildrenAttribute(s, collect, children));
-        });
+    public ImmutableMap<String, Set<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
+        Map<String, Set<String>> collect = Maps.newHashMap();
+        scopes.stream().filter(this::isScope).forEach(s ->
+                collect.putAll(addChildrenAttribute(s, collect, children)));
+
+        if (collect.isEmpty()) {
+            collect.putAll(addChildrenAttribute(SCOPE_GLOBAL_ATTRIBUTE, collect, children));
+        }
 
         return ImmutableMap.copyOf(collect);
     }
@@ -69,28 +72,36 @@ public final class IwanMappingStrategy {
         return mapping.keySet().contains(keytype);
     }
 
-    private Map<String, List<String>> addChildrenAttribute(
-            String current, Map<String, List<String>> collect, Map<String, ? extends List<Relationship>> children) {
+    private Map<String, Set<String>> addChildrenAttribute(
+            String current, Map<String, Set<String>> collect, Map<String, ? extends List<Relationship>> children) {
 
         Collection<Relationship> relationships = children.get(current);
         if (!relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
+                Set<String> p = collect.get(current);
+                if (p == null) {
+                    p = Sets.newHashSet();
+                    collect.put(current, p);
+                }
+
                 Node startNode = relationship.getStartNode();
                 String type = startNode.getProperty(_TYPE).toString();
                 String name = startNode.getProperty(NAME).toString();
-                String key = type + ':' + name;
+                String key = type + KEYTYPE_SEPARATOR + name;
                 if (mapping.keySet().contains(key)) {
-                    List<String> p = collect.get(current);
-                    if (p == null) {
-                        p = Lists.newArrayList();
-                        collect.put(current, p);
-                    }
                     p.add(key);
-                    return addChildrenAttribute(key, collect, children);
+                    addChildrenAttribute(key, collect, children).forEach((k, v) -> {
+                        Set<String> values = collect.get(k);
+                        if (values == null) {
+                            values = Sets.newHashSet();
+                            collect.put(k, values);
+                        }
+                        values.addAll(v);
+                    });
                 }
             }
         } else {
-            collect.put(current, Lists.newArrayList());
+            collect.put(current, Sets.newHashSet());
         }
         return collect;
     }

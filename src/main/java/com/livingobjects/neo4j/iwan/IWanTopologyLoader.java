@@ -3,7 +3,6 @@ package com.livingobjects.neo4j.iwan;
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
-import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -15,6 +14,7 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.Neo4jResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
+import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -22,8 +22,6 @@ import org.neo4j.graphdb.QueryStatistics;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.graphdb.index.UniqueFactory.UniqueEntity;
-import org.neo4j.graphdb.index.UniqueFactory.UniqueNodeFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.cosmos.shared.model.GraphLinkProperties.CARDINALITY;
@@ -49,17 +46,16 @@ public final class IWanTopologyLoader {
     private static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final String CARDINALITY_MULTIPLE = "0..n";
-    private static final String KEYTYPE_SEPARATOR = ":";
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
-    private final UniqueNodeFactory networkElementFactory;
+    private final NetworkElementFactory networkElementFactory;
 
     private final ImmutableMap<String, Node> attributeNodes;
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
     private final ImmutableList<String> scopes;
-    private ImmutableMap<String, List<String>> lineage;
+    private ImmutableMap<String, Set<String>> lineage;
 
     private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
 
@@ -132,6 +128,7 @@ public final class IWanTopologyLoader {
                 LOGGER.debug(Arrays.toString(nextLine));
             }
         }
+        tx.success();
         tx.close();
 
         final int created = imported - errors.size();
@@ -302,8 +299,12 @@ public final class IWanTopologyLoader {
 
     private Node createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
         try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
+            if (SCOPE_GLOBAL_ATTRIBUTE.equals(elementName)) {
+                return graphDb.findNode(LABEL_SCOPE, "tag", SCOPE_GLOBAL_TAG);
+            }
+
             Set<String> todelete = parentRelations.get(elementName).stream()
-                    .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY)))
+                    .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY, "")))
                     .map(r -> r.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
                     .collect(Collectors.toSet());
 
@@ -312,11 +313,13 @@ public final class IWanTopologyLoader {
                     .filter(h -> TAG.equals(h.propertyName))
                     .findAny()
                     .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
-            String tag = line[tagHeader.index];
-            UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(TAG, tag);
-            Node elementNode = uniqueEntity.entity();
 
-            if (uniqueEntity.wasCreated()) {
+            String tag = line[tagHeader.index];
+
+            UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(TAG, tag);
+            Node elementNode = uniqueEntity.entity;
+
+            if (uniqueEntity.wasCreated) {
                 if (scopes.contains(elementName)) {
                     elementNode.addLabel(LABEL_SCOPE);
                 }
@@ -364,7 +367,7 @@ public final class IWanTopologyLoader {
     }
 
     private ImmutableMultimap<String, Node> getPlanets() {
-        ImmutableMultimap<String, Node> planets = planetsByClient.get(KEYTYPE_SEPARATOR);
+        ImmutableMultimap<String, Node> planets = planetsByClient.get(Character.toString(KEYTYPE_SEPARATOR));
         if (planets == null) {
             try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-getPlanets").time()) {
                 ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
@@ -378,7 +381,7 @@ public final class IWanTopologyLoader {
 
                 });
                 planets = bldr.build();
-                planetsByClient.put(KEYTYPE_SEPARATOR, planets);
+                planetsByClient.put(Character.toString(KEYTYPE_SEPARATOR), planets);
             }
         }
 
