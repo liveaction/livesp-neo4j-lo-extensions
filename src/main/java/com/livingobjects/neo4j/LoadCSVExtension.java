@@ -22,8 +22,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Path("/load-csv")
@@ -84,9 +82,7 @@ public final class LoadCSVExtension {
     private Response errorResponse(Throwable cause) throws IOException {
         String code = cause.getClass().getName();
         Neo4jErrorResult error = new Neo4jErrorResult(code, cause.getMessage());
-        Map<String, Neo4jErrorResult> errorsMap = new HashMap<>();
-        errorsMap.put("error", error);
-        String json = JSON_MAPPER.writeValueAsString(errorsMap);
+        String json = JSON_MAPPER.writeValueAsString(error);
         return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
 
