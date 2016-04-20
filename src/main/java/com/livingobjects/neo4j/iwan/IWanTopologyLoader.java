@@ -11,14 +11,14 @@ import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.Neo4jResult;
+import com.google.common.primitives.Longs;
+import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.QueryStatistics;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
@@ -30,20 +30,20 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.cosmos.attributes.CommonAttributeType.*;
 import static com.livingobjects.cosmos.shared.model.GraphLinkProperties.CARDINALITY;
 import static com.livingobjects.cosmos.shared.model.GraphNodeProperties.*;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
-    private static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
+    private static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of(CLUSTER, NETWORK_ELEMENT_TYPE, LABEL_TYPE, SCOPE);
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final String CARDINALITY_MULTIPLE = "0..n";
 
@@ -94,7 +94,7 @@ public final class IWanTopologyLoader {
         }
     }
 
-    public Neo4jResult loadFromStream(InputStream is) throws IOException {
+    public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
         IwanMappingStrategy strategy = IwanMappingStrategy.captureHeader(reader);
 
@@ -102,7 +102,7 @@ public final class IWanTopologyLoader {
 
         int imported = 0;
         List<String[]> currentTransaction = Lists.newArrayListWithCapacity(MAX_TRANSACTION_COUNT);
-        List<Integer> errors = Lists.newArrayListWithExpectedSize(MAX_TRANSACTION_COUNT);
+        List<Long> errors = Lists.newArrayListWithExpectedSize(MAX_TRANSACTION_COUNT);
 
         Transaction tx = graphDb.beginTx();
         lineage = strategy.guessElementCreationStrategy(scopes, childrenRelations);
@@ -122,7 +122,7 @@ public final class IWanTopologyLoader {
                 tx = renewTransaction(tx, true);
                 tx = reloadValidTransactionLines(tx, currentTransaction, startKeytypes, strategy);
                 currentTransaction.clear();
-                errors.add(imported);
+                errors.add((long) imported);
                 LOGGER.error(e.getLocalizedMessage());
                 LOGGER.error("STACKTRACE", e);
                 LOGGER.debug(Arrays.toString(nextLine));
@@ -131,69 +131,8 @@ public final class IWanTopologyLoader {
         tx.success();
         tx.close();
 
-        final int created = imported - errors.size();
-        final int error = errors.size();
-        return new Neo4jResult(new QueryStatistics() {
-            @Override
-            public int getNodesCreated() {
-                return created;
-            }
-
-            @Override
-            public int getNodesDeleted() {
-                return error;
-            }
-
-            @Override
-            public int getRelationshipsCreated() {
-                return 0;
-            }
-
-            @Override
-            public int getRelationshipsDeleted() {
-                return 0;
-            }
-
-            @Override
-            public int getPropertiesSet() {
-                return 0;
-            }
-
-            @Override
-            public int getLabelsAdded() {
-                return 0;
-            }
-
-            @Override
-            public int getLabelsRemoved() {
-                return 0;
-            }
-
-            @Override
-            public int getIndexesAdded() {
-                return 0;
-            }
-
-            @Override
-            public int getIndexesRemoved() {
-                return 0;
-            }
-
-            @Override
-            public int getConstraintsAdded() {
-                return 0;
-            }
-
-            @Override
-            public int getConstraintsRemoved() {
-                return 0;
-            }
-
-            @Override
-            public boolean containsUpdates() {
-                return true;
-            }
-        });
+        long created = imported - errors.size();
+        return new Neo4jLoadResult(created, Longs.toArray(errors));
     }
 
     private Transaction renewTransaction(Transaction tx) {
@@ -286,9 +225,7 @@ public final class IWanTopologyLoader {
     }
 
     private Relationship createUniqueLink(Node node, Node parent, Direction outgoing, RelationshipType linkConnect) {
-        Iterator<Relationship> it = node.getRelationships(outgoing, linkConnect).iterator();
-        while (it.hasNext()) {
-            Relationship next = it.next();
+        for (Relationship next : node.getRelationships(outgoing, linkConnect)) {
             if (next.getEndNode().equals(parent)) {
                 return next;
             }

@@ -9,7 +9,6 @@ import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.PropertyNamingStrategy;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.QueryExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +23,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -54,7 +52,7 @@ public final class LoadCSVExtension {
     @Consumes("multipart/mixed")
     public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
-            File csvEntity = null;
+            File csvEntity;
             if (multiPart.getBodyParts().size() < 1) {
                 csvEntity = multiPart.getEntityAs(File.class);
             } else {
@@ -62,7 +60,7 @@ public final class LoadCSVExtension {
                 csvEntity = part.getEntityAs(File.class);
             }
             try (InputStream is = new FileInputStream(csvEntity)) {
-                Neo4jResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
+                Neo4jLoadResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
@@ -84,8 +82,8 @@ public final class LoadCSVExtension {
 
     private Response errorResponse(Throwable cause) throws IOException {
         String code = cause.getClass().getName();
-        Neo4jError error = new Neo4jError(code, cause.getMessage());
-        Map<String, Neo4jError> errorsMap = new HashMap<>();
+        Neo4jErrorResult error = new Neo4jErrorResult(code, cause.getMessage());
+        Map<String, Neo4jErrorResult> errorsMap = new HashMap<>();
         errorsMap.put("error", error);
         String json = JSON_MAPPER.writeValueAsString(errorsMap);
         return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();

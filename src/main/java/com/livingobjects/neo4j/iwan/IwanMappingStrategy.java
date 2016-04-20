@@ -24,7 +24,7 @@ import static com.livingobjects.cosmos.shared.model.GraphNodeProperties._TYPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 
-public final class IwanMappingStrategy {
+final class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
 
     private final ImmutableMultimap<String, HeaderElement> mapping;
@@ -33,7 +33,7 @@ public final class IwanMappingStrategy {
         this.mapping = mapping;
     }
 
-    public static IwanMappingStrategy captureHeader(CSVReader reader) throws IOException {
+    static IwanMappingStrategy captureHeader(CSVReader reader) throws IOException {
         String[] headers = reader.readNext();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
 
@@ -52,11 +52,11 @@ public final class IwanMappingStrategy {
         return new IwanMappingStrategy(mapping);
     }
 
-    public ImmutableCollection<HeaderElement> getElementHeaders(String name) {
+    ImmutableCollection<HeaderElement> getElementHeaders(String name) {
         return mapping.get(name);
     }
 
-    public ImmutableMap<String, Set<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
+    ImmutableMap<String, Set<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
         scopes.stream().filter(this::isScope).forEach(s ->
                 collect.putAll(addChildrenAttribute(s, collect, children)));
@@ -68,7 +68,7 @@ public final class IwanMappingStrategy {
         return ImmutableMap.copyOf(collect);
     }
 
-    public final boolean isScope(String keytype) {
+    final boolean isScope(String keytype) {
         return mapping.keySet().contains(keytype);
     }
 

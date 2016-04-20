@@ -1,5 +1,0 @@
-{
-  "statement": "LOAD CSV WITH HEADERS FROM {file} AS csvFile\nCREATE (n:Node)",
-  "parameters": {
-  }
-}
