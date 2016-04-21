@@ -280,19 +280,25 @@ public final class IWanTopologyLoader {
                     .filter(h -> !TAG.equals(h.propertyName))
                     .forEach(h -> {
                         Object value;
-                        switch (h.type) {
-                            case BOOLEAN:
-                                value = Boolean.parseBoolean(line[h.index]);
-                                break;
-                            case NUMBER:
-                                value = Long.parseLong(line[h.index]);
-                                break;
-                            case DATE:
-                                TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
-                                long ts = Instant.from(parse).toEpochMilli();
-                                value = Instant.ofEpochMilli(ts);
-                            default:
-                                value = line[h.index];
+                        try {
+                            switch (h.type) {
+                                case BOOLEAN:
+                                    value = Boolean.parseBoolean(line[h.index]);
+                                    break;
+                                case NUMBER:
+                                    value = Double.parseDouble(line[h.index]);
+                                    break;
+                                case DATE:
+                                    TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
+                                    long ts = Instant.from(parse).toEpochMilli();
+                                    value = Instant.ofEpochMilli(ts);
+                                    break;
+                                default:
+                                    value = line[h.index];
+                            }
+                        } catch (Exception ignored) {
+                            LOGGER.debug("Unable to parse value " + line[h.index] + " as " + h.type);
+                            value = line[h.index];
                         }
                         elementNode.setProperty(h.propertyName, value);
                     });
