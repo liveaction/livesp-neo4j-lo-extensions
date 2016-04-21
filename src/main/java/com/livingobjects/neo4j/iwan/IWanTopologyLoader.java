@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -276,7 +278,24 @@ public final class IWanTopologyLoader {
 
             elementHeaders.stream()
                     .filter(h -> !TAG.equals(h.propertyName))
-                    .forEach(h -> elementNode.setProperty(h.propertyName, line[h.index]));
+                    .forEach(h -> {
+                        Object value;
+                        switch (h.type) {
+                            case BOOLEAN:
+                                value = Boolean.parseBoolean(line[h.index]);
+                                break;
+                            case NUMBER:
+                                value = Long.parseLong(line[h.index]);
+                                break;
+                            case DATE:
+                                TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
+                                long ts = Instant.from(parse).toEpochMilli();
+                                value = Instant.ofEpochMilli(ts);
+                            default:
+                                value = line[h.index];
+                        }
+                        elementNode.setProperty(h.propertyName, value);
+                    });
 
             return elementNode;
         }
