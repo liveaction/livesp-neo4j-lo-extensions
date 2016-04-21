@@ -9,13 +9,13 @@ import org.neo4j.graphdb.Node;
 import java.time.Instant;
 import java.util.Map;
 
-import static com.livingobjects.cosmos.shared.model.GraphNodeLabel.ELEMENT;
-import static com.livingobjects.cosmos.shared.model.GraphNodeLabel.NETWORK_ELEMENT;
-import static com.livingobjects.cosmos.shared.model.GraphNodeProperties.CREATED_AT;
-import static com.livingobjects.cosmos.shared.model.GraphNodeProperties.TAG;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_NETWORK_ELEMENT;
 
 public final class NetworkElementFactory {
+    private static final String NETWORK_ELEMENT = "NetworkElement";
+    private static final String ELEMENT = "Element";
+    private static final String TAG = "tag";
+    private static final String CREATED_AT = "createdAt";
     private final GraphDatabaseService graphdb;
     private final Label label;
 
