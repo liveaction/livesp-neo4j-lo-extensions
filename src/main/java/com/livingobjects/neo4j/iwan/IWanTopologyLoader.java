@@ -50,6 +50,8 @@ public final class IWanTopologyLoader {
     private static final String CARDINALITY = "cardinality";
     private static final String TAG = "tag";
     private static final String UPDATED_AT = "updatedAt";
+    private static final String _OVERRIDABLE = "_overridable";
+    private static final String _SCOPE = "_scope";
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -244,6 +246,12 @@ public final class IWanTopologyLoader {
                 return graphDb.findNode(LABEL_SCOPE, "tag", SCOPE_GLOBAL_TAG);
             }
 
+            Node elementAttNode = attributeNodes.get(elementName);
+            if (elementAttNode == null) {
+                throw new IllegalStateException("Unknown element type: '" + elementName + "' !");
+            }
+            boolean isOverridable = Boolean.parseBoolean(elementAttNode.getProperty(_OVERRIDABLE, Boolean.FALSE).toString());
+
             Set<String> todelete = parentRelations.get(elementName).stream()
                     .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY, "")))
                     .map(r -> r.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
@@ -265,6 +273,9 @@ public final class IWanTopologyLoader {
                     elementNode.addLabel(LABEL_SCOPE);
                 }
                 elementNode.setProperty(_TYPE, elementName);
+                if (isOverridable) {
+                    elementNode.setProperty(_SCOPE, SCOPE_GLOBAL_TAG);
+                }
             } else {
                 elementNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
 
@@ -276,35 +287,41 @@ public final class IWanTopologyLoader {
                 });
             }
 
-            elementHeaders.stream()
-                    .filter(h -> !TAG.equals(h.propertyName))
-                    .forEach(h -> {
-                        Object value;
-                        try {
-                            switch (h.type) {
-                                case BOOLEAN:
-                                    value = Boolean.parseBoolean(line[h.index]);
-                                    break;
-                                case NUMBER:
-                                    value = Double.parseDouble(line[h.index]);
-                                    break;
-                                case DATE:
-                                    TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
-                                    long ts = Instant.from(parse).toEpochMilli();
-                                    value = Instant.ofEpochMilli(ts);
-                                    break;
-                                default:
-                                    value = line[h.index];
-                            }
-                        } catch (Exception ignored) {
-                            LOGGER.debug("Unable to parse value " + line[h.index] + " as " + h.type);
-                            value = line[h.index];
-                        }
-                        elementNode.setProperty(h.propertyName, value);
-                    });
+            elementNode = persistElementProperties(line, elementHeaders, elementNode);
 
             return elementNode;
         }
+    }
+
+    private Node persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
+        elementHeaders.stream()
+                .filter(h -> !TAG.equals(h.propertyName))
+                .forEach(h -> {
+                    Object value;
+                    try {
+                        switch (h.type) {
+                            case BOOLEAN:
+                                value = Boolean.parseBoolean(line[h.index]);
+                                break;
+                            case NUMBER:
+                                value = Double.parseDouble(line[h.index]);
+                                break;
+                            case DATE:
+                                TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
+                                long ts = Instant.from(parse).toEpochMilli();
+                                value = Instant.ofEpochMilli(ts);
+                                break;
+                            default:
+                                value = line[h.index];
+                        }
+                    } catch (Exception ignored) {
+                        LOGGER.debug("Unable to parse value " + line[h.index] + " as " + h.type);
+                        value = line[h.index];
+                    }
+                    elementNode.setProperty(h.propertyName, value);
+                });
+
+        return elementNode;
     }
 
     private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) {
