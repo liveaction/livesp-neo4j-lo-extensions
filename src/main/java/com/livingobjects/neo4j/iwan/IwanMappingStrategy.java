@@ -19,13 +19,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 
 final class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
-    private static final String _TYPE = "_type";
-    private static final String NAME = "name";
 
     private final ImmutableMultimap<String, HeaderElement> mapping;
 

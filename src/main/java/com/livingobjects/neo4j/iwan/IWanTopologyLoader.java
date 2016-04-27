@@ -38,20 +38,12 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.*;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
-    private static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
     private static final int MAX_TRANSACTION_COUNT = 500;
-    private static final String CARDINALITY_MULTIPLE = "0..n";
-    private static final String _TYPE = "_type";
-    private static final String NAME = "name";
-    private static final String CARDINALITY = "cardinality";
-    private static final String TAG = "tag";
-    private static final String UPDATED_AT = "updatedAt";
-    private static final String _OVERRIDABLE = "_overridable";
-    private static final String _SCOPE = "_scope";
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
