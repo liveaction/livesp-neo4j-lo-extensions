@@ -285,7 +285,7 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Node persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
+    private static Node persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
                 .filter(h -> !TAG.equals(h.propertyName))
                 .forEach(h -> {
