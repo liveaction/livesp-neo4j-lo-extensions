@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.livingobjects</groupId>
         <artifactId>livingobjects-oss-parent</artifactId>
-        <version>4</version>
+        <version>5-SNAPSHOT</version>
     </parent>
 
     <scm>
@@ -21,22 +21,23 @@
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>2.3.3</neo4j.version>
+        <neo4j.version>2.3.2</neo4j.version>
         <jersey.version>1.19</jersey.version>
         <jackson.version>1.9.13</jackson.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
+        <metrics.version>3.1.2</metrics.version>
+        <junitparams.version>1.0.5</junitparams.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>18.0</version>
         </dependency>
         <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
-            <version>3.1.2</version>
+            <version>${metrics.version}</version>
         </dependency>
         <dependency>
             <groupId>org.codehaus.jackson</groupId>
@@ -75,18 +76,6 @@
         </dependency>
 
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.5.1</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpmime</artifactId>
-            <version>4.5.1</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
             <scope>test</scope>
@@ -97,15 +86,9 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.neo4j.test</groupId>
-            <artifactId>neo4j-harness</artifactId>
-            <version>${neo4j.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.javacrumbs.json-unit</groupId>
-            <artifactId>json-unit-fluent</artifactId>
-            <version>1.5.1</version>
+            <groupId>pl.pragmatists</groupId>
+            <artifactId>JUnitParams</artifactId>
+            <version>${junitparams.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -122,4 +105,6 @@
             </plugin>
         </plugins>
     </build>
+
+
 </project>
