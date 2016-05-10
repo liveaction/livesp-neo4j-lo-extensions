@@ -12,4 +12,9 @@ public final class MultiElementHeader extends HeaderElement {
     public boolean isSimple() {
         return false;
     }
+
+    @Override
+    public <R> R visit(Visitor<R> visitor) {
+        return visitor.visitMulti(this);
+    }
 }

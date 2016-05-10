@@ -14,11 +14,17 @@ import com.google.common.collect.Maps;
 import com.google.common.primitives.Longs;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
+import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
+import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
+import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.type.TypeFactory;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
@@ -39,11 +45,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
     private static final int MAX_TRANSACTION_COUNT = 500;
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -163,6 +171,8 @@ public final class IWanTopologyLoader {
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
+            createCrossAttributeLinks(line, strategy, nodes);
+
             // Create Connect link
             for (String keytype : nodes.keySet()) {
                 int relCount = linkToParents(keytype, nodes);
@@ -194,6 +204,23 @@ public final class IWanTopologyLoader {
         }
     }
 
+    private static void createCrossAttributeLinks(String[] line, IwanMappingStrategy strategy, Map<String, Node> nodes) {
+        Map<String, Relationship> multiElementLinks = Maps.newHashMap();
+        for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
+            String key = meHeader.elementName + ELEMENT_SEPARATOR + meHeader.targetElementName;
+            Node fromNode = nodes.get(meHeader.elementName);
+            Node toNode = nodes.get(meHeader.targetElementName);
+            if (fromNode == null || toNode == null) {
+                continue;
+            }
+
+            Relationship relationship = multiElementLinks.computeIfAbsent(key,
+                    k -> createUniqueLink(fromNode, toNode, Direction.OUTGOING, LINK_CROSS_ATTRIBUTE));
+            relationship = persistElementProperty(meHeader, line, relationship);
+            multiElementLinks.put(key, relationship);
+        }
+    }
+
     private int linkToParents(String keytype, Map<String, Node> nodes) {
         try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
             Node node = nodes.get(keytype);
@@ -222,8 +249,8 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Relationship createUniqueLink(Node node, Node parent, Direction outgoing, RelationshipType linkConnect) {
-        for (Relationship next : node.getRelationships(outgoing, linkConnect)) {
+    private static Relationship createUniqueLink(Node node, Node parent, Direction direction, RelationshipType linkConnect) {
+        for (Relationship next : node.getRelationships(direction, linkConnect)) {
             if (next.getEndNode().equals(parent)) {
                 return next;
             }
@@ -288,30 +315,60 @@ public final class IWanTopologyLoader {
     private static Node persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
                 .filter(h -> !TAG.equals(h.propertyName))
-                .forEach(h -> {
-                    Object value;
-                    try {
-                        switch (h.type) {
-                            case BOOLEAN:
-                                value = Boolean.parseBoolean(line[h.index]);
-                                break;
-                            case NUMBER:
-                                value = Double.parseDouble(line[h.index]);
-                                break;
-                            case DATE:
-                                TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[h.index]);
-                                long ts = Instant.from(parse).toEpochMilli();
-                                value = Instant.ofEpochMilli(ts);
-                                break;
-                            default:
-                                value = line[h.index];
-                        }
-                    } catch (Exception ignored) {
-                        LOGGER.debug("Unable to parse value " + line[h.index] + " as " + h.type);
-                        value = line[h.index];
+                .forEach(h -> h.visit(new Visitor<Void>() {
+                    @Override
+                    public Void visitSimple(SimpleElementHeader header) {
+                        persistElementProperty(header, line, elementNode);
+                        return null;
                     }
-                    elementNode.setProperty(h.propertyName, value);
-                });
+
+                    @Override
+                    public Void visitMulti(MultiElementHeader header) {
+                        return null;
+                    }
+                }));
+
+        return elementNode;
+    }
+
+    private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, final String[] line, final T elementNode) {
+        Object value;
+        try {
+            switch (header.type) {
+                case BOOLEAN:
+                    value = (header.isArray) ?
+                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, Boolean.class).getContentType())
+                            : Boolean.parseBoolean(line[header.index]);
+                    break;
+                case NUMBER:
+                    value = (header.isArray) ?
+                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, Double.class).getContentType())
+                            : Double.parseDouble(line[header.index]);
+                    break;
+                case DATE:
+                    if (header.isArray) {
+                        List<String> tss = JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, String.class).getContentType());
+                        value = Lists.transform(tss, t -> {
+                            TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(t);
+                            long ts = Instant.from(parse).toEpochMilli();
+                            return Instant.ofEpochMilli(ts);
+                        });
+                    } else {
+                        TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[header.index]);
+                        long ts = Instant.from(parse).toEpochMilli();
+                        value = Instant.ofEpochMilli(ts);
+                    }
+                    break;
+                default:
+                    value = (header.isArray) ?
+                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, String.class).getContentType())
+                            : line[header.index];
+            }
+        } catch (Exception ignored) {
+            LOGGER.debug("Unable to parse value " + line[header.index] + " as " + header.type);
+            value = line[header.index];
+        }
+        elementNode.setProperty(header.propertyName, value);
 
         return elementNode;
     }

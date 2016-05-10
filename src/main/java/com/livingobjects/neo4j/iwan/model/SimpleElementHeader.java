@@ -9,4 +9,9 @@ public class SimpleElementHeader extends HeaderElement {
     public boolean isSimple() {
         return true;
     }
+
+    @Override
+    public <R> R visit(Visitor<R> visitor) {
+        return visitor.visitSimple(this);
+    }
 }

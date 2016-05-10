@@ -52,4 +52,11 @@ public abstract class HeaderElement {
     }
 
     public abstract boolean isSimple();
+
+    public abstract <R> R visit(Visitor<R> visitor);
+
+    public interface Visitor<R> {
+        R visitSimple(SimpleElementHeader header);
+        R visitMulti(MultiElementHeader header);
+    }
 }

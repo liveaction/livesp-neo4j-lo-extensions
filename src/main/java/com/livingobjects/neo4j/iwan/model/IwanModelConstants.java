@@ -7,6 +7,7 @@ import org.neo4j.graphdb.RelationshipType;
 
 public final class IwanModelConstants {
     public static final RelationshipType LINK_ATTRIBUTE = DynamicRelationshipType.withName("Attribute");
+    public static final RelationshipType LINK_CROSS_ATTRIBUTE = DynamicRelationshipType.withName("CrossAttribute");
     public static final RelationshipType LINK_CONNECT = DynamicRelationshipType.withName("Connect");
     public static final RelationshipType LINK_PARENT = DynamicRelationshipType.withName("Parent");
     public static final Label LABEL_ATTRIBUTE = DynamicLabel.label("Attribute");

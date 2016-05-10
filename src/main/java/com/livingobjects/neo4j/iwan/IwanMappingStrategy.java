@@ -2,11 +2,15 @@ package com.livingobjects.neo4j.iwan;
 
 import au.com.bytecode.opencsv.CSVReader;
 import com.google.common.collect.ImmutableCollection;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
+import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
+import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
+import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
@@ -18,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.iwan.model.GraphModelConstants._TYPE;
@@ -63,9 +68,29 @@ final class IwanMappingStrategy {
 
         if (collect.isEmpty()) {
             collect.putAll(addChildrenAttribute(SCOPE_GLOBAL_ATTRIBUTE, collect, children));
+            mapping.keySet().stream()
+                    .filter(k -> !collect.keySet().contains(k))
+                    .forEach(k -> collect.putAll(addChildrenAttribute(k, collect, children)));
         }
 
         return ImmutableMap.copyOf(collect);
+    }
+
+    public ImmutableList<MultiElementHeader> getMultiElementHeader() {
+        List<MultiElementHeader> collect = mapping.values().stream()
+                .map(h -> h.visit(new Visitor<MultiElementHeader>() {
+                    @Override
+                    public MultiElementHeader visitSimple(SimpleElementHeader header) {
+                        return null;
+                    }
+
+                    @Override
+                    public MultiElementHeader visitMulti(MultiElementHeader header) {
+                        return header;
+                    }
+                })).filter(h -> h != null)
+                .collect(Collectors.toList());
+        return ImmutableList.copyOf(collect);
     }
 
     final boolean isScope(String keytype) {
