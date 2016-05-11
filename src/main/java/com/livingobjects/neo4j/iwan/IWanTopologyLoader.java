@@ -36,8 +36,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -344,20 +342,6 @@ public final class IWanTopologyLoader {
                     value = (header.isArray) ?
                             Doubles.toArray(JSON_MAPPER.readValue(line[header.index], DOUBLE_LIST_TYPE))
                             : Double.parseDouble(line[header.index]);
-                    break;
-                case DATE:
-                    if (header.isArray) {
-                        List<String> tss = JSON_MAPPER.readValue(line[header.index], STRING_LIST_TYPE);
-                        value = Lists.transform(tss, t -> {
-                            TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(t);
-                            long ts = Instant.from(parse).toEpochMilli();
-                            return Instant.ofEpochMilli(ts);
-                        });
-                    } else {
-                        TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(line[header.index]);
-                        long ts = Instant.from(parse).toEpochMilli();
-                        value = Instant.ofEpochMilli(ts);
-                    }
                     break;
                 default:
                     value = (header.isArray) ?

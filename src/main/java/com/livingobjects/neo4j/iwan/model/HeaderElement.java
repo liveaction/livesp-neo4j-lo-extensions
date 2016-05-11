@@ -13,7 +13,7 @@ public abstract class HeaderElement {
     private static final Pattern COLUMN_PATTERN = Pattern.compile(
             "\\(?(?<name>" + NAME_PATTERN + ")(" + ELEMENT_SEPARATOR + "?(?<target>" + NAME_PATTERN + ")\\))?\\.(?<prop>" + PROP_PATTERN + "):?(?<type>" + TYPE_PATTERN + ")?(?<isArray>" + ARRAY_PATTERN + ")?");
 
-    public enum Type {STRING, NUMBER, BOOLEAN, DATE}
+    public enum Type {STRING, NUMBER, BOOLEAN}
 
     public final String elementName;
     public final String propertyName;
