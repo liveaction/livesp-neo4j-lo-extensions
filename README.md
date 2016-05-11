@@ -6,47 +6,32 @@ neo4j-lo-extensions
 
 Contains 2 neo4j server extensions :
 
-/warm-up : used to load all graph data in memory cache.
-
-/load-csv : extension used to execute a LOAD CSV query using a remote CSV file that is uploaded.
+* `/warm-up` : used to load all graph data in memory cache.
+* `/load-csv` : extension used to execute a LOAD CSV query using a remote CSV file that is uploaded.
 
 ## Load CSV
 
-POST /load-csv
+`POST /load-csv`
 
-Requires a "Content-Type:multipart/mixed" with two body parts in this order:
+Requires a "Content-Type:multipart/mixed"
 
-- The cypher query with its parameters (json) :
+### The CSV header
+This extension allow importing CSV files into existent neo4j database. The first line is the CSV header and is mandatory.
 
-The {file} token is automatically replaced by the uploaded CSV file URL.
+Each column header must be formatted as follow `<attribute>.<name>(:<type>([]))`. Ex: `neType:interface.id:NUMBER`. 
 
-```json
-{
-    "statement": "LOAD CSV WITH HEADERS FROM {file} AS csvFile\nCREATE (n:Node)",
-    "parameters": {
-        ...
-    }
-}
-```
+The type is optional, if not present, the default type is STRING. The possible type are :
+ * STRING
+ * NUMBER
+ * BOOLEAN
 
-You can also use PERIODIC COMMIT :
+If `[]` follow the type, the property value is defined as an array.
 
-```json
-{
-    "statement": "USING PERIODIC COMMIT 10000 LOAD CSV WITH HEADERS FROM {file} AS csvFile\nCREATE (n:Node)",
-    "parameters": {
-        ...
-    }
-}
-```
+For **CrossAttribute** properties the `<attribute>` is formatted as follow `(<fromAttribute>»<toAttribute)`. Ex: 
+`(neType:interface»neType:cos).id:NUMBER`. Be aware that a `tag` property must be present in header for each attribute
+specified in the CrossAttribute field.
 
-- The CSV file to upload and import
-
-Example REST call using curl :
-
-```shell
-curl -H "Content-Type:multipart/mixed" -F "content=@src/test/resources/query.json" -F "content=@src/test/resources/import.csv" -X POST http://localhost:7474/unmanaged/load-csv -i -v
-```
+### The result
 
 The request returns a json file:
 
@@ -72,20 +57,10 @@ The request returns a json file:
 }
 ```
 
-- When execution fails (code 500) :
-
-```json
-{
-  "error": {
-    "code": "org.neo4j.kernel.impl.query.QueryExecutionKernelException",
-    "message": "Invalid input ''': expected whitespace, comment, WITH or FROM (line 1, column 10 (offset: 9))\n\"LOAD CSV 'file:/tmp/rep4588354198555724947tmp' AS csvFile\"\n          ^"
-  }
-}
-```
 
 ## How to use:
 
-Copy neo4j-lo-extensions-1.1.jar file to neo4j plugins folder.
+Copy neo4j-lo-extensions-*.jar file to neo4j plugins folder. Copy Guava and Metrics dependencies.
 
 Edit neo4j-server.properties to setup extensions base url:
 
