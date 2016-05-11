@@ -20,7 +20,7 @@ import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.type.TypeFactory;
+import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -337,17 +337,18 @@ public final class IWanTopologyLoader {
             switch (header.type) {
                 case BOOLEAN:
                     value = (header.isArray) ?
-                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, Boolean.class).getContentType())
+                            Lists.transform(JSON_MAPPER.readValue(line[header.index], List.class), Boolean::parseBoolean)
                             : Boolean.parseBoolean(line[header.index]);
                     break;
                 case NUMBER:
                     value = (header.isArray) ?
-                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, Double.class).getContentType())
+                            Lists.transform(JSON_MAPPER.readValue(line[header.index], List.class), Double::parseDouble)
                             : Double.parseDouble(line[header.index]);
                     break;
                 case DATE:
                     if (header.isArray) {
-                        List<String> tss = JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, String.class).getContentType());
+                        List<String> tss = JSON_MAPPER.readValue(line[header.index], new TypeReference<List<String>>() {
+                        });
                         value = Lists.transform(tss, t -> {
                             TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(t);
                             long ts = Instant.from(parse).toEpochMilli();
@@ -361,7 +362,7 @@ public final class IWanTopologyLoader {
                     break;
                 default:
                     value = (header.isArray) ?
-                            JSON_MAPPER.readValue(line[header.index], TypeFactory.defaultInstance().constructCollectionType(List.class, String.class).getContentType())
+                            JSON_MAPPER.readValue(line[header.index], List.class)
                             : line[header.index];
             }
         } catch (Exception ignored) {
