@@ -2,15 +2,18 @@ package com.livingobjects.neo4j.iwan;
 
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.primitives.Booleans;
+import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Longs;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
@@ -19,8 +22,6 @@ import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -44,14 +45,13 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.*;
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
     private static final int MAX_TRANSACTION_COUNT = 500;
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -165,7 +165,7 @@ public final class IWanTopologyLoader {
     }
 
     private void importLine(String[] line, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
-        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
+        try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
             // Create elements
             Map<String, Node> nodes = lineage.keySet().stream()
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
@@ -222,7 +222,7 @@ public final class IWanTopologyLoader {
     }
 
     private int linkToParents(String keytype, Map<String, Node> nodes) {
-        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
+        try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
             Node node = nodes.get(keytype);
             if (node == null) {
                 return -1;
@@ -260,7 +260,7 @@ public final class IWanTopologyLoader {
     }
 
     private Node createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
-        try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
+        try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
             if (SCOPE_GLOBAL_ATTRIBUTE.equals(elementName)) {
                 return graphDb.findNode(LABEL_SCOPE, "tag", SCOPE_GLOBAL_TAG);
             }
@@ -337,18 +337,17 @@ public final class IWanTopologyLoader {
             switch (header.type) {
                 case BOOLEAN:
                     value = (header.isArray) ?
-                            Lists.transform(JSON_MAPPER.readValue(line[header.index], List.class), Boolean::parseBoolean)
+                            Booleans.toArray(JSON_MAPPER.readValue(line[header.index], BOOLEAN_LIST_TYPE))
                             : Boolean.parseBoolean(line[header.index]);
                     break;
                 case NUMBER:
                     value = (header.isArray) ?
-                            Lists.transform(JSON_MAPPER.readValue(line[header.index], List.class), Double::parseDouble)
+                            Doubles.toArray(JSON_MAPPER.readValue(line[header.index], DOUBLE_LIST_TYPE))
                             : Double.parseDouble(line[header.index]);
                     break;
                 case DATE:
                     if (header.isArray) {
-                        List<String> tss = JSON_MAPPER.readValue(line[header.index], new TypeReference<List<String>>() {
-                        });
+                        List<String> tss = JSON_MAPPER.readValue(line[header.index], STRING_LIST_TYPE);
                         value = Lists.transform(tss, t -> {
                             TemporalAccessor parse = DateTimeFormatter.ISO_INSTANT.parse(t);
                             long ts = Instant.from(parse).toEpochMilli();
@@ -362,7 +361,7 @@ public final class IWanTopologyLoader {
                     break;
                 default:
                     value = (header.isArray) ?
-                            JSON_MAPPER.readValue(line[header.index], List.class)
+                            Iterables.toArray(JSON_MAPPER.readValue(line[header.index], STRING_LIST_TYPE), String.class)
                             : line[header.index];
             }
         } catch (Exception ignored) {
@@ -377,9 +376,9 @@ public final class IWanTopologyLoader {
     private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) {
         ImmutableMultimap<String, Node> planets = planetsByClient.get(clientAttribute);
         if (planets == null) {
-            try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-getPlanetsForClient").time()) {
+            try (Context ignore = metrics.timer("IWanTopologyLoader-getPlanetsForClient").time()) {
                 Node attClientNode = attributeNodes.get(clientAttribute);
-                ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
+                Builder<String, Node> bldr = ImmutableMultimap.builder();
                 attClientNode.getRelationships(Direction.INCOMING, LINK_ATTRIBUTE).forEach(r -> {
                     Node planet = r.getStartNode();
                     if (!planet.hasLabel(LABEL_PLANET)) {
@@ -401,8 +400,8 @@ public final class IWanTopologyLoader {
     private ImmutableMultimap<String, Node> getPlanets() {
         ImmutableMultimap<String, Node> planets = planetsByClient.get(Character.toString(KEYTYPE_SEPARATOR));
         if (planets == null) {
-            try (Timer.Context ignore = metrics.timer("IWanTopologyLoader-getPlanets").time()) {
-                ImmutableMultimap.Builder<String, Node> bldr = ImmutableMultimap.builder();
+            try (Context ignore = metrics.timer("IWanTopologyLoader-getPlanets").time()) {
+                Builder<String, Node> bldr = ImmutableMultimap.builder();
                 graphDb.findNodes(LABEL_PLANET).forEachRemaining(planet -> {
                     if (!planet.hasLabel(LABEL_PLANET)) {
                         return;

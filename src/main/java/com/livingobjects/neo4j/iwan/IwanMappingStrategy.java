@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.iwan.model.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 
