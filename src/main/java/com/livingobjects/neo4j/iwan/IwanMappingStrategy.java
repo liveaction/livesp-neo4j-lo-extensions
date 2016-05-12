@@ -24,10 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 final class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
@@ -101,6 +98,8 @@ final class IwanMappingStrategy {
             String current, Map<String, Set<String>> collect, Map<String, ? extends List<Relationship>> children) {
 
         Collection<Relationship> relationships = children.get(current);
+        assert relationships != null : "Current type " + current + " does not exists !";
+
         if (!relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
                 Set<String> p = collect.get(current);

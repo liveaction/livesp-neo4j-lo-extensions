@@ -5,13 +5,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public abstract class HeaderElement {
-    public static final char ELEMENT_SEPARATOR = '»';
+    public static final char ELEMENT_SEPARATOR = '~';
     private static final String NAME_PATTERN = "[^:" + ELEMENT_SEPARATOR + "]*:[^:" + ELEMENT_SEPARATOR + "]*";
     private static final String PROP_PATTERN = "[^:]*";
     private static final String ARRAY_PATTERN = "\\[\\]";
     private static final String TYPE_PATTERN = "\\w+";
     private static final Pattern COLUMN_PATTERN = Pattern.compile(
-            "\\(?(?<name>" + NAME_PATTERN + ")(" + ELEMENT_SEPARATOR + "?(?<target>" + NAME_PATTERN + ")\\))?\\.(?<prop>" + PROP_PATTERN + "):?(?<type>" + TYPE_PATTERN + ")?(?<isArray>" + ARRAY_PATTERN + ")?");
+            "\\(?(?<name>" + NAME_PATTERN + ")(" + ELEMENT_SEPARATOR + "?(?<target>" + NAME_PATTERN + ")\\))?\\.(?<prop>" + PROP_PATTERN + "):?(?<type>" + TYPE_PATTERN + ")?(?<isArray>" + ARRAY_PATTERN + ")?",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
     public enum Type {STRING, NUMBER, BOOLEAN}
 
