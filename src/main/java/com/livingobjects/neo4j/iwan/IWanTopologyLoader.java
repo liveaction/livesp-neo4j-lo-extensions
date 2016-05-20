@@ -44,8 +44,29 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -341,7 +362,7 @@ public final class IWanTopologyLoader {
                 case NUMBER:
                     value = (header.isArray) ?
                             Doubles.toArray(JSON_MAPPER.readValue(line[header.index], DOUBLE_LIST_TYPE))
-                            : Double.parseDouble(line[header.index]);
+                            : Doubles.tryParse(line[header.index]);
                     break;
                 default:
                     value = (header.isArray) ?
@@ -352,8 +373,11 @@ public final class IWanTopologyLoader {
             LOGGER.debug("Unable to parse value " + line[header.index] + " as " + header.type);
             value = line[header.index];
         }
-        elementNode.setProperty(header.propertyName, value);
-
+        if (value != null) {
+            elementNode.setProperty(header.propertyName, value);
+        }else {
+            elementNode.removeProperty(header.propertyName);
+        }
         return elementNode;
     }
 
