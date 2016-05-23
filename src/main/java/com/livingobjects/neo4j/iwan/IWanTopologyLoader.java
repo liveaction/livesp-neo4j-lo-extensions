@@ -132,7 +132,7 @@ public final class IWanTopologyLoader {
         Transaction tx = graphDb.beginTx();
         lineage = strategy.guessElementCreationStrategy(scopes, childrenRelations);
         ImmutableSet<String> startKeytypes = ImmutableSet.copyOf(
-                scopes.stream().filter(strategy::isScope).collect(Collectors.toSet()));
+                scopes.stream().filter(strategy::hasKeyType).collect(Collectors.toSet()));
 
         while ((nextLine = reader.readNext()) != null) {
             ++imported;
@@ -293,6 +293,7 @@ public final class IWanTopologyLoader {
             Set<String> todelete = parentRelations.get(elementName).stream()
                     .filter(r -> !CARDINALITY_MULTIPLE.equals(r.getProperty(CARDINALITY, "")))
                     .map(r -> r.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
+                    .filter(strategy::hasKeyType)
                     .collect(Collectors.toSet());
 
             ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);

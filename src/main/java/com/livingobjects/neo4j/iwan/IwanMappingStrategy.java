@@ -60,7 +60,7 @@ final class IwanMappingStrategy {
 
     ImmutableMap<String, Set<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
-        scopes.stream().filter(this::isScope).forEach(s ->
+        scopes.stream().filter(this::hasKeyType).forEach(s ->
                 collect.putAll(addChildrenAttribute(s, collect, children)));
 
         if (collect.isEmpty()) {
@@ -90,7 +90,7 @@ final class IwanMappingStrategy {
         return ImmutableList.copyOf(collect);
     }
 
-    final boolean isScope(String keytype) {
+    final boolean hasKeyType(String keytype) {
         return mapping.keySet().contains(keytype);
     }
 
