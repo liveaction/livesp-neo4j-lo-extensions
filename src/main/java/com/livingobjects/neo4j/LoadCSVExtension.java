@@ -43,6 +43,7 @@ public final class LoadCSVExtension {
 
     public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
+        this.reporter.start(5, TimeUnit.MINUTES);
     }
 
     @POST
