@@ -287,12 +287,14 @@ public final class IWanTopologyLoader {
     }
 
     private void createOutgoingUniqueLinks(Node node, ImmutableCollection<Node> parents, RelationshipType linkType) {
-        Set<Node> relationshipsToCreate = Sets.newHashSet(parents);
-        for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
-            Node endNode = next.getEndNode();
-            relationshipsToCreate.remove(endNode);
+        if (!parents.isEmpty()) {
+            Set<Node> relationshipsToCreate = Sets.newHashSet(parents);
+            for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
+                Node endNode = next.getEndNode();
+                relationshipsToCreate.remove(endNode);
+            }
+            relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
         }
-        relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
     }
 
     private Node createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
