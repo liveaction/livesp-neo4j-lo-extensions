@@ -287,12 +287,10 @@ public final class IWanTopologyLoader {
     }
 
     private void createOutgoingUniqueLinks(Node node, ImmutableCollection<Node> parents, RelationshipType linkType) {
-        Set<Node> relationshipsToCreate = Sets.newHashSet();
+        Set<Node> relationshipsToCreate = Sets.newHashSet(parents);
         for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
             Node endNode = next.getEndNode();
-            if (!parents.contains(endNode)) {
-                relationshipsToCreate.add(endNode);
-            }
+            relationshipsToCreate.remove(endNode);
         }
         relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
     }
