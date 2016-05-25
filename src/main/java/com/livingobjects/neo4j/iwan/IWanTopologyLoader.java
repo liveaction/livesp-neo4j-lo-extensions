@@ -12,6 +12,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.common.primitives.Booleans;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Longs;
@@ -44,8 +45,29 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -187,16 +209,16 @@ public final class IWanTopologyLoader {
                 planets = getPlanetsForClient(name + KEYTYPE_SEPARATOR + id);
 
                 for (Entry<String, Node> entry : nodes.entrySet()) {
-                    planets.get(entry.getKey()).forEach(n ->
-                            createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
+                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
+                    createOutgoingUniqueLinks(entry.getValue(), parents, LINK_ATTRIBUTE);
                 }
             }
 
             if (startKeytypes.isEmpty()) {
                 planets = getGlobalPlanets();
                 for (Entry<String, Node> entry : nodes.entrySet()) {
-                    planets.get(entry.getKey()).forEach(n ->
-                            createUniqueLink(entry.getValue(), n, Direction.OUTGOING, LINK_ATTRIBUTE));
+                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
+                    createOutgoingUniqueLinks(entry.getValue(), parents, LINK_ATTRIBUTE);
                 }
             }
         }
@@ -214,7 +236,7 @@ public final class IWanTopologyLoader {
                 }
 
                 Relationship relationship = multiElementLinks.computeIfAbsent(key,
-                        k -> createUniqueLink(fromNode, toNode, Direction.OUTGOING, LINK_CROSS_ATTRIBUTE));
+                        k -> createOutgoingUniqueLink(fromNode, toNode, LINK_CROSS_ATTRIBUTE));
                 relationship = persistElementProperty(meHeader, line, relationship);
                 multiElementLinks.put(key, relationship);
             }
@@ -242,20 +264,31 @@ public final class IWanTopologyLoader {
                     continue;
                 }
                 ++relCount;
-                createUniqueLink(node, parent, Direction.OUTGOING, LINK_CONNECT);
+                createOutgoingUniqueLink(node, parent, LINK_CONNECT);
             }
 
             return relCount;
         }
     }
 
-    private Relationship createUniqueLink(Node node, Node parent, Direction direction, RelationshipType linkType) {
-        for (Relationship next : node.getRelationships(direction, linkType)) {
+    private Relationship createOutgoingUniqueLink(Node node, Node parent, RelationshipType linkType) {
+        for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
             if (next.getEndNode().equals(parent)) {
                 return next;
             }
         }
         return node.createRelationshipTo(parent, linkType);
+    }
+
+    private void createOutgoingUniqueLinks(Node node, ImmutableCollection<Node> parents, RelationshipType linkType) {
+        Set<Node> relationshipsToCreate = Sets.newHashSet();
+        for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
+            Node endNode = next.getEndNode();
+            if (!parents.contains(endNode)) {
+                relationshipsToCreate.add(endNode);
+            }
+        }
+        relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
     }
 
     private Node createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
