@@ -2,7 +2,9 @@ package com.livingobjects.neo4j;
 
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Slf4jReporter;
+import com.codahale.metrics.Slf4jReporter.LoggingLevel;
 import com.codahale.metrics.Timer;
+import com.google.common.base.Stopwatch;
 import com.livingobjects.neo4j.iwan.IWanTopologyLoader;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -28,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public final class LoadCSVExtension {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
+    private static final Logger PACKAGE_LOGGER = LoggerFactory.getLogger("com.livingobjects.neo4j");
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -36,19 +39,24 @@ public final class LoadCSVExtension {
 
     private final MetricRegistry metrics = new MetricRegistry();
     private final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
-            .outputTo(LoggerFactory.getLogger("com.livingobjects.neo4j"))
+            .outputTo(PACKAGE_LOGGER)
+            .withLoggingLevel(LoggingLevel.DEBUG)
             .convertRatesTo(TimeUnit.SECONDS)
             .convertDurationsTo(TimeUnit.MILLISECONDS)
             .build();
 
     public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        this.reporter.start(5, TimeUnit.MINUTES);
+        if (PACKAGE_LOGGER.isDebugEnabled()) {
+            this.reporter.start(5, TimeUnit.MINUTES);
+        }
     }
 
     @POST
     @Consumes("multipart/mixed")
     public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
+        Stopwatch sWatch = Stopwatch.createStarted();
+        long lineCounter = 0;
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
             File csv = multiPart.getBodyParts().stream()
                     .filter(bp -> TEXT_CSV_MEDIATYPE.equals(bp.getMediaType()))
@@ -58,6 +66,7 @@ public final class LoadCSVExtension {
 
             try (InputStream is = new FileInputStream(csv)) {
                 Neo4jLoadResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
+                lineCounter = result.imported;
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
@@ -75,8 +84,13 @@ public final class LoadCSVExtension {
             return Response.status(Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             return errorResponse(e);
+            
         } finally {
-            reporter.report();
+            LOGGER.info("Import {} line(s) in {}ms.", lineCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
+            if (PACKAGE_LOGGER.isDebugEnabled()) {
+                reporter.stop();
+                reporter.report();
+            }
         }
     }
 
