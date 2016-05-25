@@ -84,6 +84,7 @@ public final class IWanTopologyLoader {
     private ImmutableMap<String, Set<String>> lineage;
 
     private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
+    private final Set<Long> planetLinksCreatedForNodes = Sets.newHashSet();
 
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
@@ -217,8 +218,13 @@ public final class IWanTopologyLoader {
             if (startKeytypes.isEmpty()) {
                 planets = getGlobalPlanets();
                 for (Entry<String, Node> entry : nodes.entrySet()) {
-                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    createOutgoingUniqueLinks(entry.getValue(), parents, LINK_ATTRIBUTE);
+                    Node node = entry.getValue();
+                    long id = node.getId();
+                    if (!planetLinksCreatedForNodes.contains(id)) {
+                        ImmutableCollection<Node> parents = planets.get(entry.getKey());
+                        createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE);
+                        planetLinksCreatedForNodes.add(id);
+                    }
                 }
             }
         }
