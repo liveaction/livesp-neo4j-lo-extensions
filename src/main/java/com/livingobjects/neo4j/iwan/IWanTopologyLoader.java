@@ -19,6 +19,7 @@ import com.google.common.primitives.Longs;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
+import com.livingobjects.neo4j.iwan.model.InvalidScopeException;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
@@ -146,10 +147,14 @@ public final class IWanTopologyLoader {
                     tx = renewTransaction(tx);
                     currentTransaction.clear();
                 }
+            } catch (InvalidScopeException e) {
+                tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
+                errors.add((long) imported);
+                LOGGER.warn(e.getLocalizedMessage());
+                LOGGER.debug("STACKTRACE", e);
+                LOGGER.debug(Arrays.toString(nextLine));
             } catch (IllegalArgumentException e) {
-                tx = renewTransaction(tx, true);
-                tx = reloadValidTransactionLines(tx, currentTransaction, startKeytypes, strategy);
-                currentTransaction.clear();
+                tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
                 errors.add((long) imported);
                 LOGGER.error(e.getLocalizedMessage());
                 LOGGER.error("STACKTRACE", e);
@@ -161,6 +166,13 @@ public final class IWanTopologyLoader {
 
         long created = imported - errors.size();
         return new Neo4jLoadResult(created, Longs.toArray(errors));
+    }
+
+    public Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> startKeytypes) {
+        tx = renewTransaction(tx, true);
+        tx = reloadValidTransactionLines(tx, currentTransaction, startKeytypes, strategy);
+        currentTransaction.clear();
+        return tx;
     }
 
     private Transaction renewTransaction(Transaction tx) {
@@ -208,7 +220,7 @@ public final class IWanTopologyLoader {
             // Create planet link
             ImmutableMultimap<String, Node> planets;
             for (String keytype : startKeytypes) {
-                Node scopeNode = nodes.get(keytype).orElseThrow(() -> new IllegalArgumentException("No scope tag provided."));
+                Node scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
                 Object scopeNodeIdProperty = scopeNode.getProperty("id");
                 if (scopeNodeIdProperty != null) {
                     String id = scopeNodeIdProperty.toString();
@@ -220,7 +232,7 @@ public final class IWanTopologyLoader {
                         entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE));
                     }
                 } else {
-                    throw new IllegalArgumentException("No scope id provided.");
+                    throw new InvalidScopeException("No scope id provided.");
                 }
             }
 
@@ -408,7 +420,7 @@ public final class IWanTopologyLoader {
         return elementNode;
     }
 
-    private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) {
+    private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) throws InvalidScopeException {
         ImmutableMultimap<String, Node> planets = planetsByClient.get(clientAttribute);
         if (planets == null) {
             try (Context ignore = metrics.timer("IWanTopologyLoader-getPlanetsForClient").time()) {
@@ -420,7 +432,7 @@ public final class IWanTopologyLoader {
                     planets = bldr.build();
                     planetsByClient.put(clientAttribute, planets);
                 } else {
-                    throw new IllegalArgumentException("The scope node " + clientAttribute + " does not exist in database.");
+                    throw new InvalidScopeException("The scope node " + clientAttribute + " does not exist in database.");
                 }
             }
         }
