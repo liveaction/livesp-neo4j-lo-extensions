@@ -414,8 +414,6 @@ public final class IWanTopologyLoader {
         }
         if (value != null) {
             elementNode.setProperty(header.propertyName, value);
-        } else {
-            elementNode.removeProperty(header.propertyName);
         }
         return elementNode;
     }
