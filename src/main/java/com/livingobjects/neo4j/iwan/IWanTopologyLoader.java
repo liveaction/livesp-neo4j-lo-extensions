@@ -47,29 +47,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -168,7 +147,7 @@ public final class IWanTopologyLoader {
         return new Neo4jLoadResult(created, Longs.toArray(errors));
     }
 
-    public Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> startKeytypes) {
+    private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> startKeytypes) {
         tx = renewTransaction(tx, true);
         tx = reloadValidTransactionLines(tx, currentTransaction, startKeytypes, strategy);
         currentTransaction.clear();
@@ -207,35 +186,11 @@ public final class IWanTopologyLoader {
 
             createCrossAttributeLinks(line, strategy, nodes);
 
-            // Create Connect link
-            for (String keytype : nodes.keySet()) {
-                nodes.get(keytype).ifPresent(node -> {
-                    int relCount = linkToParents(keytype, node, nodes);
-                    if (!startKeytypes.isEmpty() && !scopes.contains(keytype) && relCount <= 0) {
-                        throw new IllegalStateException("No parent element found for type " + keytype);
-                    }
-                });
-            }
+            createConnectLink(startKeytypes, nodes);
 
-            // Create planet link
+            createPlanetLink(startKeytypes, nodes);
+
             ImmutableMultimap<String, Node> planets;
-            for (String keytype : startKeytypes) {
-                Node scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
-                Object scopeNodeIdProperty = scopeNode.getProperty("id");
-                if (scopeNodeIdProperty != null) {
-                    String id = scopeNodeIdProperty.toString();
-                    String name = keytype.substring(keytype.indexOf(KEYTYPE_SEPARATOR) + 1);
-                    planets = getPlanetsForClient(name + KEYTYPE_SEPARATOR + id);
-
-                    for (Entry<String, Optional<Node>> entry : nodes.entrySet()) {
-                        ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                        entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE));
-                    }
-                } else {
-                    throw new InvalidScopeException("No scope id provided.");
-                }
-            }
-
             if (startKeytypes.isEmpty()) {
                 planets = getGlobalPlanets();
                 for (Entry<String, Optional<Node>> entry : nodes.entrySet()) {
@@ -265,6 +220,37 @@ public final class IWanTopologyLoader {
                     relationship = persistElementProperty(meHeader, line, relationship);
                     multiElementLinks.put(key, relationship);
                 }
+            }
+        }
+    }
+
+    private void createConnectLink(ImmutableSet<String> startKeytypes, Map<String, Optional<Node>> nodes) {
+        for (String keytype : nodes.keySet()) {
+            nodes.get(keytype).ifPresent(node -> {
+                int relCount = linkToParents(keytype, node, nodes);
+                if (!startKeytypes.isEmpty() && !scopes.contains(keytype) && relCount <= 0) {
+                    throw new IllegalStateException("No parent element found for type " + keytype);
+                }
+            });
+        }
+    }
+
+    private void createPlanetLink(ImmutableSet<String> startKeytypes, Map<String, Optional<Node>> nodes) {
+        ImmutableMultimap<String, Node> planets;
+        for (String keytype : startKeytypes) {
+            Node scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
+            Object scopeNodeIdProperty = scopeNode.getProperty("id");
+            if (scopeNodeIdProperty != null) {
+                String id = scopeNodeIdProperty.toString();
+                String name = keytype.substring(keytype.indexOf(KEYTYPE_SEPARATOR) + 1);
+                planets = getPlanetsForClient(name + KEYTYPE_SEPARATOR + id);
+
+                for (Entry<String, Optional<Node>> entry : nodes.entrySet()) {
+                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
+                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE));
+                }
+            } else {
+                throw new InvalidScopeException("No scope id provided.");
             }
         }
     }
