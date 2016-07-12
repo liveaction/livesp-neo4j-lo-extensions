@@ -19,11 +19,13 @@ import com.google.common.primitives.Longs;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
-import com.livingobjects.neo4j.iwan.model.InvalidScopeException;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
+import com.livingobjects.neo4j.iwan.model.exception.ImportException;
+import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
+import com.livingobjects.neo4j.iwan.model.exception.InvalidScopeException;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -143,6 +145,8 @@ public final class IWanTopologyLoader {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
         IwanMappingStrategy strategy = IwanMappingStrategy.captureHeader(reader);
 
+        checkCrossAttributeDefinitionExists(strategy);
+
         String[] nextLine;
 
         int imported = 0;
@@ -163,7 +167,7 @@ public final class IWanTopologyLoader {
                     tx = renewTransaction(tx);
                     currentTransaction.clear();
                 }
-            } catch (InvalidScopeException e) {
+            } catch (ImportException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
                 errors.add((long) imported);
                 LOGGER.warn(e.getLocalizedMessage());
@@ -253,8 +257,19 @@ public final class IWanTopologyLoader {
                 Optional<Node> toNode = nodes.get(meHeader.targetElementName);
                 if (fromNode.isPresent() && toNode.isPresent()) {
                     Relationship relationship = crossAttributeRelationships.get(key);
-                    persistElementProperty(meHeader, line, relationship);
+                    if (relationship != null) {
+                        persistElementProperty(meHeader, line, relationship);
+                    }
                 }
+            }
+        }
+    }
+
+    private void checkCrossAttributeDefinitionExists(IwanMappingStrategy strategy) throws InvalidSchemaException {
+        for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
+            ImmutableSet<String> crossAttributesLinks = crossAttributesRelations.get(meHeader.elementName);
+            if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
+                throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" + meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
             }
         }
     }
