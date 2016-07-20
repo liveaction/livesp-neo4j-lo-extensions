@@ -19,11 +19,13 @@ import com.google.common.primitives.Longs;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
-import com.livingobjects.neo4j.iwan.model.InvalidScopeException;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
+import com.livingobjects.neo4j.iwan.model.exception.ImportException;
+import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
+import com.livingobjects.neo4j.iwan.model.exception.InvalidScopeException;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -47,8 +49,29 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -61,6 +84,7 @@ public final class IWanTopologyLoader {
     private final ImmutableMap<String, Node> attributeNodes;
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
+    private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
     private final ImmutableList<String> scopes;
     private ImmutableMap<String, Set<String>> lineage;
 
@@ -77,6 +101,7 @@ public final class IWanTopologyLoader {
             ImmutableMap.Builder<String, Node> attributesBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
+            ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
             ImmutableList.Builder<String> scopesBldr = ImmutableList.builder();
             graphDb.findNodes(LABEL_ATTRIBUTE).forEachRemaining(n -> {
                 String keytype = n.getProperty(_TYPE).toString();
@@ -85,19 +110,33 @@ public final class IWanTopologyLoader {
                 if (KEY_TYPES.contains(keytype)) {
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                     ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
+                    ImmutableSet.Builder<String> crossRels = ImmutableSet.builder();
                     n.getRelationships(Direction.INCOMING, LINK_PARENT).forEach(crels::add);
                     n.getRelationships(Direction.OUTGOING, LINK_PARENT).forEach(prels::add);
+                    n.getRelationships(Direction.OUTGOING, LINK_CROSS_ATTRIBUTE).forEach(r -> {
+                        Node endNode = r.getEndNode();
+                        if (endNode.hasLabel(LABEL_ATTRIBUTE)) {
+                            Object typeProperty = endNode.getProperty(_TYPE);
+                            Object nameProperty = endNode.getProperty(NAME);
+                            if (typeProperty != null && nameProperty != null) {
+                                String endKeytype = typeProperty.toString() + KEYTYPE_SEPARATOR + nameProperty.toString();
+                                crossRels.add(endKeytype);
+                            }
+                        }
+                    });
                     if (prels.build().isEmpty()) {
                         scopesBldr.add(key);
                     }
                     childrenRelationsBldr.put(key, crels.build());
                     parentRelationsBldr.put(key, prels.build());
+                    crossAttributesRelationsBldr.put(key, crossRels.build());
                 }
             });
 
             this.attributeNodes = attributesBldr.build();
             this.childrenRelations = childrenRelationsBldr.build();
             this.parentRelations = parentRelationsBldr.build();
+            this.crossAttributesRelations = crossAttributesRelationsBldr.build();
             this.scopes = scopesBldr.build();
         }
     }
@@ -105,6 +144,8 @@ public final class IWanTopologyLoader {
     public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
         IwanMappingStrategy strategy = IwanMappingStrategy.captureHeader(reader);
+
+        checkCrossAttributeDefinitionExists(strategy);
 
         String[] nextLine;
 
@@ -126,7 +167,7 @@ public final class IWanTopologyLoader {
                     tx = renewTransaction(tx);
                     currentTransaction.clear();
                 }
-            } catch (InvalidScopeException e) {
+            } catch (ImportException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
                 errors.add((long) imported);
                 LOGGER.warn(e.getLocalizedMessage());
@@ -209,19 +250,47 @@ public final class IWanTopologyLoader {
 
     private void createCrossAttributeLinks(String[] line, IwanMappingStrategy strategy, Map<String, Optional<Node>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createCrossAttributeLinks").time()) {
-            Map<String, Relationship> multiElementLinks = Maps.newHashMap();
+            Map<String, Relationship> crossAttributeRelationships = createCrossAttributeRelationships(nodes);
             for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
                 String key = meHeader.elementName + ELEMENT_SEPARATOR + meHeader.targetElementName;
                 Optional<Node> fromNode = nodes.get(meHeader.elementName);
                 Optional<Node> toNode = nodes.get(meHeader.targetElementName);
                 if (fromNode.isPresent() && toNode.isPresent()) {
-                    Relationship relationship = multiElementLinks.computeIfAbsent(key,
-                            k -> createOutgoingUniqueLink(fromNode.get(), toNode.get(), LINK_CROSS_ATTRIBUTE));
-                    relationship = persistElementProperty(meHeader, line, relationship);
-                    multiElementLinks.put(key, relationship);
+                    Relationship relationship = crossAttributeRelationships.get(key);
+                    if (relationship != null) {
+                        persistElementProperty(meHeader, line, relationship);
+                    }
                 }
             }
         }
+    }
+
+    private void checkCrossAttributeDefinitionExists(IwanMappingStrategy strategy) throws InvalidSchemaException {
+        for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
+            ImmutableSet<String> crossAttributesLinks = crossAttributesRelations.get(meHeader.elementName);
+            if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
+                throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" + meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
+            }
+        }
+    }
+
+    private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<Node>> nodes) {
+        Map<String, Relationship> multiElementLinks = Maps.newHashMap();
+        for (Entry<String, ImmutableSet<String>> rel : crossAttributesRelations.entrySet()) {
+            String keyType = rel.getKey();
+            Optional<Node> startNode = nodes.getOrDefault(keyType, Optional.empty());
+            startNode.ifPresent(fromNode -> {
+                for (String endKeyType : rel.getValue()) {
+                    Optional<Node> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
+                    optEndNode.ifPresent(toNode -> {
+                        Relationship link = createOutgoingUniqueLink(fromNode, toNode, LINK_CROSS_ATTRIBUTE);
+                        String key = keyType + ELEMENT_SEPARATOR + endKeyType;
+                        multiElementLinks.put(key, link);
+                    });
+                }
+            });
+        }
+        return multiElementLinks;
     }
 
     private void createConnectLink(ImmutableSet<String> startKeytypes, Map<String, Optional<Node>> nodes) {
