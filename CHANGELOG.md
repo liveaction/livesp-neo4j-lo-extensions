@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 _(2016-07-20)_
+
+* Add tar.gz assembly
+* Add error log when CrossAttribute link definition doesn't exist
+* Create CrossAttribute links according to meta schema
+
 ## 1.3 _(2016-06-28)_
 
 * Refactor extension by using neo4j API instead of LOAD CSV. This improve performance drastically.
