@@ -11,6 +11,8 @@ public final class IwanModelConstants {
     public static final RelationshipType LINK_CROSS_ATTRIBUTE = DynamicRelationshipType.withName("CrossAttribute");
     public static final RelationshipType LINK_CONNECT = DynamicRelationshipType.withName("Connect");
     public static final RelationshipType LINK_PARENT = DynamicRelationshipType.withName("Parent");
+    public static final RelationshipType LINK_PROVIDED = DynamicRelationshipType.withName("Provided");
+    public static final RelationshipType LINK_MEMDEXPATH = DynamicRelationshipType.withName("MdxPath");
     public static final Label LABEL_ATTRIBUTE = DynamicLabel.label("Attribute");
     public static final Label LABEL_SCOPE = DynamicLabel.label("Scope");
     public static final Label LABEL_PLANET = DynamicLabel.label("Planet");
