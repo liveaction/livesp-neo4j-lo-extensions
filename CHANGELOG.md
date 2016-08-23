@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4 _SNAPSHOT_
+
+* #1: Add MemdexPathExtension (/memdexpath)
+
 ## 1.3.1 _(2016-07-20)_
 
 * Add tar.gz assembly
