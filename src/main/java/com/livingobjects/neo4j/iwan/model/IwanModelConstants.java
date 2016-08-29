@@ -17,6 +17,8 @@ public final class IwanModelConstants {
     public static final Label LABEL_SCOPE = DynamicLabel.label("Scope");
     public static final Label LABEL_PLANET = DynamicLabel.label("Planet");
     public static final Label LABEL_NETWORK_ELEMENT = DynamicLabel.label("NetworkElement");
+    public static final Label LABEL_ELEMENT = DynamicLabel.label("Element");
+    public static final Label LABEL_COUNTER = DynamicLabel.label("Counter");
 
     public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
     public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
@@ -25,6 +27,7 @@ public final class IwanModelConstants {
     public static final String CARDINALITY_MULTIPLE = "0..n";
     public static final String _TYPE = "_type";
     public static final String NAME = "name";
+    public static final String CREATED_AT = "createdAt";
     public static final String CARDINALITY = "cardinality";
     public static final String TAG = "tag";
     public static final String UPDATED_AT = "updatedAt";

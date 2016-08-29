@@ -20,8 +20,8 @@ import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
-import com.livingobjects.neo4j.iwan.model.NetworkElementFactory;
-import com.livingobjects.neo4j.iwan.model.NetworkElementFactory.UniqueEntity;
+import com.livingobjects.neo4j.iwan.model.UniqueElementFactory;
+import com.livingobjects.neo4j.iwan.model.UniqueElementFactory.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import com.livingobjects.neo4j.iwan.model.exception.ImportException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
@@ -79,7 +79,7 @@ public final class IWanTopologyLoader {
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
-    private final NetworkElementFactory networkElementFactory;
+    private final UniqueElementFactory networkElementFactory;
 
     private final ImmutableMap<String, Node> attributeNodes;
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
@@ -96,7 +96,7 @@ public final class IWanTopologyLoader {
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
 
-            this.networkElementFactory = NetworkElementFactory.build(graphDb);
+            this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
 
             ImmutableMap.Builder<String, Node> attributesBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
