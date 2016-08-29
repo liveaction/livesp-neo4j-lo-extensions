@@ -1,7 +1,6 @@
 package com.livingobjects.neo4j;
 
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -130,7 +129,7 @@ public final class CustomerSchemaExtension {
     }
 
     private Optional<Multimap<String, Node>> applySchema(Schema schema) {
-        UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreateWithOutcome(ImmutableMap.of(_TYPE, CUSTOMER_NAME, NAME, schema.customerId));
+        UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreateWithOutcome(_TYPE, CUSTOMER_NAME, NAME, schema.customerId);
         Node customerNode = uniqueEntity.entity;
         boolean updateVersion;
         if (uniqueEntity.wasCreated) {
@@ -157,7 +156,7 @@ public final class CustomerSchemaExtension {
         Multimap<String, Node> globalPlanets = HashMultimap.create();
         int realmMerged = 0;
         for (RealmTemplate realm : realms) {
-            UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreateWithOutcome(ImmutableMap.of(_TYPE, "realm", NAME, realm.name));
+            UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreateWithOutcome(_TYPE, "realm", NAME, realm.name);
             Node realmNode = uniqueEntity.entity;
             Set<Counter> counters = realm.pathElements.stream()
                     .flatMap(p -> p.counters.stream())
@@ -181,7 +180,7 @@ public final class CustomerSchemaExtension {
                     relationship.delete();
                 }
                 for (Counter counter : counters) {
-                    UniqueEntity<Node> counterEntity = counterFactory.getOrCreateWithOutcome(ImmutableMap.of("name", counter.name, "context", counter.context));
+                    UniqueEntity<Node> counterEntity = counterFactory.getOrCreateWithOutcome("name", counter.name, "context", counter.context);
                     Node counterNode = counterEntity.entity;
                     if (!counterEntity.wasCreated) {
                         counterNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
@@ -255,7 +254,7 @@ public final class CustomerSchemaExtension {
     }
 
     private Node getOrCreateAttribute(Attribute attribute) {
-        return attributeFactory.getOrCreateWithOutcome(ImmutableMap.of(_TYPE, attribute.name, NAME, attribute.value)).entity;
+        return attributeFactory.getOrCreateWithOutcome(_TYPE, attribute.name, NAME, attribute.value).entity;
     }
 
     private Set<Node> setupContext(Set<Attribute> attributes) {

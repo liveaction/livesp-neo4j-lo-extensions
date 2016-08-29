@@ -1,14 +1,11 @@
 package com.livingobjects.neo4j.iwan.model;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.UnmodifiableIterator;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.ResourceIterator;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CREATED_AT;
@@ -32,49 +29,42 @@ public final class UniqueElementFactory {
     }
 
     public UniqueEntity<Node> getOrCreateWithOutcome(String keyProperty, Object keyValue) {
-        return getOrCreateWithOutcome(ImmutableMap.of(keyProperty, keyValue));
+        return getOrCreateWithOutcome(keyProperty, keyValue, null, null);
     }
 
-    public UniqueEntity<Node> getOrCreateWithOutcome(ImmutableMap<String, Object> keyProperties) {
-        if (keyProperties.isEmpty()) {
-            throw new IllegalArgumentException("At least one key must be given to retrieve/create a node");
-        }
-        UnmodifiableIterator<Map.Entry<String, Object>> iterator = keyProperties.entrySet().iterator();
-        Map.Entry<String, Object> firstKey = iterator.next();
+    public UniqueEntity<Node> getOrCreateWithOutcome(String key1, Object value1, String key2, Object value2) {
         Node node;
-        if (iterator.hasNext()) {
-            node = filterNode(keyLabel, firstKey.getKey(), firstKey.getValue(), iterator);
+        if (key2 == null) {
+            node = graphdb.findNode(keyLabel, key1, value1);
         } else {
-            node = graphdb.findNode(keyLabel, firstKey.getKey(), firstKey.getValue());
+            node = filterNode(key1, value1, key2, value2);
         }
         if (node != null) {
             return new UniqueEntity<>(false, node);
         }
 
         node = graphdb.createNode();
-        return new UniqueEntity<>(true, initialize(node, keyProperties));
+        return new UniqueEntity<>(true, initialize(node, key1, value1, key2, value2));
     }
 
-    private Node filterNode(Label keyLabel, String firstKey, Object firstKeyValue, UnmodifiableIterator<Map.Entry<String, Object>> iterator) {
-        ResourceIterator<Node> nodes = graphdb.findNodes(keyLabel, firstKey, firstKeyValue);
+    private Node filterNode(String key1, Object value1, String key2, Object value2) {
+        ResourceIterator<Node> nodes = graphdb.findNodes(keyLabel, key1, value1);
         while (nodes.hasNext()) {
             Node next = nodes.next();
-            while (iterator.hasNext()) {
-                Map.Entry<String, Object> property = iterator.next();
-                Object currentValue = next.getProperty(property.getKey(), null);
-                if (property.getValue().equals(currentValue)) {
-                    return next;
-                }
+            Object currentValue = next.getProperty(key2, null);
+            if (value2.equals(currentValue)) {
+                return next;
             }
         }
         return null;
     }
 
-    private Node initialize(Node created, ImmutableMap<String, Object> keyProperties) {
+    private Node initialize(Node created, String key1, Object value1, String key2, Object value2) {
         created.addLabel(keyLabel);
         extraLabel.ifPresent(created::addLabel);
-        for (Map.Entry<String, Object> keyProperty : keyProperties.entrySet()) {
-            created.setProperty(keyProperty.getKey(), keyProperty.getValue());
+        created.setProperty(key1, value1);
+        if (key2 != null) {
+            created.setProperty(key2, value2);
         }
         created.setProperty(CREATED_AT, Instant.now().toEpochMilli());
         return created;
