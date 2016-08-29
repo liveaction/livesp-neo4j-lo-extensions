@@ -93,7 +93,7 @@ public final class CustomerSchemaExtension {
 
             Iterable<List<Schema>> partition = Iterables.partition(schemes, 20);
             for (List<Schema> batch : partition) {
-                try (Transaction ignored = graphDb.beginTx()) {
+                try (Transaction tx = graphDb.beginTx()) {
                     Multimap<String, Node> globalPlanets = HashMultimap.create();
                     for (Schema schema : batch) {
                         Optional<Multimap<String, Node>> result = applySchema(schema);
@@ -103,6 +103,7 @@ public final class CustomerSchemaExtension {
                         }
                     }
                     linkGlobalPlanets(globalPlanets);
+                    tx.success();
                     LOGGER.info("Flushing {} schemes...", batch.size());
                 }
             }
