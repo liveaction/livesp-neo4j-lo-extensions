@@ -231,6 +231,10 @@ public final class CustomerSchemaExtension {
     private UniqueEntity<Node> setupPlanet(Set<Node> context, Planet planet) {
         UniqueEntity<Node> uniqueEntity = planetFactory.getOrCreateWithOutcome(NAME, planet.name);
         Node planetNode = uniqueEntity.entity;
+        if (!uniqueEntity.wasCreated) {
+            planetNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
+        }
+        planetNode.setProperty("path", planet.path);
         Set<Node> planetAttributes = Sets.newHashSet(context);
         planetAttributes.add(getOrCreateAttribute(planet.keyAttribute));
         for (Attribute attribute : planet.attributes) {
