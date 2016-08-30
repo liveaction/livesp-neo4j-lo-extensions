@@ -1,8 +1,7 @@
 package com.livingobjects.neo4j.iwan.model.schema;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
-
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -41,11 +40,11 @@ public final class SchemaVersion implements Comparable<SchemaVersion> {
     public List<Integer> components;
 
     public static SchemaVersion of(Integer... components) {
-        return new SchemaVersion(Lists.newArrayList(components));
+        return new SchemaVersion(Arrays.asList(components));
     }
 
     public static SchemaVersion of(String components) {
-        List<Integer> builder = Lists.newArrayList();
+        List<Integer> builder = new ArrayList<>();
         String[] split = components.split("\\.");
         for (String s : split) {
             builder.add(Integer.valueOf(s.trim()));
@@ -88,6 +87,13 @@ public final class SchemaVersion implements Comparable<SchemaVersion> {
 
     @Override
     public String toString() {
-        return Joiner.on('.').join(components);
+        StringBuilder builder = new StringBuilder();
+        for (Integer component : components) {
+            if (builder.length() > 0) {
+                builder.append('.');
+            }
+            builder.append(component);
+        }
+        return builder.toString();
     }
 }
