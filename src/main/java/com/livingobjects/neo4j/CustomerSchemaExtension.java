@@ -102,10 +102,12 @@ public final class CustomerSchemaExtension {
                     }
                     linkGlobalPlanets(globalPlanets);
                     tx.success();
-                    LOGGER.info("Flushing {} schemes...", batch.size());
+                    LOGGER.debug("Flushing {} schemes...", batch.size());
                 }
             }
-            String json = JSON_MAPPER.writeValueAsString(new SchemaResult(updated.get()));
+            int total = updated.get();
+            LOGGER.info("{} topology schemes updated.", total);
+            String json = JSON_MAPPER.writeValueAsString(new SchemaResult(total));
             return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             LOGGER.error("Unable to update schemes", e);
