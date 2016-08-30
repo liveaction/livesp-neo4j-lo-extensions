@@ -42,7 +42,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_NETWORK_ELEMENT;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
@@ -158,9 +157,6 @@ public final class CustomerSchemaExtension {
         for (RealmTemplate realm : realms) {
             UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreateWithOutcome(_TYPE, "realm", NAME, realm.name);
             Node realmNode = uniqueEntity.entity;
-            Set<Counter> counters = realm.pathElements.stream()
-                    .flatMap(p -> p.counters.stream())
-                    .collect(Collectors.toSet());
             Iterable<Relationship> relationships = realmNode.getRelationships(Direction.INCOMING, LINK_PROVIDED);
             for (Relationship relationship : relationships) {
                 relationship.delete();
@@ -179,7 +175,7 @@ public final class CustomerSchemaExtension {
                 for (Relationship relationship : providedRelationships) {
                     relationship.delete();
                 }
-                for (Counter counter : counters) {
+                for (Counter counter : pathElement.counters) {
                     UniqueEntity<Node> counterEntity = counterFactory.getOrCreateWithOutcome("name", counter.name, "context", counter.context);
                     Node counterNode = counterEntity.entity;
                     if (!counterEntity.wasCreated) {
@@ -234,21 +230,20 @@ public final class CustomerSchemaExtension {
 
     private UniqueEntity<Node> setupPlanet(Set<Node> context, Planet planet) {
         UniqueEntity<Node> uniqueEntity = planetFactory.getOrCreateWithOutcome(NAME, planet.name);
-        if (uniqueEntity.wasCreated) {
-            Node planetNode = uniqueEntity.entity;
-            Set<Node> planetAttributes = Sets.newHashSet(context);
-            planetAttributes.add(getOrCreateAttribute(planet.keyAttribute));
-            for (Attribute attribute : planet.attributes) {
-                Node node = getOrCreateAttribute(attribute);
-                planetAttributes.add(node);
-            }
-            for (Node node : planetAttributes) {
-                Iterable<Relationship> relationships = planetNode.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE);
-                for (Relationship relationship : relationships) {
-                    relationship.delete();
-                }
-                planetNode.createRelationshipTo(node, LINK_ATTRIBUTE);
-            }
+        Node planetNode = uniqueEntity.entity;
+        Set<Node> planetAttributes = Sets.newHashSet(context);
+        planetAttributes.add(getOrCreateAttribute(planet.keyAttribute));
+        for (Attribute attribute : planet.attributes) {
+            Node node = getOrCreateAttribute(attribute);
+            planetAttributes.add(node);
+        }
+        Iterable<Relationship> relationships = planetNode.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE);
+        for (Relationship relationship : relationships) {
+            relationship.delete();
+        }
+        for (Node node : planetAttributes) {
+
+            planetNode.createRelationshipTo(node, LINK_ATTRIBUTE);
         }
         return uniqueEntity;
     }
