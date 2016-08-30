@@ -270,7 +270,7 @@ public final class CustomerSchemaExtension {
         UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(TAG, schema.scope);
         Node node = uniqueEntity.entity;
         if (uniqueEntity.wasCreated) {
-            node.setProperty(_TYPE, CUSTOMER_TYPE);
+            node.setProperty(_TYPE, CUSTOMER_TYPE + ':' + CUSTOMER_NAME);
             node.addLabel(LABEL_SCOPE);
         } else {
             node.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
