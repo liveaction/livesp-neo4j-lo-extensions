@@ -128,7 +128,7 @@ public final class MemdexPathExtension {
         });
 
         return MemdexPath.build(
-                planet.getProperty(NAME).toString(),
+                planet.getProperty(PATH).toString(),
                 attributes.build(),
                 counters.build(),
                 memdexpaths.build());
