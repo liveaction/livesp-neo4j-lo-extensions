@@ -17,8 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.servlet.ServletException;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -103,6 +105,32 @@ public final class MemdexPathExtension {
 
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
 
+    }
+
+    @GET
+    @Path("{realm}")
+    public Response memdexPath(@PathParam("realm") final String realm) throws IOException, ServletException {
+        StreamingOutput stream = outputStream -> {
+            JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+            jg.writeStartArray();
+
+            try (Transaction ignored = graphDb.beginTx()) {
+                Node realmNode = graphDb.findNode(LABEL_ATTRIBUTE, "name", realm);
+                Node firstPlanet = realmNode.getSingleRelationship(LINK_ATTRIBUTE, Direction.INCOMING).getStartNode();
+
+                MemdexPath memdexPath = browsePlanetToMemdexPath(firstPlanet);
+
+                jg.writeObject(Maps.immutableEntry(realm, memdexPath));
+                jg.flush();
+
+            }
+
+            jg.writeEndArray();
+            jg.flush();
+            jg.close();
+        };
+
+        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
     }
 
     private MemdexPath browsePlanetToMemdexPath(Node planet) {
