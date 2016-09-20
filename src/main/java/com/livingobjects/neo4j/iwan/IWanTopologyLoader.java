@@ -20,9 +20,9 @@ import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
+import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import com.livingobjects.neo4j.iwan.model.UniqueElementFactory;
 import com.livingobjects.neo4j.iwan.model.UniqueElementFactory.UniqueEntity;
-import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import com.livingobjects.neo4j.iwan.model.exception.ImportException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidScopeException;
@@ -221,7 +221,7 @@ public final class IWanTopologyLoader {
     private void importLine(String[] line, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
             // Create elements
-            Map<String, Optional<Node>> nodes = lineage.keySet().stream()
+            Map<String, Optional<UniqueEntity<Node>>> nodes = lineage.keySet().stream()
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
@@ -234,13 +234,16 @@ public final class IWanTopologyLoader {
             ImmutableMultimap<String, Node> planets;
             if (startKeytypes.isEmpty()) {
                 planets = getGlobalPlanets();
-                for (Entry<String, Optional<Node>> entry : nodes.entrySet()) {
+                for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
                     ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(node -> {
-                        long id = node.getId();
-                        if (!planetLinksCreatedForNodes.contains(id)) {
-                            createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE);
-                            planetLinksCreatedForNodes.add(id);
+                    entry.getValue().ifPresent(nodeEntity -> {
+                        if (nodeEntity.wasCreated) {
+                            Node node = nodeEntity.entity;
+                            long id = node.getId();
+                            if (!planetLinksCreatedForNodes.contains(id)) {
+                                createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE);
+                                planetLinksCreatedForNodes.add(id);
+                            }
                         }
                     });
                 }
@@ -248,13 +251,13 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private void createCrossAttributeLinks(String[] line, IwanMappingStrategy strategy, Map<String, Optional<Node>> nodes) {
+    private void createCrossAttributeLinks(String[] line, IwanMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createCrossAttributeLinks").time()) {
             Map<String, Relationship> crossAttributeRelationships = createCrossAttributeRelationships(nodes);
             for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
                 String key = meHeader.elementName + ELEMENT_SEPARATOR + meHeader.targetElementName;
-                Optional<Node> fromNode = nodes.get(meHeader.elementName);
-                Optional<Node> toNode = nodes.get(meHeader.targetElementName);
+                Optional<UniqueEntity<Node>> fromNode = nodes.get(meHeader.elementName);
+                Optional<UniqueEntity<Node>> toNode = nodes.get(meHeader.targetElementName);
                 if (fromNode.isPresent() && toNode.isPresent()) {
                     Relationship relationship = crossAttributeRelationships.get(key);
                     if (relationship != null) {
@@ -274,16 +277,16 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<Node>> nodes) {
+    private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         Map<String, Relationship> multiElementLinks = Maps.newHashMap();
         for (Entry<String, ImmutableSet<String>> rel : crossAttributesRelations.entrySet()) {
             String keyType = rel.getKey();
-            Optional<Node> startNode = nodes.getOrDefault(keyType, Optional.empty());
+            Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
                 for (String endKeyType : rel.getValue()) {
-                    Optional<Node> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
+                    Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
                     optEndNode.ifPresent(toNode -> {
-                        Relationship link = createOutgoingUniqueLink(fromNode, toNode, LINK_CROSS_ATTRIBUTE);
+                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, LINK_CROSS_ATTRIBUTE);
                         String key = keyType + ELEMENT_SEPARATOR + endKeyType;
                         multiElementLinks.put(key, link);
                     });
@@ -293,7 +296,7 @@ public final class IWanTopologyLoader {
         return multiElementLinks;
     }
 
-    private void createConnectLink(ImmutableSet<String> startKeytypes, Map<String, Optional<Node>> nodes) {
+    private void createConnectLink(ImmutableSet<String> startKeytypes, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         for (String keytype : nodes.keySet()) {
             nodes.get(keytype).ifPresent(node -> {
                 int relCount = linkToParents(keytype, node, nodes);
@@ -304,19 +307,19 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private void createPlanetLink(ImmutableSet<String> startKeytypes, Map<String, Optional<Node>> nodes) {
+    private void createPlanetLink(ImmutableSet<String> startKeytypes, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         ImmutableMultimap<String, Node> planets;
         for (String keytype : startKeytypes) {
-            Node scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
-            Object scopeNodeIdProperty = scopeNode.getProperty("id");
+            UniqueEntity<Node> scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
+            Object scopeNodeIdProperty = scopeNode.entity.getProperty("id");
             if (scopeNodeIdProperty != null) {
                 String id = scopeNodeIdProperty.toString();
                 String name = keytype.substring(keytype.indexOf(KEYTYPE_SEPARATOR) + 1);
                 planets = getPlanetsForClient(name + KEYTYPE_SEPARATOR + id);
 
-                for (Entry<String, Optional<Node>> entry : nodes.entrySet()) {
+                for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
                     ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node, parents, LINK_ATTRIBUTE));
+                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node.entity, parents, LINK_ATTRIBUTE));
                 }
             } else {
                 throw new InvalidScopeException("No scope id provided.");
@@ -324,7 +327,7 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private int linkToParents(String keyType, Node keyTypeNode, Map<String, Optional<Node>> nodes) {
+    private int linkToParents(String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
             ImmutableList<Relationship> relationships = parentRelations.get(keyType);
             if (relationships == null || relationships.isEmpty()) {
@@ -335,12 +338,12 @@ public final class IWanTopologyLoader {
             for (Relationship relationship : relationships) {
                 String toKeytype = relationship.getEndNode().getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR +
                         relationship.getEndNode().getProperty(NAME).toString();
-                Optional<Node> parent = nodes.get(toKeytype);
+                Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
                     continue;
                 }
                 ++relCount;
-                createOutgoingUniqueLink(keyTypeNode, parent.get(), LINK_CONNECT);
+                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, LINK_CONNECT);
             }
 
             return relCount;
@@ -367,10 +370,10 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Optional<Node> createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
+    private Optional<UniqueEntity<Node>> createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
             if (SCOPE_GLOBAL_ATTRIBUTE.equals(elementName)) {
-                return Optional.ofNullable(graphDb.findNode(LABEL_SCOPE, "tag", SCOPE_GLOBAL_TAG));
+                return Optional.of(UniqueEntity.existing(graphDb.findNode(LABEL_SCOPE, "tag", SCOPE_GLOBAL_TAG)));
             }
 
             Node elementAttNode = attributeNodes.get(elementName);
@@ -416,16 +419,16 @@ public final class IWanTopologyLoader {
                     });
                 }
 
-                elementNode = persistElementProperties(line, elementHeaders, elementNode);
+                persistElementProperties(line, elementHeaders, elementNode);
 
-                return Optional.of(elementNode);
+                return Optional.of(uniqueEntity);
             } else {
                 return Optional.empty();
             }
         }
     }
 
-    private static Node persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
+    private static void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
                 .filter(h -> !TAG.equals(h.propertyName))
                 .forEach(h -> h.visit(new Visitor<Void>() {
@@ -440,8 +443,6 @@ public final class IWanTopologyLoader {
                         return null;
                     }
                 }));
-
-        return elementNode;
     }
 
     private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, final String[] line, final T elementNode) {

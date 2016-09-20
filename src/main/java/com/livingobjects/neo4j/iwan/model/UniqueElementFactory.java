@@ -40,11 +40,11 @@ public final class UniqueElementFactory {
             node = filterNode(key1, value1, key2, value2);
         }
         if (node != null) {
-            return new UniqueEntity<>(false, node);
+            return UniqueEntity.existing(node);
         }
 
         node = graphdb.createNode();
-        return new UniqueEntity<>(true, initialize(node, key1, value1, key2, value2));
+        return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
     }
 
     private Node filterNode(String key1, Object value1, String key2, Object value2) {
@@ -90,7 +90,15 @@ public final class UniqueElementFactory {
         public final boolean wasCreated;
         public final T entity;
 
-        UniqueEntity(boolean wasCreated, T entity) {
+        public static <T> UniqueEntity<T> created(T entity) {
+            return new UniqueEntity<>(true, entity);
+        }
+
+        public static <T> UniqueEntity<T> existing(T entity) {
+            return new UniqueEntity<>(false, entity);
+        }
+
+        private UniqueEntity(boolean wasCreated, T entity) {
             this.wasCreated = wasCreated;
             this.entity = entity;
         }
