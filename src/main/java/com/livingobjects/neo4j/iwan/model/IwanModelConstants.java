@@ -13,6 +13,7 @@ public final class IwanModelConstants {
     public static final RelationshipType LINK_PARENT = DynamicRelationshipType.withName("Parent");
     public static final RelationshipType LINK_PROVIDED = DynamicRelationshipType.withName("Provided");
     public static final RelationshipType LINK_MEMDEXPATH = DynamicRelationshipType.withName("MdxPath");
+    public static final RelationshipType LINK_EXTEND = DynamicRelationshipType.withName("Extend");
     public static final Label LABEL_ATTRIBUTE = DynamicLabel.label("Attribute");
     public static final Label LABEL_SCOPE = DynamicLabel.label("Scope");
     public static final Label LABEL_PLANET = DynamicLabel.label("Planet");
@@ -22,6 +23,7 @@ public final class IwanModelConstants {
 
     public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
     public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
+    public static final String SCOPE_SP_TAG = "class=scope,scope=sp";
     public static final char KEYTYPE_SEPARATOR = ':';
     public static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
     public static final String CARDINALITY_MULTIPLE = "0..n";

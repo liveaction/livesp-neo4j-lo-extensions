@@ -46,11 +46,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_NETWORK_ELEMENT;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_EXTEND;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_MEMDEXPATH;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PROVIDED;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_SP_TAG;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 @Path("/schema")
@@ -118,15 +121,32 @@ public final class CustomerSchemaExtension {
     private void linkGlobalPlanets(Multimap<String, Node> globalPlanets) {
         for (Map.Entry<String, Collection<Node>> entry : globalPlanets.asMap().entrySet()) {
             String keyAttribute = entry.getKey();
+            // Load all global NetworkElements of the corresponding keyAttribute
             ResourceIterator<Node> nodes = graphDb.findNodes(LABEL_NETWORK_ELEMENT, _TYPE, keyAttribute);
             while (nodes.hasNext()) {
                 Node node = nodes.next();
+                // Check if the node has been overriden by SP
+                Optional<Node> spOverriden = isOverridenBySP(node);
+                Node nodeToLink = spOverriden.orElse(node);
                 for (Node planetNode : entry.getValue()) {
-                    node.createRelationshipTo(planetNode, LINK_ATTRIBUTE);
+                    // link only global NetworkElements and sp overriden Elements
+                    nodeToLink.createRelationshipTo(planetNode, LINK_ATTRIBUTE);
                 }
             }
         }
         LOGGER.debug("\t{} global planet(s) have been linked to topology elements.", globalPlanets.size());
+    }
+
+    private Optional<Node> isOverridenBySP(Node node) {
+        Iterable<Relationship> relationships = node.getRelationships(Direction.INCOMING, LINK_EXTEND);
+        for (Relationship relationship : relationships) {
+            Node startNode = relationship.getStartNode();
+            Object scopeProperty = startNode.getProperty(_SCOPE, SCOPE_SP_TAG);
+            if (SCOPE_SP_TAG.equals(scopeProperty.toString())) {
+                return Optional.of(startNode);
+            }
+        }
+        return Optional.empty();
     }
 
     private Optional<Multimap<String, Node>> applySchema(Schema schema) {
