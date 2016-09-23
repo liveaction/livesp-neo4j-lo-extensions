@@ -446,29 +446,38 @@ public final class IWanTopologyLoader {
 
     private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, final String[] line, final T elementNode) {
         Object value;
+        String field = line[header.index];
         try {
             switch (header.type) {
                 case BOOLEAN:
-                    value = (header.isArray) ?
-                            Booleans.toArray(JSON_MAPPER.readValue(line[header.index], BOOLEAN_LIST_TYPE))
-                            : Boolean.parseBoolean(line[header.index]);
+                    if (header.isArray) {
+                        value = Booleans.toArray(JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE));
+                    } else {
+                        if (!field.trim().isEmpty()) {
+                            value = Boolean.parseBoolean(field);
+                        } else {
+                            value = null;
+                        }
+                    }
                     break;
                 case NUMBER:
                     value = (header.isArray) ?
-                            Doubles.toArray(JSON_MAPPER.readValue(line[header.index], DOUBLE_LIST_TYPE))
-                            : Doubles.tryParse(line[header.index]);
+                            Doubles.toArray(JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE))
+                            : Doubles.tryParse(field);
                     break;
                 default:
                     value = (header.isArray) ?
-                            Iterables.toArray(JSON_MAPPER.readValue(line[header.index], STRING_LIST_TYPE), String.class)
-                            : line[header.index];
+                            Iterables.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE), String.class)
+                            : field;
             }
         } catch (Exception ignored) {
-            LOGGER.debug("Unable to parse value " + line[header.index] + " as " + header.type);
-            value = line[header.index];
+            LOGGER.debug("Unable to parse value " + field + " as " + header.type);
+            value = field;
         }
         if (value != null) {
             elementNode.setProperty(header.propertyName, value);
+        } else {
+            elementNode.removeProperty(header.propertyName);
         }
         return elementNode;
     }
