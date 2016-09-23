@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2 _(2016-09-23)_
+* fix(load-csv): support null values for non string properties
+
 ## 1.3.1 _(2016-07-20)_
 
 * Add tar.gz assembly
