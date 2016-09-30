@@ -6,15 +6,15 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.iwan.model.MemdexPath;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
+import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Result;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.servlet.ServletException;
 import javax.ws.rs.GET;
@@ -27,16 +27,23 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_MEMDEXPATH;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PROVIDED;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 @Path("/memdexpath")
 public final class MemdexPathExtension {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(MemdexPathExtension.class);
 
     private final GraphDatabaseService graphDb;
     private final ObjectMapper json = new ObjectMapper();
@@ -47,8 +54,7 @@ public final class MemdexPathExtension {
 
     @POST
     public Response memdexPath(InputStream request) throws IOException, ServletException {
-        // List of set of attributes as _type:value
-        List<Set<String>> filters = json.readValue(request, new TypeReference<List<Set<String>>>() {
+        Request filter = json.readValue(request, new TypeReference<Request>() {
         });
 
         StreamingOutput stream = outputStream -> {
@@ -56,44 +62,47 @@ public final class MemdexPathExtension {
             jg.writeStartArray();
 
             try (Transaction ignored = graphDb.beginTx()) {
-                for (Set<String> filter : filters) {
-                    StringBuilder query = new StringBuilder(200);
-                    Map<String, Object> binds = Maps.newHashMapWithExpectedSize((filter.size() * 2) + 1);
-                    query.append("MATCH (p:Planet)-[:Attribute]->(r:Attribute {_type:{realmType}})\n" +
-                            "WHERE ");
-                    binds.put("realmType", "realm");
 
-                    int i = 0;
-                    for (String attribute : filter) {
-                        String[] split = attribute.split(":");
-                        query.append("(p)-[:Attribute]->(:Attribute {_type:{aType").append(i).append("},name:{aName").append(i).append("}})\nAND ");
-                        binds.put("aType" + i, split[0]);
-                        binds.put("aName" + i, split[1]);
-                        i++;
-                    }
+                ResourceIterator<Node> planets = graphDb.findNodes(LABEL_PLANET);
+                while (planets.hasNext()) {
+                    Node planetNode = planets.next();
+                    Iterable<Relationship> relationships = planetNode.getRelationships(LINK_ATTRIBUTE, Direction.OUTGOING);
 
-                    query.setLength(query.length() - 4);
-                    query.append("RETURN r, p");
+                    Optional<String> realm = Optional.empty();
+                    Optional<String> dynamicAttribute = Optional.empty();
+                    Iterator<Relationship> relationshipIterator = relationships.iterator();
+                    int staticMatching = 0;
+                    while (relationshipIterator.hasNext() && !(realm.isPresent() && staticMatching == filter.staticAttributes.size() && dynamicAttribute.isPresent())) {
+                        Relationship relationship = relationshipIterator.next();
 
-                    Result result = graphDb.execute(query.toString(), binds);
-                    String realm;
-                    Node firstPlanet;
-                    if (result.hasNext()) {
-                        Map<String, Object> next = result.next();
-                        if (result.hasNext()) {
-                            LOGGER.error("Too many realm for filter {}", filter);
+                        Object property = relationship.getEndNode().getProperty(_TYPE, null);
+                        if (property != null) {
+                            String type = property.toString();
+                            String name = relationship.getEndNode().getProperty(NAME).toString();
+                            if ("realm".equals(type)) {
+                                realm = Optional.of(name);
+                            } else {
+                                String staticName = filter.staticAttributes.get(type);
+                                if (staticName != null) {
+                                    if (staticName.equals(name)) {
+                                        staticMatching++;
+                                    }
+                                } else {
+                                    String attribute = type + ':' + name;
+                                    if (filter.dynamicAttributes.contains(attribute)) {
+                                        dynamicAttribute = Optional.of(attribute);
+                                    }
+                                }
+                            }
                         }
-                        Node rNode = (Node) next.get("r");
-                        firstPlanet = (Node) next.get("p");
-                        realm = rNode.getProperty(NAME).toString();
-                    } else {
-                        LOGGER.error("No realm found for filter {}", filter);
-                        continue;
                     }
-                    MemdexPath memdexPath = browsePlanetToMemdexPath(firstPlanet);
 
-                    jg.writeObject(Maps.immutableEntry(realm, memdexPath));
-                    jg.flush();
+                    if (realm.isPresent() && staticMatching == filter.staticAttributes.size() && dynamicAttribute.isPresent()) {
+                        MemdexPath memdexPath = browsePlanetToMemdexPath(planetNode);
+                        jg.writeStartObject();
+                        jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
+                        jg.writeEndObject();
+                    }
                 }
 
             }
@@ -104,7 +113,6 @@ public final class MemdexPathExtension {
         };
 
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
-
     }
 
     @GET
@@ -122,7 +130,6 @@ public final class MemdexPathExtension {
 
                 jg.writeObject(Maps.immutableEntry(realm, memdexPath));
                 jg.flush();
-
             }
 
             jg.writeEndArray();
@@ -161,4 +168,29 @@ public final class MemdexPathExtension {
                 counters.build(),
                 memdexpaths.build());
     }
+
+    private static final class Request {
+        public final Map<String, String> staticAttributes;
+        public final Set<String> dynamicAttributes;
+
+        public Request(
+                @JsonProperty("staticAttributes") Map<String, String> staticAttributes,
+                @JsonProperty("dynamicAttributes") Set<String> dynamicAttributes) {
+            this.staticAttributes = staticAttributes;
+            this.dynamicAttributes = dynamicAttributes;
+        }
+    }
+
+    private static final class MemdexPathWithRealm {
+        public final String realm;
+        public final MemdexPath memdexPath;
+
+        public MemdexPathWithRealm(
+                @JsonProperty("realm") String realm,
+                @JsonProperty("memdexPath") MemdexPath memdexPath) {
+            this.realm = realm;
+            this.memdexPath = memdexPath;
+        }
+    }
+
 }
