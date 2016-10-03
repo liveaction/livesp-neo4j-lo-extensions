@@ -59,7 +59,7 @@ public final class MemdexPathExtension {
 
         StreamingOutput stream = outputStream -> {
             JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
-            jg.writeStartArray();
+            jg.writeStartObject();
 
             try (Transaction ignored = graphDb.beginTx()) {
 
@@ -99,15 +99,13 @@ public final class MemdexPathExtension {
 
                     if (realm.isPresent() && staticMatching == filter.staticAttributes.size() && dynamicAttribute.isPresent()) {
                         MemdexPath memdexPath = browsePlanetToMemdexPath(planetNode);
-                        jg.writeStartObject();
                         jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
-                        jg.writeEndObject();
                     }
                 }
 
             }
 
-            jg.writeEndArray();
+            jg.writeEndObject();
             jg.flush();
             jg.close();
         };
