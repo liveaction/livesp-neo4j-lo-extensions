@@ -6,7 +6,11 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Slf4jReporter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.IwanModelConstants;
 import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -31,10 +35,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
+
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 @Path("/export")
 public final class ExportCSVExtension {
@@ -98,81 +107,95 @@ public final class ExportCSVExtension {
         }
     }
 
-    private void getLineage(Node node, ImmutableList<String> attributesToExport, List<Node> currentLineage, List<List<Node>> globalLineage) {
-        int relationShips = 0;
-        Iterable<Relationship> relationships = node.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_CONNECT);
-        for (Relationship relationship : relationships) {
-            Node incomingNode = relationship.getStartNode();
-            String nodeType = incomingNode.getProperty(IwanModelConstants._TYPE, "").toString();
-            if (attributesToExport.contains(nodeType)) {
-                relationShips++;
-                ImmutableList<Node> copy = ImmutableList.<Node>builder().addAll(currentLineage).add(incomingNode).build();
-                ImmutableList<String> subAttributes = difference(attributesToExport, nodeType);
-                getLineage(incomingNode, subAttributes, copy, globalLineage);
-            }
-        }
-        if (relationShips == 0) {
-            for (int index = 0; index < globalLineage.size(); index++) {
-                List<Node> baseLineage = globalLineage.get(index);
-                if (baseLineage.containsAll(currentLineage)) {
-                    break;
-                } else if (currentLineage.containsAll(baseLineage)) {
-                    globalLineage.add(currentLineage);
-                    globalLineage.remove(index);
-                    break;
+    private void runLineage(Node currentNode, ImmutableList<String> lineageAttributes, Lineage lineage, Lineages lineages) throws LineageCardinalityException {
+        String tag = currentNode.getProperty(TAG).toString();
+        String type = currentNode.getProperty(_TYPE).toString();
+        lineage.nodesByType.put(type, currentNode);
+        lineages.markAsVisited(tag, type, currentNode);
+        Iterable<Relationship> parentRelationships = currentNode.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_CONNECT);
+        for (Relationship parentRelationship : parentRelationships) {
+            Node parentNode = parentRelationship.getEndNode();
+            String parentType = parentNode.getProperty(_TYPE, "").toString();
+            if (lineageAttributes.contains(parentType)) {
+                String parentTag = parentNode.getProperty(TAG).toString();
+                Node existingNode = lineage.nodesByType.get(parentType);
+                if (existingNode == null) {
+                    runLineage(parentNode, difference(lineageAttributes, parentType), lineage, lineages);
+                } else {
+                    String existingTag = existingNode.getProperty(TAG).toString();
+                    if (!existingTag.equals(parentTag)) {
+                        throw new LineageCardinalityException(lineage, existingTag, parentTag);
+                    }
                 }
             }
-
         }
     }
 
     private long export(Request request, OutputStream outputStream) {
 
         ImmutableList<String> attributesToExport = ImmutableList.copyOf(request.attributesToExport);
-
         try (Transaction ignored = graphDb.beginTx()) {
-            List<List<Node>> allLineages = Lists.newArrayList();
-            Iterator<String> iterator = request.attributesToExport.iterator();
-            if (iterator.hasNext()) {
-                String startAttribute = iterator.next();
-                ImmutableList<String> subAttributes = difference(attributesToExport, startAttribute);
-                ResourceIterator<Node> nodes = graphDb.findNodes(IwanModelConstants.LABEL_NETWORK_ELEMENT, IwanModelConstants._TYPE, startAttribute);
-                while (nodes.hasNext()) {
-                    Node node = nodes.next();
-                    getLineage(node, subAttributes, ImmutableList.of(node), allLineages);
+            Lineages lineages = new Lineages();
+            if (!attributesToExport.isEmpty()) {
+                for (int index = attributesToExport.size() - 1; index > 0; index--) {
+                    String leafAttribute = attributesToExport.get(index);
+                    ImmutableList<String> lineageAttributes = attributesToExport.subList(0, index);
+                    ResourceIterator<Node> leaves = graphDb.findNodes(IwanModelConstants.LABEL_NETWORK_ELEMENT, IwanModelConstants._TYPE, leafAttribute);
+                    while (leaves.hasNext()) {
+                        Node leaf = leaves.next();
+                        if (!lineages.dejaVu(leaf)) {
+                            try {
+                                Lineage lineage = new Lineage();
+                                runLineage(leaf, lineageAttributes, lineage, lineages);
+                                lineages.add(lineage);
+                            } catch (LineageCardinalityException e) {
+                                LOGGER.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
+                            }
+                        }
+                    }
                 }
             }
 
             try (CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))) {
                 long lines = 0;
-                for (List<Node> lineage : allLineages) {
-                    if (lineage != null) {
-                        String[] line = lineage.stream().map(node -> node.getProperty(IwanModelConstants.TAG, "").toString()).toArray(String[]::new);
-                        csvWriter.writeNext(line);
-                        lines++;
+                List<String> header = Lists.newArrayList();
+                for (String attribute : attributesToExport) {
+                    Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+                    for (Map.Entry<String, String> property : properties.entrySet()) {
+                        header.add(attribute + '.' + property.getKey() + ':' + property.getValue());
                     }
+                }
+                csvWriter.writeNext(header.toArray(new String[header.size()]));
+                for (Lineage lineage : lineages.lineages) {
+                    String[] line = new String[header.size()];
+                    int index = 0;
+                    for (String attribute : attributesToExport) {
+                        Node node = lineage.nodesByType.get(attribute);
+                        Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+                        for (String property : properties.keySet()) {
+                            if (node != null) {
+                                Object propertyValue = node.getProperty(property, null);
+                                if (propertyValue != null) {
+                                    if (propertyValue.getClass().isArray()) {
+                                        line[index] = json.writeValueAsString(propertyValue);
+                                    } else {
+                                        line[index] = propertyValue.toString();
+                                    }
+                                }
+                            }
+                            index++;
+                        }
+                    }
+                    csvWriter.writeNext(line);
+                    lines++;
                 }
                 return lines;
             }
+
         } catch (Exception e) {
             LOGGER.error("export-csv extension : ", e);
             throw new RuntimeException(e);
         }
-    }
-
-    private List<List<Node>> merge(List<List<Node>> allLineages) {
-        for (int index = 0; index < allLineages.size(); index++) {
-            List<Node> lineage = allLineages.get(index);
-            for (int baseIndex = index + 1; baseIndex < allLineages.size(); baseIndex++) {
-                List<Node> baseLineage = allLineages.get(baseIndex);
-                if (baseLineage != null) {
-                    if (baseLineage.containsAll(lineage)) {
-                        allLineages.set(index, null);
-                    }
-                }
-            }
-        }
-        return allLineages;
     }
 
     private Response errorResponse(Throwable cause) throws IOException {
@@ -201,4 +224,75 @@ public final class ExportCSVExtension {
                 .forEach(builder::add);
         return builder.build();
     }
+
+    private static final class Lineages {
+
+        private static final Set<String> INGNORE = ImmutableSet.of("createdAt", "updatedAt", "createdBy", "updatedBy");
+
+        public final List<Lineage> lineages;
+
+        public final Set<String> allTags;
+
+        public final Map<String, Map<String, String>> propertiesTypeByType;
+
+        public Lineages() {
+            lineages = Lists.newArrayList();
+            allTags = Sets.newHashSet();
+            propertiesTypeByType = Maps.newHashMap();
+        }
+
+        public boolean dejaVu(Node leaf) {
+            return allTags.contains(leaf.getProperty(TAG).toString());
+        }
+
+        public void markAsVisited(String nodeTag, String type, Node node) {
+            allTags.add(nodeTag);
+            Map<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newHashMap());
+            for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
+                String name = property.getKey();
+                String propertyType = getPropertyType(property.getValue());
+                if (!name.startsWith("_") && !INGNORE.contains(name)) {
+                    properties.put(name, propertyType);
+                }
+            }
+        }
+
+        public void add(Lineage lineage) {
+            lineages.add(lineage);
+        }
+
+        public static String getPropertyType(Object value) {
+            Class<?> clazz = value.getClass();
+            if (clazz.isArray()) {
+                return getSimpleType(clazz.getComponentType()) + "[]";
+            } else {
+                return getSimpleType(clazz);
+            }
+        }
+
+        public static String getSimpleType(Class<?> clazz) {
+            if (clazz.isAssignableFrom(Number.class)) {
+                return HeaderElement.Type.NUMBER.name();
+            } else if (clazz.isAssignableFrom(Boolean.class)) {
+                return HeaderElement.Type.BOOLEAN.name();
+            } else {
+                return HeaderElement.Type.STRING.name();
+            }
+        }
+
+    }
+
+    static final class Lineage {
+        public final Map<String, Node> nodesByType;
+
+        public Lineage() {
+            this.nodesByType = Maps.newHashMap();
+        }
+
+        @Override
+        public String toString() {
+            return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
+        }
+    }
+
 }
