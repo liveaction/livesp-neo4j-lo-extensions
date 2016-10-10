@@ -29,6 +29,7 @@ import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import com.livingobjects.neo4j.iwan.model.exception.ImportException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidScopeException;
+import org.codehaus.jackson.map.JsonMappingException;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -54,29 +55,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -455,18 +435,10 @@ public final class IWanTopologyLoader {
         try {
             switch (header.type) {
                 case BOOLEAN:
-                    if (header.isArray) {
-                        value = Booleans.toArray(JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE));
-                    } else {
-                        if (!field.trim().isEmpty()) {
-                            value = Boolean.parseBoolean(field);
-                        } else {
-                            value = null;
-                        }
-                    }
+                    value = readBooleanField(header, field);
                     break;
                 case NUMBER:
-                    value = readFieldNumberValue(header, field);
+                    value = readNumberField(header, field);
                     break;
                 default:
                     value = (header.isArray) ?
@@ -551,28 +523,49 @@ public final class IWanTopologyLoader {
         return bldr;
     }
 
-    private static Object readFieldNumberValue(HeaderElement header, String field) throws IOException {
-        if (header.isArray) {
-            Collection<? extends Number> numbers = JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
-            Iterator<? extends Number> iterator = numbers.iterator();
-            if (iterator.hasNext()) {
-                Number next = iterator.next();
-                if (next instanceof Short) {
-                    return Shorts.toArray(numbers);
-                } else if (next instanceof Integer) {
-                    return Ints.toArray(numbers);
-                } else if (next instanceof Long) {
-                    return Longs.toArray(numbers);
-                } else if (next instanceof Float) {
-                    return Floats.toArray(numbers);
-                } else {
-                    return Doubles.toArray(numbers);
-                }
+    private static Object readBooleanField(HeaderElement header, String field) throws IOException {
+        if (field != null && !field.trim().isEmpty()) {
+            if (header.isArray) {
+                return Booleans.toArray(JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE));
             } else {
-                return new int[0];
+                return Boolean.parseBoolean(field);
             }
         } else {
-            return JSON_MAPPER.readValue(field, Number.class);
+            return null;
+        }
+    }
+
+
+    private static Object readNumberField(HeaderElement header, String field) throws IOException {
+        if (field != null && !field.trim().isEmpty()) {
+            if (header.isArray) {
+                Collection<? extends Number> numbers = JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
+                Iterator<? extends Number> iterator = numbers.iterator();
+                if (iterator.hasNext()) {
+                    Number next = iterator.next();
+                    if (next instanceof Short) {
+                        return Shorts.toArray(numbers);
+                    } else if (next instanceof Integer) {
+                        return Ints.toArray(numbers);
+                    } else if (next instanceof Long) {
+                        return Longs.toArray(numbers);
+                    } else if (next instanceof Float) {
+                        return Floats.toArray(numbers);
+                    } else {
+                        return Doubles.toArray(numbers);
+                    }
+                } else {
+                    return new int[0];
+                }
+            } else {
+                try {
+                    return JSON_MAPPER.readValue(field, Number.class);
+                } catch (JsonMappingException e) {
+                    return null;
+                }
+            }
+        } else {
+            return null;
         }
     }
 }
