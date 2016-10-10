@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.3 _(2016-10-10)_
+* fix(load-csv): import number values as correct type : int, long, float or double
+
 ## 1.3.2 _(2016-09-23)_
 * fix(load-csv): support null values for non string properties
 
