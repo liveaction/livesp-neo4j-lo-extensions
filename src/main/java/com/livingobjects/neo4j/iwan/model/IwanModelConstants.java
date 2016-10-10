@@ -28,6 +28,7 @@ public final class IwanModelConstants {
     public static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", "labelType", "scope");
     public static final String CARDINALITY_MULTIPLE = "0..n";
     public static final String _TYPE = "_type";
+    public static final String ID = "id";
     public static final String NAME = "name";
     public static final String PATH = "path";
     public static final String CREATED_AT = "createdAt";

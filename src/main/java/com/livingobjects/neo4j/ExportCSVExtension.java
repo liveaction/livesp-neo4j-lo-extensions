@@ -35,6 +35,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -176,7 +177,7 @@ public final class ExportCSVExtension {
         int index = 0;
         for (String attribute : request.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
-            Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
             if (properties != null) {
                 for (String property : properties.keySet()) {
                     if (node != null) {
@@ -203,7 +204,7 @@ public final class ExportCSVExtension {
     private String[] generateCSVHeader(ImmutableList<String> attributesToExport, Lineages lineages) {
         List<String> header = Lists.newArrayList();
         for (String attribute : attributesToExport) {
-            Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
             if (properties != null) {
                 for (Map.Entry<String, String> property : properties.entrySet()) {
                     header.add(attribute + '.' + property.getKey() + ':' + property.getValue());

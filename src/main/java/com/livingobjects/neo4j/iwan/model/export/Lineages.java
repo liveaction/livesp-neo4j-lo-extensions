@@ -9,6 +9,7 @@ import org.neo4j.graphdb.Node;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
 
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
 
@@ -20,7 +21,7 @@ public final class Lineages {
 
     public final Set<String> allTags;
 
-    public final Map<String, Map<String, String>> propertiesTypeByType;
+    public final Map<String, SortedMap<String, String>> propertiesTypeByType;
 
     public Lineages(ImmutableList<String> attributesToExport) {
         lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
@@ -34,7 +35,7 @@ public final class Lineages {
 
     public void markAsVisited(String nodeTag, String type, Node node) {
         allTags.add(nodeTag);
-        Map<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newHashMap());
+        SortedMap<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
             String propertyType = getPropertyType(property.getValue());
