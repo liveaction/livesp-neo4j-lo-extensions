@@ -1,12 +1,14 @@
 package com.livingobjects.neo4j;
 
+import com.livingobjects.neo4j.iwan.model.export.Lineage;
+
 public class LineageCardinalityException extends Throwable {
 
-    public final ExportCSVExtension.Lineage lineage;
+    public final Lineage lineage;
     public final String existingNode;
     public final String parentNode;
 
-    public LineageCardinalityException(ExportCSVExtension.Lineage lineage, String existingNode, String parentNode) {
+    public LineageCardinalityException(Lineage lineage, String existingNode, String parentNode) {
         this.lineage = lineage;
         this.existingNode = existingNode;
         this.parentNode = parentNode;
