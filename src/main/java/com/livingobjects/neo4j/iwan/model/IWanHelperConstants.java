@@ -12,6 +12,6 @@ public final class IWanHelperConstants {
     };
     public static final TypeReference BOOLEAN_LIST_TYPE = new TypeReference<List<Boolean>>() {
     };
-    public static final TypeReference DOUBLE_LIST_TYPE = new TypeReference<List<Double>>() {
+    public static final TypeReference DOUBLE_LIST_TYPE = new TypeReference<List<Number>>() {
     };
 }

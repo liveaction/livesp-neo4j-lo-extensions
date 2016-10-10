@@ -15,7 +15,10 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Booleans;
 import com.google.common.primitives.Doubles;
+import com.google.common.primitives.Floats;
+import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
+import com.google.common.primitives.Shorts;
 import com.livingobjects.neo4j.Neo4jLoadResult;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
@@ -41,6 +44,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -461,9 +466,7 @@ public final class IWanTopologyLoader {
                     }
                     break;
                 case NUMBER:
-                    value = (header.isArray) ?
-                            Doubles.toArray(JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE))
-                            : Doubles.tryParse(field);
+                    value = readFieldNumberValue(header, field);
                     break;
                 default:
                     value = (header.isArray) ?
@@ -546,5 +549,30 @@ public final class IWanTopologyLoader {
             }
         }
         return bldr;
+    }
+
+    private static Object readFieldNumberValue(HeaderElement header, String field) throws IOException {
+        if (header.isArray) {
+            Collection<? extends Number> numbers = JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
+            Iterator<? extends Number> iterator = numbers.iterator();
+            if (iterator.hasNext()) {
+                Number next = iterator.next();
+                if (next instanceof Short) {
+                    return Shorts.toArray(numbers);
+                } else if (next instanceof Integer) {
+                    return Ints.toArray(numbers);
+                } else if (next instanceof Long) {
+                    return Longs.toArray(numbers);
+                } else if (next instanceof Float) {
+                    return Floats.toArray(numbers);
+                } else {
+                    return Doubles.toArray(numbers);
+                }
+            } else {
+                return new int[0];
+            }
+        } else {
+            return JSON_MAPPER.readValue(field, Number.class);
+        }
     }
 }
