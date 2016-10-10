@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -132,10 +133,9 @@ public final class ExportCSVExtension {
     }
 
     private long export(Request request, OutputStream outputStream) {
-
         ImmutableList<String> attributesToExport = ImmutableList.copyOf(request.attributesToExport);
         try (Transaction ignored = graphDb.beginTx()) {
-            Lineages lineages = new Lineages();
+            Lineages lineages = new Lineages(attributesToExport);
             if (!attributesToExport.isEmpty()) {
                 for (int index = attributesToExport.size() - 1; index > 0; index--) {
                     String leafAttribute = attributesToExport.get(index);
@@ -161,8 +161,10 @@ public final class ExportCSVExtension {
                 List<String> header = Lists.newArrayList();
                 for (String attribute : attributesToExport) {
                     Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
-                    for (Map.Entry<String, String> property : properties.entrySet()) {
-                        header.add(attribute + '.' + property.getKey() + ':' + property.getValue());
+                    if (properties != null) {
+                        for (Map.Entry<String, String> property : properties.entrySet()) {
+                            header.add(attribute + '.' + property.getKey() + ':' + property.getValue());
+                        }
                     }
                 }
                 csvWriter.writeNext(header.toArray(new String[header.size()]));
@@ -172,18 +174,20 @@ public final class ExportCSVExtension {
                     for (String attribute : attributesToExport) {
                         Node node = lineage.nodesByType.get(attribute);
                         Map<String, String> properties = lineages.propertiesTypeByType.get(attribute);
-                        for (String property : properties.keySet()) {
-                            if (node != null) {
-                                Object propertyValue = node.getProperty(property, null);
-                                if (propertyValue != null) {
-                                    if (propertyValue.getClass().isArray()) {
-                                        line[index] = json.writeValueAsString(propertyValue);
-                                    } else {
-                                        line[index] = propertyValue.toString();
+                        if (properties != null) {
+                            for (String property : properties.keySet()) {
+                                if (node != null) {
+                                    Object propertyValue = node.getProperty(property, null);
+                                    if (propertyValue != null) {
+                                        if (propertyValue.getClass().isArray()) {
+                                            line[index] = json.writeValueAsString(propertyValue);
+                                        } else {
+                                            line[index] = propertyValue.toString();
+                                        }
                                     }
                                 }
+                                index++;
                             }
-                            index++;
                         }
                     }
                     csvWriter.writeNext(line);
@@ -227,16 +231,16 @@ public final class ExportCSVExtension {
 
     private static final class Lineages {
 
-        private static final Set<String> INGNORE = ImmutableSet.of("createdAt", "updatedAt", "createdBy", "updatedBy");
+        private static final Set<String> IGNORE = ImmutableSet.of("createdAt", "updatedAt", "createdBy", "updatedBy");
 
-        public final List<Lineage> lineages;
+        public final Set<Lineage> lineages;
 
         public final Set<String> allTags;
 
         public final Map<String, Map<String, String>> propertiesTypeByType;
 
-        public Lineages() {
-            lineages = Lists.newArrayList();
+        public Lineages(ImmutableList<String> attributesToExport) {
+            lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
             allTags = Sets.newHashSet();
             propertiesTypeByType = Maps.newHashMap();
         }
@@ -251,7 +255,7 @@ public final class ExportCSVExtension {
             for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
                 String name = property.getKey();
                 String propertyType = getPropertyType(property.getValue());
-                if (!name.startsWith("_") && !INGNORE.contains(name)) {
+                if (!name.startsWith("_") && !IGNORE.contains(name)) {
                     properties.put(name, propertyType);
                 }
             }
@@ -292,6 +296,42 @@ public final class ExportCSVExtension {
         @Override
         public String toString() {
             return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
+        }
+    }
+
+    private static final class LineageComparator implements Comparator<Lineage> {
+        private final ImmutableList<String> attributesOrdering;
+
+        public LineageComparator(ImmutableList<String> attributesOrdering) {
+            this.attributesOrdering = attributesOrdering;
+        }
+
+        @Override
+        public int compare(Lineage l1, Lineage l2) {
+            int compare = -1;
+            for (String attribute : attributesOrdering) {
+                Node node1 = l1.nodesByType.get(attribute);
+                Node node2 = l2.nodesByType.get(attribute);
+                if (node1 != null) {
+                    if (node2 != null) {
+                        String tag1 = node1.getProperty(TAG).toString();
+                        String tag2 = node2.getProperty(TAG).toString();
+                        compare = tag1.compareTo(tag2);
+                    } else {
+                        compare = -1;
+                    }
+                } else {
+                    if (node2 != null) {
+                        compare = 1;
+                    } else {
+                        compare = 0;
+                    }
+                }
+                if (compare != 0) {
+                    return compare;
+                }
+            }
+            return compare;
         }
     }
 
