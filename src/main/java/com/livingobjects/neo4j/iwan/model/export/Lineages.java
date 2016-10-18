@@ -38,8 +38,8 @@ public final class Lineages {
         SortedMap<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
-            String propertyType = getPropertyType(property.getValue());
             if (!name.startsWith("_") && !IGNORE.contains(name)) {
+                String propertyType = getPropertyType(property.getValue());
                 properties.put(name, propertyType);
             }
         }
