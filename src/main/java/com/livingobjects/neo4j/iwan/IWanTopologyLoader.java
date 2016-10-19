@@ -547,7 +547,7 @@ public final class IWanTopologyLoader {
             if (header.isArray) {
                 return Booleans.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE));
             } else {
-                return Boolean.parseBoolean(field);
+                return field;
             }
         } else {
             return null;
