@@ -17,16 +17,24 @@ public final class Lineages {
 
     private static final Set<String> IGNORE = ImmutableSet.of("createdAt", "updatedAt", "createdBy", "updatedBy");
 
+    private static final Set<String> IGNORE_WITH_TAGS = ImmutableSet.<String>builder()
+            .addAll(IGNORE)
+            .add("tag")
+            .build();
+
     public final Set<Lineage> lineages;
 
     public final Set<String> allTags;
 
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
 
-    public Lineages(ImmutableList<String> attributesToExport) {
+    private final Set<String> propertiesToIgnore;
+
+    public Lineages(ImmutableList<String> attributesToExport, boolean exportTags) {
         lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
         allTags = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
+        propertiesToIgnore = exportTags ? IGNORE : IGNORE_WITH_TAGS;
     }
 
     public boolean dejaVu(Node leaf) {
@@ -38,7 +46,7 @@ public final class Lineages {
         SortedMap<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
-            if (!name.startsWith("_") && !IGNORE.contains(name)) {
+            if (!name.startsWith("_") && !propertiesToIgnore.contains(name)) {
                 String propertyType = getPropertyType(property.getValue());
                 properties.put(name, propertyType);
             }

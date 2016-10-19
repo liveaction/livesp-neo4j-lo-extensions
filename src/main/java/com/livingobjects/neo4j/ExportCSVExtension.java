@@ -107,7 +107,7 @@ public final class ExportCSVExtension {
     private long export(Request request, OutputStream outputStream) {
         ImmutableList<String> attributesToExport = ImmutableList.copyOf(request.attributesToExport);
         try (Transaction ignored = graphDb.beginTx()) {
-            Lineages lineages = new Lineages(attributesToExport);
+            Lineages lineages = new Lineages(attributesToExport, request.exportTags);
             if (!attributesToExport.isEmpty()) {
                 for (int index = attributesToExport.size() - 1; index > 0; index--) {
                     String leafAttribute = attributesToExport.get(index);
@@ -224,12 +224,15 @@ public final class ExportCSVExtension {
     private static final class Request {
         public final List<String> attributesToExport;
         public final List<String> requiredAttributes;
+        public boolean exportTags;
 
         public Request(
                 @JsonProperty("attributesToExport") List<String> attributesToExport,
-                @JsonProperty("requiredAttributes") List<String> requiredAttributes) {
+                @JsonProperty("requiredAttributes") List<String> requiredAttributes,
+                @JsonProperty("exportTags") boolean exportTags) {
             this.attributesToExport = attributesToExport;
             this.requiredAttributes = requiredAttributes;
+            this.exportTags = exportTags;
         }
     }
 
