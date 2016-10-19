@@ -9,7 +9,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -55,8 +54,29 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -442,9 +462,7 @@ public final class IWanTopologyLoader {
                     value = readNumberField(header, field);
                     break;
                 default:
-                    value = (header.isArray) ?
-                            Iterables.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE), String.class)
-                            : field;
+                    value = readStringField(header, field);
             }
         } catch (Exception ignored) {
             LOGGER.debug("Unable to parse value " + field + " as " + header.type);
@@ -524,6 +542,18 @@ public final class IWanTopologyLoader {
         return bldr;
     }
 
+    private static Object readStringField(HeaderElement header, String field) throws IOException {
+        if (field != null && !field.trim().isEmpty()) {
+            if (header.isArray) {
+                return Booleans.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE));
+            } else {
+                return Boolean.parseBoolean(field);
+            }
+        } else {
+            return null;
+        }
+    }
+
     private static Object readBooleanField(HeaderElement header, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
             if (header.isArray) {
@@ -535,7 +565,6 @@ public final class IWanTopologyLoader {
             return null;
         }
     }
-
 
     private static Object readNumberField(HeaderElement header, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
