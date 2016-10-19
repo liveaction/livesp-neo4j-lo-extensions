@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -545,7 +546,7 @@ public final class IWanTopologyLoader {
     private static Object readStringField(HeaderElement header, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
             if (header.isArray) {
-                return Booleans.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE));
+                return Iterables.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE), String.class);
             } else {
                 return field;
             }
