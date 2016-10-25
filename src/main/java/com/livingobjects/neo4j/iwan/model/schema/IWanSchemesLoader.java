@@ -7,8 +7,8 @@ import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.schema.factories.AttributeFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.CounterFactory;
-import com.livingobjects.neo4j.iwan.model.schema.factories.ScopeNetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.PlanetFactory;
+import com.livingobjects.neo4j.iwan.model.schema.factories.ScopeNetworkElementFactory;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -108,7 +108,7 @@ public final class IWanSchemesLoader {
     }
 
     private Optional<Multimap<String, Node>> applySchema(Schema schema) {
-        UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate(new Attribute(CUSTOMER_NAME, schema.customerId, null));
+        UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate(CUSTOMER_NAME + ':' + schema.customerId);
         Node customerNode = uniqueEntity.entity;
         boolean updateVersion;
         if (uniqueEntity.wasCreated) {
@@ -135,7 +135,7 @@ public final class IWanSchemesLoader {
         Multimap<String, Node> globalPlanets = HashMultimap.create();
         int realmMerged = 0;
         for (RealmTemplate realm : realms) {
-            UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate(new Attribute("realm", realm.name, null));
+            UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate("realm" + ':' + realm.name);
             Node realmNode = uniqueEntity.entity;
             Iterable<Relationship> relationships = realmNode.getRelationships(Direction.INCOMING, LINK_PROVIDED);
             for (Relationship relationship : relationships) {
@@ -216,17 +216,21 @@ public final class IWanSchemesLoader {
         }
         planetNode.setProperty("path", planet.path);
         Set<Node> planetAttributes = Sets.newHashSet(context);
-        planetAttributes.add(attributeFactory.getOrCreate(planet.keyAttribute).entity);
+        Attribute planetKeyAttribute = planet.keyAttribute;
+        Node planetKeyAttributeNode = attributeFactory.getOrCreate(planetKeyAttribute.type + ':' + planetKeyAttribute.name).entity;
         for (Attribute attribute : planet.attributes) {
-            Node node = attributeFactory.getOrCreate(attribute).entity;
+            Node node = attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
             planetAttributes.add(node);
         }
         Iterable<Relationship> relationships = planetNode.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE);
         for (Relationship relationship : relationships) {
             relationship.delete();
         }
+        Relationship relationshipTo = planetNode.createRelationshipTo(planetKeyAttributeNode, LINK_ATTRIBUTE);
+        if (planetKeyAttribute.specializer != null) {
+            relationshipTo.setProperty("specializer", planetKeyAttribute.specializer);
+        }
         for (Node node : planetAttributes) {
-
             planetNode.createRelationshipTo(node, LINK_ATTRIBUTE);
         }
         return uniqueEntity;
@@ -235,7 +239,7 @@ public final class IWanSchemesLoader {
     private Set<Node> setupContext(Set<Attribute> attributes) {
         Set<Node> context = Sets.newHashSet();
         for (Attribute attribute : attributes) {
-            Node node = attributeFactory.getOrCreate(attribute).entity;
+            Node node = attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
             context.add(node);
         }
         LOGGER.debug("\t{} context attribute(s) merged.", attributes);

@@ -1,7 +1,6 @@
 package com.livingobjects.neo4j.iwan.model.schema.factories;
 
 import com.livingobjects.neo4j.iwan.model.CacheIndexedElementFactory;
-import org.neo4j.cypher.InvalidArgumentException;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 
@@ -35,7 +34,7 @@ public class CounterFactory extends CacheIndexedElementFactory<String> {
     }
 
     @Override
-    protected Node createNode(String counter) throws InvalidArgumentException {
+    protected Node createNode(String counter) {
         String[] split = counter.split("@");
         if (split.length == 2) {
             String context = split[0];

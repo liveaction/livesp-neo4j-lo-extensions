@@ -1,7 +1,6 @@
 package com.livingobjects.neo4j.iwan.model;
 
 import com.google.common.collect.Maps;
-import org.neo4j.cypher.InvalidArgumentException;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
@@ -45,7 +44,7 @@ public abstract class CacheIndexedElementFactory<K> {
 
     protected abstract K readNode(Node node);
 
-    protected abstract Node createNode(K attribute) throws InvalidArgumentException;
+    protected abstract Node createNode(K attribute);
 
     protected Node createNodeFromStringKey(Label label, String keyName, String key) {
         Node node = graphDB.createNode();
