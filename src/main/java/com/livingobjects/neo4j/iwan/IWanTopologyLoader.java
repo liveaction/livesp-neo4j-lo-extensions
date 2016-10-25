@@ -25,7 +25,7 @@ import com.livingobjects.neo4j.iwan.model.HeaderElement.Visitor;
 import com.livingobjects.neo4j.iwan.model.MultiElementHeader;
 import com.livingobjects.neo4j.iwan.model.SimpleElementHeader;
 import com.livingobjects.neo4j.iwan.model.UniqueElementFactory;
-import com.livingobjects.neo4j.iwan.model.UniqueElementFactory.UniqueEntity;
+import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.exception.ImportException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.iwan.model.exception.InvalidScopeException;
