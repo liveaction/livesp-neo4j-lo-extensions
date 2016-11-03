@@ -50,34 +50,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -226,12 +206,22 @@ public final class IWanTopologyLoader {
 
     private void importLine(String[] line, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
+
+            // Try to update elements which is not possible to create (no parent founds)
+            // updated elements must exist or NoSuchElement was throw
+            ImmutableMap.Builder<String, Optional<UniqueEntity<Node>>> allNodesBldr = ImmutableMap.builder();
+            strategy.getAllElementsType().stream()
+                    .filter(key -> !lineage.keySet().contains(key))
+                    .forEach(key -> allNodesBldr.put(key, updateElement(strategy, line, key)));
+
             // Create elements
             Map<String, Optional<UniqueEntity<Node>>> nodes = lineage.keySet().stream()
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
-            createCrossAttributeLinks(line, strategy, nodes);
+            ImmutableMap<String, Optional<UniqueEntity<Node>>> allNodes = allNodesBldr.putAll(nodes).build();
+
+            createCrossAttributeLinks(line, strategy, allNodes);
 
             createConnectLink(startKeytypes, nodes);
 
@@ -432,6 +422,24 @@ public final class IWanTopologyLoader {
                 return Optional.empty();
             }
         }
+    }
+
+    private Optional<UniqueEntity<Node>> updateElement(IwanMappingStrategy strategy, String[] line, String elementName) {
+        ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
+        HeaderElement tagHeader = elementHeaders.stream()
+                .filter(h -> TAG.equals(h.propertyName))
+                .findAny()
+                .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
+
+        String tag = line[tagHeader.index];
+
+        if (tag.isEmpty()) {
+            throw new NoSuchElementException("Element " + elementName + " not found in database for update !");
+        }
+
+        Node node = graphDb.findNode(LABEL_NETWORK_ELEMENT, TAG, tag);
+        persistElementProperties(line, elementHeaders, node);
+        return Optional.of(UniqueEntity.existing(node));
     }
 
     private static void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
