@@ -56,8 +56,30 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.iwan.model.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.*;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.BOOLEAN_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.DOUBLE_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.JSON_MAPPER;
+import static com.livingobjects.neo4j.iwan.model.IWanHelperConstants.STRING_LIST_TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CARDINALITY_MULTIPLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_NETWORK_ELEMENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CONNECT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_CROSS_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PARENT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
@@ -135,9 +157,10 @@ public final class IWanTopologyLoader {
 
         String[] nextLine;
 
+        int lineIndex = 0;
         int imported = 0;
         List<String[]> currentTransaction = Lists.newArrayListWithCapacity(MAX_TRANSACTION_COUNT);
-        List<Long> errors = Lists.newArrayListWithExpectedSize(MAX_TRANSACTION_COUNT);
+        Map<Integer, String> errors = Maps.newHashMap();
 
         Transaction tx = graphDb.beginTx();
         lineage = strategy.guessElementCreationStrategy(scopes, childrenRelations);
@@ -145,33 +168,33 @@ public final class IWanTopologyLoader {
                 scopes.stream().filter(strategy::hasKeyType).collect(Collectors.toSet()));
 
         while ((nextLine = reader.readNext()) != null) {
-            ++imported;
             try {
                 importLine(nextLine, startKeytypes, strategy);
+                imported++;
                 currentTransaction.add(nextLine);
                 if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
                     tx = renewTransaction(tx);
                     currentTransaction.clear();
                 }
-            } catch (ImportException e) {
+            } catch (ImportException | NoSuchElementException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
-                errors.add((long) imported);
+                errors.put(lineIndex, e.getMessage());
                 LOGGER.warn(e.getLocalizedMessage());
                 LOGGER.debug("STACKTRACE", e);
                 LOGGER.debug(Arrays.toString(nextLine));
             } catch (IllegalArgumentException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
-                errors.add((long) imported);
+                errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
                 LOGGER.error("STACKTRACE", e);
                 LOGGER.debug(Arrays.toString(nextLine));
             }
+            lineIndex++;
         }
         tx.success();
         tx.close();
 
-        long created = imported - errors.size();
-        return new Neo4jLoadResult(created, Longs.toArray(errors));
+        return new Neo4jLoadResult(imported, errors);
     }
 
     private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> startKeytypes) {
@@ -374,7 +397,7 @@ public final class IWanTopologyLoader {
 
             Node elementAttNode = attributeNodes.get(elementName);
             if (elementAttNode == null) {
-                throw new IllegalStateException("Unknown element type: '" + elementName + "' !");
+                throw new IllegalStateException("Unknown element type: '" + elementName + "'");
             }
             boolean isOverridable = Boolean.parseBoolean(elementAttNode.getProperty(_OVERRIDABLE, Boolean.FALSE).toString());
 
@@ -388,7 +411,7 @@ public final class IWanTopologyLoader {
             HeaderElement tagHeader = elementHeaders.stream()
                     .filter(h -> TAG.equals(h.propertyName))
                     .findAny()
-                    .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
+                    .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName));
 
             String tag = line[tagHeader.index];
 
@@ -424,22 +447,26 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Optional<UniqueEntity<Node>> updateElement(IwanMappingStrategy strategy, String[] line, String elementName) {
+    private Optional<UniqueEntity<Node>> updateElement(IwanMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
         ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
         HeaderElement tagHeader = elementHeaders.stream()
                 .filter(h -> TAG.equals(h.propertyName))
                 .findAny()
-                .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + " !"));
+                .orElseThrow(() -> new IllegalArgumentException(TAG + " not found for element " + elementName + ""));
 
         String tag = line[tagHeader.index];
 
         if (tag.isEmpty()) {
-            throw new NoSuchElementException("Element " + elementName + " not found in database for update !");
+            throw new NoSuchElementException("Element " + elementName + " not found in database for update");
         }
 
         Node node = graphDb.findNode(LABEL_NETWORK_ELEMENT, TAG, tag);
-        persistElementProperties(line, elementHeaders, node);
-        return Optional.of(UniqueEntity.existing(node));
+        if (node != null) {
+            persistElementProperties(line, elementHeaders, node);
+            return Optional.of(UniqueEntity.existing(node));
+        } else {
+            throw new NoSuchElementException("Element with tag " + tag + " not found in database for update");
+        }
     }
 
     private static void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
@@ -459,7 +486,7 @@ public final class IWanTopologyLoader {
                 }));
     }
 
-    private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, final String[] line, final T elementNode) {
+    private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, String[] line, T elementNode) {
         Object value;
         String field = line[header.index];
         try {
