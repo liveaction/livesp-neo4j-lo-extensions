@@ -4,6 +4,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.iwan.model.IwanModelConstants;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.schema.factories.AttributeFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.CounterFactory;
@@ -36,9 +37,9 @@ import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.UPDATED_AT;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._SCOPE;
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
 
-public final class IWanSchemesLoader {
+public final class IWanSchemasLoader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(IWanSchemesLoader.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(IWanSchemasLoader.class);
     private static final String SCHEMA_VERSION = "schemaVersion";
     private static final String CUSTOMER_NAME = "client";
     private static final String CUSTOMER_TYPE = "cluster";
@@ -54,7 +55,7 @@ public final class IWanSchemesLoader {
 
     private final CounterFactory counterFactory;
 
-    public IWanSchemesLoader(GraphDatabaseService graphDb) {
+    public IWanSchemasLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         attributeFactory = new AttributeFactory(graphDb);
         scopeNetworkElementFactory = new ScopeNetworkElementFactory(graphDb);
@@ -247,6 +248,7 @@ public final class IWanSchemesLoader {
     }
 
     private void mergeScope(Schema schema) {
+        UniqueEntity<Node> parentScope = scopeNetworkElementFactory.getOrCreate(IwanModelConstants.SCOPE_SP_TAG);
         UniqueEntity<Node> uniqueEntity = scopeNetworkElementFactory.getOrCreate(schema.scope);
         Node node = uniqueEntity.entity;
         if (uniqueEntity.wasCreated) {
@@ -262,6 +264,7 @@ public final class IWanSchemesLoader {
         } else {
             LOGGER.debug("\tScope element {} updated.", schema.scope);
         }
+        parentScope.entity.createRelationshipTo(node, IwanModelConstants.LINK_CONNECT);
     }
 
     public SchemaVersion getSchemaVersion(Node customerNode) {

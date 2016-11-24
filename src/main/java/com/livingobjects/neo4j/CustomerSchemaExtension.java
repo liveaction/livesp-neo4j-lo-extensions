@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j;
 
 import com.google.common.collect.Iterables;
-import com.livingobjects.neo4j.iwan.model.schema.IWanSchemesLoader;
+import com.livingobjects.neo4j.iwan.model.schema.IWanSchemasLoader;
 import com.livingobjects.neo4j.iwan.model.schema.Schema;
 import com.livingobjects.neo4j.iwan.model.schema.SchemaResult;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -35,25 +35,25 @@ public final class CustomerSchemaExtension {
     }
 
     @POST
-    public Response updateSchemes(InputStream request) throws IOException, ServletException {
+    public Response updateSchemas(InputStream request) throws IOException, ServletException {
         try {
-            List<Schema> schemes = JSON_MAPPER.readValue(request, new TypeReference<List<Schema>>() {
+            List<Schema> schemas = JSON_MAPPER.readValue(request, new TypeReference<List<Schema>>() {
             });
             int total = 0;
-            Iterable<List<Schema>> partition = Iterables.partition(schemes, 100);
+            Iterable<List<Schema>> partition = Iterables.partition(schemas, 100);
             for (List<Schema> batch : partition) {
                 try (Transaction tx = graphDb.beginTx()) {
-                    IWanSchemesLoader schemesLoader = new IWanSchemesLoader(graphDb);
-                    total += schemesLoader.load(batch);
+                    IWanSchemasLoader schemasLoader = new IWanSchemasLoader(graphDb);
+                    total += schemasLoader.load(batch);
                     tx.success();
-                    LOGGER.debug("Flushing {} schemes...", batch.size());
+                    LOGGER.debug("Flushing {} schemas...", batch.size());
                 }
             }
-            LOGGER.info("{} topology schemes updated.", total);
+            LOGGER.info("{} topology schemas updated.", total);
             String json = JSON_MAPPER.writeValueAsString(new SchemaResult(total));
             return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            LOGGER.error("Unable to update schemes", e);
+            LOGGER.error("Unable to update schemas", e);
             return Response.serverError().entity(e).type(MediaType.APPLICATION_JSON).build();
         }
     }
