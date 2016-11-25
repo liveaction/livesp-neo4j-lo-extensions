@@ -248,13 +248,14 @@ public final class IWanSchemasLoader {
     }
 
     private void mergeScope(Schema schema) {
-        UniqueEntity<Node> parentScope = scopeNetworkElementFactory.getOrCreate(IwanModelConstants.SCOPE_SP_TAG);
         UniqueEntity<Node> uniqueEntity = scopeNetworkElementFactory.getOrCreate(schema.scope);
         Node node = uniqueEntity.entity;
         if (uniqueEntity.wasCreated) {
             node.setProperty(_TYPE, CUSTOMER_TYPE + ':' + CUSTOMER_NAME);
             node.addLabel(LABEL_ELEMENT);
             node.addLabel(LABEL_SCOPE);
+            UniqueEntity<Node> parentScope = scopeNetworkElementFactory.getOrCreate(IwanModelConstants.SCOPE_SP_TAG);
+            parentScope.entity.createRelationshipTo(node, IwanModelConstants.LINK_CONNECT);
         } else {
             node.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
         }
@@ -264,7 +265,6 @@ public final class IWanSchemasLoader {
         } else {
             LOGGER.debug("\tScope element {} updated.", schema.scope);
         }
-        parentScope.entity.createRelationshipTo(node, IwanModelConstants.LINK_CONNECT);
     }
 
     public SchemaVersion getSchemaVersion(Node customerNode) {
