@@ -8,6 +8,7 @@ Contains 2 neo4j server extensions :
 
 * `/warm-up` : used to load all graph data in memory cache.
 * `/load-csv` : extension used to execute a LOAD CSV query using a remote CSV file that is uploaded.
+* `/memdexpath` : Allow to extract Memdexpath from the database 
 
 ## Load CSV
 

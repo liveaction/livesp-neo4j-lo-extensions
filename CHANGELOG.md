@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4 _(2016-11-28)_
+* Add MemdexPathExtension (/memdexpath)
+* Add CustomerSchemaExtension (/schema)
+* feat(export): Add gzip filter output support
+* feat(export): add exportTags parameter
+* feat(export): sort property name in csv header
+* feat(import): properties of all type are set to null when CSV value is empty
+* fix(import): set line in error when orphan element in the line doesn't exist
+* fix(iwan): Fix CrossAttribute links on existing CPE without cpe parents
+* fix(import): fix import of null properties
+* fix(import): properties of all type are set to null when CSV value is empty
+* fix(export): optimize lineages
+
 ## 1.3.4 _(2016-10-10)_
 * fix(load-csv): support null values for non string properties
 

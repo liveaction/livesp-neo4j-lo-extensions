@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
@@ -128,5 +129,9 @@ final class IwanMappingStrategy {
             collect.put(current, Sets.newHashSet());
         }
         return collect;
+    }
+
+    public ImmutableSet<String> getAllElementsType() {
+        return mapping.keySet();
     }
 }

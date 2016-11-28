@@ -1,12 +1,16 @@
 package com.livingobjects.neo4j;
 
+import org.codehaus.jackson.annotate.JsonProperty;
+
+import java.util.Map;
+
 public final class Neo4jLoadResult {
 
-    public final long imported;
+    public final int imported;
 
-    public final long[] errorLines;
+    public final Map<Integer, String> errorLines;
 
-    public Neo4jLoadResult(long imported, long[] errorLines) {
+    public Neo4jLoadResult(@JsonProperty("imported") int imported, @JsonProperty("errorLines") Map<Integer, String> errorLines) {
         this.imported = imported;
         this.errorLines = errorLines;
     }
