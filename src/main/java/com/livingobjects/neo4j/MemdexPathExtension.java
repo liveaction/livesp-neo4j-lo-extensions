@@ -29,18 +29,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_MEMDEXPATH;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PROVIDED;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.PATH;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
 
 @Path("/memdexpath")
 public final class MemdexPathExtension {
@@ -121,7 +114,19 @@ public final class MemdexPathExtension {
             jg.writeStartArray();
 
             try (Transaction ignored = graphDb.beginTx()) {
-                Node realmNode = graphDb.findNode(LABEL_ATTRIBUTE, "name", realm);
+                ResourceIterator<Node> itRealms = graphDb.findNodes(LABEL_ATTRIBUTE, "name", realm);
+                Node realmNode = null;
+                while (itRealms.hasNext()) {
+                    Node tmpNode = itRealms.next();
+                    if ("realm".equals(tmpNode.getProperty("_type"))) {
+                        realmNode = tmpNode;
+                        break;
+                    }
+                }
+                if (realmNode == null) {
+                    throw new NoSuchElementException("Element of type 'realm' with name '" + realm + "' not found in database !");
+                }
+
                 Node firstPlanet = realmNode.getSingleRelationship(LINK_ATTRIBUTE, Direction.INCOMING).getStartNode();
 
                 MemdexPath memdexPath = browsePlanetToMemdexPath(firstPlanet);
