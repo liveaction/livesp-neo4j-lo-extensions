@@ -54,13 +54,13 @@ public class SchemaTemplateExtension {
 
             try (InputStream csvInputStream = new FileInputStream(csv);
                  InputStream xmlInputStream = new FileInputStream(xml)) {
-                SchemaTemplateLoader loader = new SchemaTemplateLoader();
-                loader.applyTemplate(csvInputStream, xmlInputStream);
+                SchemaTemplateLoader loader = new SchemaTemplateLoader(graphDb);
+                loader.loadAndApplyTemplate(csvInputStream, xmlInputStream);
             }
 
-            List<Schema> schemas = JSON_MAPPER.readValue(request, new TypeReference<List<Schema>>() {
-            });
             int total = 0;
+            /*List<Schema> schemas = JSON_MAPPER.readValue(request, new TypeReference<List<Schema>>() {
+            });
             Iterable<List<Schema>> partition = Iterables.partition(schemas, 100);
             for (List<Schema> batch : partition) {
                 try (Transaction tx = graphDb.beginTx()) {
@@ -69,7 +69,7 @@ public class SchemaTemplateExtension {
                     tx.success();
                     LOGGER.debug("Flushing {} schemas...", batch.size());
                 }
-            }
+            }*/
             LOGGER.info("{} topology schemas updated.", total);
             String json = JSON_MAPPER.writeValueAsString(new SchemaResult(total));
             return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
