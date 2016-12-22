@@ -191,9 +191,9 @@ public final class MemdexPathExtension {
 
     private static final class MemdexPathWithRealm {
         public final String realm;
-        final MemdexPath memdexPath;
+        public final MemdexPath memdexPath;
 
-        MemdexPathWithRealm(
+        public MemdexPathWithRealm(
                 @JsonProperty("realm") String realm,
                 @JsonProperty("memdexPath") MemdexPath memdexPath) {
             this.realm = realm;
