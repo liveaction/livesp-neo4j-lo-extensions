@@ -81,7 +81,7 @@ public final class MemdexPathExtension {
                                         staticMatching++;
                                     }
                                 } else {
-                                    String attribute = type + ':' + name;
+                                    String attribute = type + KEYTYPE_SEPARATOR + name;
                                     if (filter.dynamicAttributes.contains(attribute)) {
                                         dynamicAttribute = Optional.of(attribute);
                                     }
@@ -148,8 +148,13 @@ public final class MemdexPathExtension {
         ImmutableList.Builder<String> attributes = ImmutableList.builder();
         planet.getRelationships(LINK_ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
+            Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
             Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);
-            attributes.add(properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString());
+            String attribute = properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString();
+            if (specializer != null) {
+                attribute = attribute + KEYTYPE_SEPARATOR + specializer.toString();
+            }
+            attributes.add(attribute);
         });
 
         ImmutableList.Builder<Map<String, Object>> counters = ImmutableList.builder();
@@ -173,8 +178,8 @@ public final class MemdexPathExtension {
     }
 
     private static final class Request {
-        public final Map<String, String> staticAttributes;
-        public final Set<String> dynamicAttributes;
+        final Map<String, String> staticAttributes;
+        final Set<String> dynamicAttributes;
 
         public Request(
                 @JsonProperty("staticAttributes") Map<String, String> staticAttributes,
@@ -186,9 +191,9 @@ public final class MemdexPathExtension {
 
     private static final class MemdexPathWithRealm {
         public final String realm;
-        public final MemdexPath memdexPath;
+        final MemdexPath memdexPath;
 
-        public MemdexPathWithRealm(
+        MemdexPathWithRealm(
                 @JsonProperty("realm") String realm,
                 @JsonProperty("memdexPath") MemdexPath memdexPath) {
             this.realm = realm;

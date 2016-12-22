@@ -14,6 +14,7 @@ public final class IwanModelConstants {
     public static final RelationshipType LINK_PROVIDED = DynamicRelationshipType.withName("Provided");
     public static final RelationshipType LINK_MEMDEXPATH = DynamicRelationshipType.withName("MdxPath");
     public static final RelationshipType LINK_EXTEND = DynamicRelationshipType.withName("Extend");
+    public static final String LINK_PROP_SPECIALIZER = "specializer";
     public static final Label LABEL_ATTRIBUTE = DynamicLabel.label("Attribute");
     public static final Label LABEL_SCOPE = DynamicLabel.label("Scope");
     public static final Label LABEL_PLANET = DynamicLabel.label("Planet");
