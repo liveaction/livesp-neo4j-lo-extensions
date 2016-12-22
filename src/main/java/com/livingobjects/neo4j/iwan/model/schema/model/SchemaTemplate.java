@@ -1,7 +1,6 @@
 package com.livingobjects.neo4j.iwan.model.schema.model;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableMap;
 
 import java.util.Objects;
 
@@ -13,13 +12,13 @@ public final class SchemaTemplate {
 
     public final Node templateNode;
 
-    public final ImmutableMap<String, Graph> sections;
+    public final Graph graph;
 
-    public SchemaTemplate(String name, SchemaVersion version, Node templateNode, ImmutableMap<String, Graph> sections) {
+    public SchemaTemplate(String name, SchemaVersion version, Node templateNode, Graph graph) {
         this.name = name;
         this.version = version;
         this.templateNode = templateNode;
-        this.sections = sections;
+        this.graph = graph;
     }
 
     @Override
@@ -30,12 +29,12 @@ public final class SchemaTemplate {
         return Objects.equals(name, that.name) &&
                 Objects.equals(version, that.version) &&
                 Objects.equals(templateNode, that.templateNode) &&
-                Objects.equals(sections, that.sections);
+                Objects.equals(graph, that.graph);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, version, templateNode, sections);
+        return Objects.hash(name, version, templateNode, graph);
     }
 
     @Override

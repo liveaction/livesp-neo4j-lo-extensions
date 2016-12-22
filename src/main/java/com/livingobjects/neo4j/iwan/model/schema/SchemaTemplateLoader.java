@@ -18,6 +18,7 @@ import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -40,23 +41,42 @@ public final class SchemaTemplateLoader {
         this.graphDB = graphDB;
     }
 
-    public void loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException {
+    public int loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException {
         CSVReader reader = new CSVReader(new InputStreamReader(csv));
         ImmutableMap<String, Integer> header = readCsvHeader(reader);
 
         SchemaTemplate template = parseTemplate(xmlTemplate);
 
+        int applied = 0;
+        int committed = 0;
         String[] line = reader.readNext();
+
+        Transaction tx = graphDB.beginTx();
         while (line != null) {
 
-            applyTemplate(template, header, line);
+            if (applyTemplate(template, header, line)) {
+                applied++;
+            }
+
+            if (applied % 100 == 0) {
+                committed = commitTx(applied, committed, tx);
+                tx = graphDB.beginTx();
+            }
 
             line = reader.readNext();
         }
-
+        committed = commitTx(applied, committed, tx);
+        return committed;
     }
 
-    private void applyTemplate(SchemaTemplate template, ImmutableMap<String, Integer> header, String[] line) {
+    private int commitTx(int applied, int committed, Transaction tx) {
+        tx.success();
+        nodeFactories.clear();
+        committed += applied;
+        return committed;
+    }
+
+    private boolean applyTemplate(SchemaTemplate template, ImmutableMap<String, Integer> header, String[] line) {
         UniqueEntity<org.neo4j.graphdb.Node> templateNode = createNode(template.templateNode, header, line);
 
         if (shouldApplyTemplate(template, templateNode)) {
@@ -65,7 +85,9 @@ public final class SchemaTemplateLoader {
             UniqueEntity<org.neo4j.graphdb.Node> node = factory.getOrCreate(ImmutableSet.of(template.name, template.version.toString()));
             node.entity.createRelationshipTo(templateNode.entity, APPLIED_TO_LINK);
 
-
+            return true;
+        } else {
+            return false;
         }
     }
 

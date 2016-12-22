@@ -1,16 +1,10 @@
 package com.livingobjects.neo4j;
 
-import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.iwan.model.exception.SchemaTemplateException;
-import com.livingobjects.neo4j.iwan.model.schema.IWanSchemasLoader;
-import com.livingobjects.neo4j.iwan.model.schema.Schema;
-import com.livingobjects.neo4j.iwan.model.schema.SchemaResult;
 import com.livingobjects.neo4j.iwan.model.schema.SchemaTemplateLoader;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,12 +19,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(CustomerSchemaExtension.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateExtension.class);
 
     private final GraphDatabaseService graphDb;
 
@@ -55,27 +48,14 @@ public class SchemaTemplateExtension {
             try (InputStream csvInputStream = new FileInputStream(csv);
                  InputStream xmlInputStream = new FileInputStream(xml)) {
                 SchemaTemplateLoader loader = new SchemaTemplateLoader(graphDb);
-                loader.loadAndApplyTemplate(csvInputStream, xmlInputStream);
+                int appliedTemplate = loader.loadAndApplyTemplate(csvInputStream, xmlInputStream);
+                LOGGER.info("{} topology schemas updated.", appliedTemplate);
+                String json = JSON_MAPPER.writeValueAsString(appliedTemplate);
+                return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
             }
-
-            int total = 0;
-            /*List<Schema> schemas = JSON_MAPPER.readValue(request, new TypeReference<List<Schema>>() {
-            });
-            Iterable<List<Schema>> partition = Iterables.partition(schemas, 100);
-            for (List<Schema> batch : partition) {
-                try (Transaction tx = graphDb.beginTx()) {
-                    IWanSchemasLoader schemasLoader = new IWanSchemasLoader(graphDb);
-                    total += schemasLoader.load(batch);
-                    tx.success();
-                    LOGGER.debug("Flushing {} schemas...", batch.size());
-                }
-            }*/
-            LOGGER.info("{} topology schemas updated.", total);
-            String json = JSON_MAPPER.writeValueAsString(new SchemaResult(total));
-            return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             LOGGER.error("Unable to update schemas", e);
-            return Response.serverError().entity(e).type(MediaType.APPLICATION_JSON).build();
+            return errorResponse(e);
         }
     }
 
