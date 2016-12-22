@@ -10,6 +10,7 @@ import com.livingobjects.neo4j.iwan.model.schema.factories.AttributeFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.CounterFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.PlanetFactory;
 import com.livingobjects.neo4j.iwan.model.schema.factories.ScopeNetworkElementFactory;
+import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;

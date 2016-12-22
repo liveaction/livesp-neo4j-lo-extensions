@@ -1,4 +1,4 @@
-package com.livingobjects.neo4j.iwan.model.schema;
+package com.livingobjects.neo4j.iwan.model.schema.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;

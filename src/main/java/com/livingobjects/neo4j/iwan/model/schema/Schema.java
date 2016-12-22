@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.iwan.model.schema;
 
 import com.google.common.base.MoreObjects;
+import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
 
 import java.util.Objects;
 import java.util.Set;
