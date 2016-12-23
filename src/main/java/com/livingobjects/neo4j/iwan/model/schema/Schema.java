@@ -110,7 +110,7 @@ public final class Schema {
                 .add("version", version)
                 .add("customerId", customerId)
                 .add("scope", scope)
-                .add("attributes", attributes)
+                .add("nodesByKeys", attributes)
                 .add("planets", planets)
                 .add("realms", realms)
                 .toString();

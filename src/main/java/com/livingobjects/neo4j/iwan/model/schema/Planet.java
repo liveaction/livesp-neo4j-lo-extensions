@@ -96,7 +96,7 @@ public final class Planet {
                 .add("name", name)
                 .add("path", path)
                 .add("keyAttribute", keyAttribute)
-                .add("attributes", attributes)
+                .add("nodesByKeys", attributes)
                 .add("global", global)
                 .toString();
     }

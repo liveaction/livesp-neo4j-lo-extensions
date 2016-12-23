@@ -60,7 +60,7 @@ public final class MemdexPath {
     public String toString() {
         return MoreObjects.toStringHelper(this)
                 .add("name", name)
-                .add("attributes", attributes)
+                .add("nodesByKeys", attributes)
                 .add("counters", counters)
                 .add("children", children)
                 .toString();

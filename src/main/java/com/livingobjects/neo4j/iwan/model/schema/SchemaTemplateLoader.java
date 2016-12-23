@@ -5,9 +5,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
+import com.livingobjects.neo4j.iwan.model.CacheNodeFactory;
+import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.exception.SchemaTemplateException;
-import com.livingobjects.neo4j.iwan.model.schema.factories.CustomNodeFactory;
 import com.livingobjects.neo4j.iwan.model.schema.model.Node;
 import com.livingobjects.neo4j.iwan.model.schema.model.Property;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaTemplate;
@@ -19,11 +20,15 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
+import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
+import javax.xml.XMLConstants;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+import javax.xml.transform.sax.SAXSource;
+import javax.xml.validation.SchemaFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -35,42 +40,46 @@ public final class SchemaTemplateLoader {
     public static final DynamicRelationshipType APPLIED_TO_LINK = DynamicRelationshipType.withName("AppliedTo");
     private final GraphDatabaseService graphDB;
 
-    private final Map<NodeType, CustomNodeFactory> nodeFactories = Maps.newHashMap();
+    private final Map<NodeType, CacheNodeFactory> nodeFactories = Maps.newHashMap();
 
     public SchemaTemplateLoader(GraphDatabaseService graphDB) {
         this.graphDB = graphDB;
     }
 
-    public int loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException {
+    public int loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException, IllegalStateException {
         CSVReader reader = new CSVReader(new InputStreamReader(csv));
         ImmutableMap<String, Integer> header = readCsvHeader(reader);
 
         SchemaTemplate template = parseTemplate(xmlTemplate);
 
-        int applied = 0;
+        int updated = 0;
         int committed = 0;
         String[] line = reader.readNext();
 
         Transaction tx = graphDB.beginTx();
-        while (line != null) {
+        try {
+            while (line != null) {
 
-            if (applyTemplate(template, header, line)) {
-                applied++;
+                if (applyTemplate(template, header, line)) {
+                    updated++;
+                }
+
+                if (updated % 100 == 0) {
+                    committed = commitTx(updated, committed, tx);
+                    tx = graphDB.beginTx();
+                }
+
+                line = reader.readNext();
             }
-
-            if (applied % 100 == 0) {
-                committed = commitTx(applied, committed, tx);
-                tx = graphDB.beginTx();
-            }
-
-            line = reader.readNext();
+        } finally {
+            committed = commitTx(updated, committed, tx);
         }
-        committed = commitTx(applied, committed, tx);
         return committed;
     }
 
     private int commitTx(int applied, int committed, Transaction tx) {
         tx.success();
+        tx.close();
         nodeFactories.clear();
         committed += applied;
         return committed;
@@ -81,7 +90,7 @@ public final class SchemaTemplateLoader {
 
         if (shouldApplyTemplate(template, templateNode)) {
             Node templateVersionNode = new Node(ImmutableList.of("Template"), ImmutableMap.of("name", template.name, "version", template.version.toString()), ImmutableSet.of());
-            CustomNodeFactory factory = nodeFactory(templateVersionNode);
+            CacheNodeFactory factory = nodeFactory(templateVersionNode);
             UniqueEntity<org.neo4j.graphdb.Node> node = factory.getOrCreate(ImmutableSet.of(template.name, template.version.toString()));
             node.entity.createRelationshipTo(templateNode.entity, APPLIED_TO_LINK);
 
@@ -123,7 +132,7 @@ public final class SchemaTemplateLoader {
     }
 
     private UniqueEntity<org.neo4j.graphdb.Node> createNode(Node node, ImmutableMap<String, Integer> header, String[] line) {
-        CustomNodeFactory factory = nodeFactory(node);
+        CacheNodeFactory factory = nodeFactory(node);
 
         ImmutableSet.Builder<String> transformedKeys = ImmutableSet.builder();
         for (Map.Entry<String, String> keyProperty : node.keys.entrySet()) {
@@ -143,8 +152,11 @@ public final class SchemaTemplateLoader {
     }
 
     private SchemaTemplate parseTemplate(InputStream xmlTemplate) throws SchemaTemplateException {
-        SAXParserFactory factory = SAXParserFactory.newInstance();
         try {
+            SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+            SAXParserFactory factory = SAXParserFactory.newInstance();
+            javax.xml.validation.Schema xsdSchema = schemaFactory.newSchema(new SAXSource(new InputSource(getClass().getResourceAsStream("/schema-template.xsd"))));
+            factory.setSchema(xsdSchema);
             SAXParser saxParser = factory.newSAXParser();
             XMLSchemaTemplateHandler handler = new XMLSchemaTemplateHandler();
             saxParser.parse(xmlTemplate, handler);
@@ -162,16 +174,17 @@ public final class SchemaTemplateLoader {
         if (headerLine != null) {
             for (int index = 0; index < headerLine.length; index++) {
                 String column = headerLine[index];
-                headerBuilder.put(column, index);
+                HeaderElement headerElement = HeaderElement.of(column, index);
+                headerBuilder.put(headerElement.elementName + '.' + headerElement.propertyName, index);
             }
         }
         return headerBuilder.build();
     }
 
-    private CustomNodeFactory nodeFactory(Node node) {
+    private CacheNodeFactory nodeFactory(Node node) {
         ImmutableSet<String> keys = node.keys.keySet();
         NodeType nodeType = new NodeType(node.labels, keys);
-        return nodeFactories.computeIfAbsent(nodeType, k -> new CustomNodeFactory(graphDB, node.labels, keys));
+        return nodeFactories.computeIfAbsent(nodeType, k -> CacheNodeFactory.of(graphDB, node.labels, keys));
     }
 
     private final class NodeType {

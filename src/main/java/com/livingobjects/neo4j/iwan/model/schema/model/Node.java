@@ -15,10 +15,13 @@ public final class Node {
 
     public final ImmutableSet<Property> properties;
 
-    public Node(ImmutableList<String> labels, ImmutableMap<String, String> keys, ImmutableSet<Property> properties) {
+    public final ImmutableSet<Relationships> relationships;
+
+    public Node(ImmutableList<String> labels, ImmutableMap<String, String> keys, ImmutableSet<Property> properties, ImmutableSet<Relationships> relationships) {
         this.labels = labels;
         this.keys = keys;
         this.properties = properties;
+        this.relationships = relationships;
     }
 
     @Override
@@ -28,12 +31,13 @@ public final class Node {
         Node node = (Node) o;
         return Objects.equals(labels, node.labels) &&
                 Objects.equals(keys, node.keys) &&
-                Objects.equals(properties, node.properties);
+                Objects.equals(properties, node.properties) &&
+                Objects.equals(relationships, node.relationships);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(labels, keys, properties);
+        return Objects.hash(labels, keys, properties, relationships);
     }
 
     @Override
@@ -42,6 +46,7 @@ public final class Node {
                 .add("labels", labels)
                 .add("keys", keys)
                 .add("properties", properties)
+                .add("relationships", relationships)
                 .toString();
     }
 }

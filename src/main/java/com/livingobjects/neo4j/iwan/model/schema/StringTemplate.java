@@ -23,6 +23,8 @@ public final class StringTemplate {
                     if (headerIndex != null) {
                         String replacement = line[headerIndex];
                         matcher.appendReplacement(buffer, replacement);
+                    } else {
+                        throw new IllegalStateException("Unable to replace variable ${" + group + "} in string '" + value + "'.");
                     }
                 }
             }

@@ -6,10 +6,6 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.IwanModelConstants;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
-import com.livingobjects.neo4j.iwan.model.schema.factories.AttributeFactory;
-import com.livingobjects.neo4j.iwan.model.schema.factories.CounterFactory;
-import com.livingobjects.neo4j.iwan.model.schema.factories.PlanetFactory;
-import com.livingobjects.neo4j.iwan.model.schema.factories.ScopeNetworkElementFactory;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -48,20 +44,20 @@ public final class IWanSchemasLoader {
 
     private final GraphDatabaseService graphDb;
 
-    private final AttributeFactory attributeFactory;
-
-    private final ScopeNetworkElementFactory scopeNetworkElementFactory;
-
-    private final PlanetFactory planetFactory;
-
-    private final CounterFactory counterFactory;
-
+    // private final AttributeFactory attributeFactory;
+//
+    // private final ScopeNetworkElementFactory scopeNetworkElementFactory;
+//
+    // private final PlanetFactory planetFactory;
+//
+    // private final CounterFactory counterFactory;
+//
     public IWanSchemasLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        attributeFactory = new AttributeFactory(graphDb);
-        scopeNetworkElementFactory = new ScopeNetworkElementFactory(graphDb);
-        planetFactory = new PlanetFactory(graphDb);
-        counterFactory = new CounterFactory(graphDb);
+        //attributeFactory = new AttributeFactory(graphDb);
+        //scopeNetworkElementFactory = new ScopeNetworkElementFactory(graphDb);
+        //planetFactory = new PlanetFactory(graphDb);
+        //counterFactory = new CounterFactory(graphDb);
     }
 
     public int load(List<Schema> batch) {
@@ -110,7 +106,7 @@ public final class IWanSchemasLoader {
     }
 
     private Optional<Multimap<String, Node>> applySchema(Schema schema) {
-        UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate(CUSTOMER_NAME + ':' + schema.customerId);
+        UniqueEntity<Node> uniqueEntity = null;//attributeFactory.getOrCreate(CUSTOMER_NAME + ':' + schema.customerId);
         Node customerNode = uniqueEntity.entity;
         boolean updateVersion;
         if (uniqueEntity.wasCreated) {
@@ -137,7 +133,7 @@ public final class IWanSchemasLoader {
         Multimap<String, Node> globalPlanets = HashMultimap.create();
         int realmMerged = 0;
         for (RealmTemplate realm : realms) {
-            UniqueEntity<Node> uniqueEntity = attributeFactory.getOrCreate("realm" + ':' + realm.name);
+            UniqueEntity<Node> uniqueEntity = null;//attributeFactory.getOrCreate("realm" + ':' + realm.name);
             Node realmNode = uniqueEntity.entity;
             Iterable<Relationship> relationships = realmNode.getRelationships(Direction.INCOMING, LINK_PROVIDED);
             for (Relationship relationship : relationships) {
@@ -158,7 +154,7 @@ public final class IWanSchemasLoader {
                     relationship.delete();
                 }
                 for (Counter counter : pathElement.counters) {
-                    UniqueEntity<Node> counterEntity = counterFactory.getOrCreate(counter.context + '@' + counter.name);
+                    UniqueEntity<Node> counterEntity = null;//counterFactory.getOrCreate(counter.context + '@' + counter.name);
                     Node counterNode = counterEntity.entity;
                     if (!counterEntity.wasCreated) {
                         counterNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
@@ -211,7 +207,7 @@ public final class IWanSchemasLoader {
     }
 
     private UniqueEntity<Node> setupPlanet(Set<Node> context, Planet planet) {
-        UniqueEntity<Node> uniqueEntity = planetFactory.getOrCreate(planet.name);
+        UniqueEntity<Node> uniqueEntity = null;//planetFactory.getOrCreate(planet.name);
         Node planetNode = uniqueEntity.entity;
         if (!uniqueEntity.wasCreated) {
             planetNode.setProperty(UPDATED_AT, Instant.now().toEpochMilli());
@@ -219,9 +215,9 @@ public final class IWanSchemasLoader {
         planetNode.setProperty("path", planet.path);
         Set<Node> planetAttributes = Sets.newHashSet(context);
         Attribute planetKeyAttribute = planet.keyAttribute;
-        Node planetKeyAttributeNode = attributeFactory.getOrCreate(planetKeyAttribute.type + ':' + planetKeyAttribute.name).entity;
+        Node planetKeyAttributeNode = null;//attributeFactory.getOrCreate(planetKeyAttribute.type + ':' + planetKeyAttribute.name).entity;
         for (Attribute attribute : planet.attributes) {
-            Node node = attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
+            Node node = null;//attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
             planetAttributes.add(node);
         }
         Iterable<Relationship> relationships = planetNode.getRelationships(Direction.OUTGOING, LINK_ATTRIBUTE);
@@ -241,7 +237,7 @@ public final class IWanSchemasLoader {
     private Set<Node> setupContext(Set<Attribute> attributes) {
         Set<Node> context = Sets.newHashSet();
         for (Attribute attribute : attributes) {
-            Node node = attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
+            Node node = null;//attributeFactory.getOrCreate(attribute.type + ':' + attribute.name).entity;
             context.add(node);
         }
         LOGGER.debug("\t{} context attribute(s) merged.", attributes);
@@ -249,13 +245,13 @@ public final class IWanSchemasLoader {
     }
 
     private void mergeScope(Schema schema) {
-        UniqueEntity<Node> uniqueEntity = scopeNetworkElementFactory.getOrCreate(schema.scope);
+        UniqueEntity<Node> uniqueEntity = null;//scopeNetworkElementFactory.getOrCreate(schema.scope);
         Node node = uniqueEntity.entity;
         if (uniqueEntity.wasCreated) {
             node.setProperty(_TYPE, CUSTOMER_TYPE + ':' + CUSTOMER_NAME);
             node.addLabel(LABEL_ELEMENT);
             node.addLabel(LABEL_SCOPE);
-            UniqueEntity<Node> parentScope = scopeNetworkElementFactory.getOrCreate(IwanModelConstants.SCOPE_SP_TAG);
+            UniqueEntity<Node> parentScope = null;//scopeNetworkElementFactory.getOrCreate(IwanModelConstants.SCOPE_SP_TAG);
             parentScope.entity.createRelationshipTo(node, IwanModelConstants.LINK_CONNECT);
         } else {
             node.setProperty(UPDATED_AT, Instant.now().toEpochMilli());

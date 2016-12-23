@@ -1,9 +1,9 @@
-package com.livingobjects.neo4j.iwan.model.schema.factories;
+package com.livingobjects.neo4j.iwan.model;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
 import com.google.common.collect.UnmodifiableIterator;
-import com.livingobjects.neo4j.iwan.model.CacheIndexedElementFactory;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
@@ -11,10 +11,15 @@ import org.neo4j.graphdb.Node;
 
 import java.time.Instant;
 import java.util.Iterator;
+import java.util.Map;
 
 import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.CREATED_AT;
 
-public class CustomNodeFactory extends CacheIndexedElementFactory<ImmutableSet<String>> {
+public final class CacheNodeFactory {
+
+    public final Map<ImmutableSet<String>, Node> nodesByKeys = Maps.newHashMap();
+
+    public final GraphDatabaseService graphDB;
 
     public final Label label;
 
@@ -22,37 +27,39 @@ public class CustomNodeFactory extends CacheIndexedElementFactory<ImmutableSet<S
 
     public final ImmutableSet<String> keys;
 
-    public CustomNodeFactory(GraphDatabaseService graphDB, ImmutableList<String> labels, ImmutableSet<String> keys) {
-        super(graphDB);
+    public static CacheNodeFactory of(GraphDatabaseService graphDB, ImmutableList<String> labels, ImmutableSet<String> keys) {
         if (labels.isEmpty()) {
             throw new IllegalArgumentException("At least one label is required to create nodes");
         }
-        this.label = DynamicLabel.label(labels.get(0));
+        Label label = DynamicLabel.label(labels.get(0));
         ImmutableList.Builder<Label> extraLabelsBuilder = ImmutableList.builder();
         for (int index = 1; index < labels.size(); index++) {
             String extraLabel = labels.get(index);
             extraLabelsBuilder.add(DynamicLabel.label(extraLabel));
         }
-        this.extraLabels = extraLabelsBuilder.build();
+        ImmutableList<Label> extraLabels = extraLabelsBuilder.build();
+        return new CacheNodeFactory(label, graphDB, extraLabels, keys);
+    }
+
+    public CacheNodeFactory(Label label, GraphDatabaseService graphDB, ImmutableList<Label> extraLabels, ImmutableSet<String> keys) {
+        this.label = label;
+        this.graphDB = graphDB;
+        this.extraLabels = extraLabels;
         this.keys = keys;
+        initialLoad();
     }
 
-    @Override
-    protected Iterator<Node> initialLoad() {
-        return graphDB.findNodes(label);
-    }
-
-    @Override
-    protected ImmutableSet<String> readNode(Node node) {
+    private ImmutableSet<String> readNode(Node node) {
         ImmutableSet.Builder<String> values = ImmutableSet.builder();
         for (String key : keys) {
             String value = getNullableStringProperty(node, key);
-            values.add(value);
+            if (value != null) {
+                values.add(value);
+            }
         }
         return values.build();
     }
 
-    @Override
     protected Node createNode(ImmutableSet<String> keyValues) {
         if (!keyValues.isEmpty()) {
             Node node = graphDB.createNode();
@@ -75,5 +82,32 @@ public class CustomNodeFactory extends CacheIndexedElementFactory<ImmutableSet<S
         } else {
             throw new IllegalArgumentException("Empty keyValues : cannot create node");
         }
+    }
+
+    private void initialLoad() {
+        Iterator<Node> nodes = graphDB.findNodes(label);
+        while (nodes.hasNext()) {
+            Node node = nodes.next();
+            ImmutableSet<String> keys = readNode(node);
+            if (keys != null) {
+                nodesByKeys.put(keys, node);
+            }
+        }
+    }
+
+    public UniqueEntity<Node> getOrCreate(ImmutableSet<String> keys) {
+        Node node = nodesByKeys.get(keys);
+        if (node == null) {
+            node = createNode(keys);
+            nodesByKeys.put(keys, node);
+            return UniqueEntity.created(node);
+        } else {
+            return UniqueEntity.existing(node);
+        }
+    }
+
+    private String getNullableStringProperty(Node node, String propertyName) {
+        Object prop = node.getProperty(propertyName, null);
+        return (prop == null) ? null : prop.toString();
     }
 }
