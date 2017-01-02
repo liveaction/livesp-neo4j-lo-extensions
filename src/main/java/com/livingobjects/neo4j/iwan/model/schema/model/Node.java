@@ -6,8 +6,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.Objects;
+import java.util.Optional;
 
 public final class Node {
+
+    public final Optional<String> id;
 
     public final ImmutableList<String> labels;
 
@@ -17,7 +20,8 @@ public final class Node {
 
     public final ImmutableSet<Relationships> relationships;
 
-    public Node(ImmutableList<String> labels, ImmutableMap<String, String> keys, ImmutableSet<Property> properties, ImmutableSet<Relationships> relationships) {
+    public Node(Optional<String> id, ImmutableList<String> labels, ImmutableMap<String, String> keys, ImmutableSet<Property> properties, ImmutableSet<Relationships> relationships) {
+        this.id = id;
         this.labels = labels;
         this.keys = keys;
         this.properties = properties;
@@ -29,7 +33,8 @@ public final class Node {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Node node = (Node) o;
-        return Objects.equals(labels, node.labels) &&
+        return Objects.equals(id, node.id) &&
+                Objects.equals(labels, node.labels) &&
                 Objects.equals(keys, node.keys) &&
                 Objects.equals(properties, node.properties) &&
                 Objects.equals(relationships, node.relationships);
@@ -37,12 +42,13 @@ public final class Node {
 
     @Override
     public int hashCode() {
-        return Objects.hash(labels, keys, properties, relationships);
+        return Objects.hash(id, labels, keys, properties, relationships);
     }
 
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
+                .add("id", id)
                 .add("labels", labels)
                 .add("keys", keys)
                 .add("properties", properties)

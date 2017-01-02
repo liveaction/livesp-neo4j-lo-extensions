@@ -1,14 +1,14 @@
 package com.livingobjects.neo4j.iwan.model.schema;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.livingobjects.neo4j.iwan.model.schema.model.Graph;
 import com.livingobjects.neo4j.iwan.model.schema.model.Node;
 import com.livingobjects.neo4j.iwan.model.schema.model.Property;
+import com.livingobjects.neo4j.iwan.model.schema.model.Relationship;
 import com.livingobjects.neo4j.iwan.model.schema.model.Relationships;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaTemplate;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
@@ -16,29 +16,21 @@ import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public final class XMLSchemaTemplateHandler extends DefaultHandler {
 
     private String name;
-
     private SchemaVersion version;
+    private Node templateNode;
+    private final Set<Node> nodes = Sets.newHashSet();
 
-    private final Map<String, PendingNode> nodesByIds = Maps.newHashMap();
+    private NodeBuilder templateNodeBuilder;
+    private NodeBuilder currentNodeBuilder;
+    private RelationshipsBuilder currentRelationshipsBuilder;
 
-    private PendingNode templateNode;
-
-    private PendingNode currentNode;
-
-    private PendingRelationships currentRelationships;
-
-    public final Set<PendingNode> nodes = Sets.newHashSet();
-
-    public final Set<PendingRelationships> relationships = Sets.newHashSet();
-
-    public class PendingNode {
+    public class NodeBuilder {
 
         public final Optional<String> id;
 
@@ -48,38 +40,34 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
 
         public final Set<Property> properties = Sets.newHashSet();
 
-        public final Set<PendingRelationships> relationships = Sets.newHashSet();
+        public final Set<Relationships> relationships = Sets.newHashSet();
 
-        public PendingNode(Optional<String> id, ImmutableList<String> labels, ImmutableMap<String, String> keys) {
+        public NodeBuilder(Optional<String> id, ImmutableList<String> labels, ImmutableMap<String, String> keys) {
             this.id = id;
             this.labels = labels;
             this.keys = keys;
         }
-    }
 
-    public class PendingRelationships {
-
-        public final String type;
-
-        public final Relationships.Direction to;
-
-        public final Set<PendingRelationship> relationships = Sets.newHashSet();
-
-        public PendingRelationships(String type, Relationships.Direction to) {
-            this.type = type;
-            this.to = to;
+        public Node build() {
+            return new Node(id, labels, keys, ImmutableSet.copyOf(properties), ImmutableSet.copyOf(relationships));
         }
     }
 
-    public class PendingRelationship {
+    public class RelationshipsBuilder {
 
-        public final String nodeRef;
+        public final String type;
 
-        public final ImmutableSet<Property> properties;
+        public final Relationships.Direction direction;
 
-        public PendingRelationship(String nodeRef, ImmutableSet<Property> properties) {
-            this.nodeRef = nodeRef;
-            this.properties = properties;
+        public final Set<Relationship> relationships = Sets.newHashSet();
+
+        public RelationshipsBuilder(String type, Relationships.Direction direction) {
+            this.type = type;
+            this.direction = direction;
+        }
+
+        public Relationships build() {
+            return new Relationships(type, direction, ImmutableSet.copyOf(relationships));
         }
     }
 
@@ -91,10 +79,10 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
                 version = SchemaVersion.of(attributes.getValue("version"));
                 break;
             case "templateNode":
-                templateNode = newNode(attributes);
+                templateNodeBuilder = newNode(attributes);
                 break;
             case "node":
-                currentNode = newNode(attributes);
+                currentNodeBuilder = newNode(attributes);
                 break;
             case "property":
                 String name = attributes.getValue("name");
@@ -103,19 +91,19 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
                         .map(Property.Type::valueOf)
                         .orElse(Property.Type.STRING);
                 Property property = new Property(name, value, type);
-                if (currentNode == null) {
-                    if (templateNode != null) {
-                        templateNode.properties.add(property);
+                if (currentNodeBuilder == null) {
+                    if (templateNodeBuilder != null) {
+                        templateNodeBuilder.properties.add(property);
                     }
                 } else {
-                    currentNode.properties.add(property);
+                    currentNodeBuilder.properties.add(property);
                 }
                 break;
             case "relationships":
-                currentRelationships = newPendingRelationships(attributes);
+                currentRelationshipsBuilder = newPendingRelationships(attributes);
                 break;
             case "relationship":
-                currentRelationships.relationships.add(newPendingRelationship(attributes));
+                currentRelationshipsBuilder.relationships.add(newRelationship(attributes));
                 break;
             case "section":
                 break;
@@ -128,41 +116,62 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
     public void endElement(String uri, String localName, String qName) throws SAXException {
         switch (qName) {
             case "templateNode":
-                templateNode.id.ifPresent(id -> nodesByIds.put(id, templateNode));
+                templateNode = templateNodeBuilder.build();
                 nodes.add(templateNode);
-                templateNode = null;
+                templateNodeBuilder = null;
                 break;
             case "relationships":
-                relationships.add(currentRelationships);
-                currentRelationships = null;
+                if (currentNodeBuilder == null) {
+                    if (templateNodeBuilder != null) {
+                        templateNodeBuilder.relationships.add(currentRelationshipsBuilder.build());
+                    }
+                } else {
+                    currentNodeBuilder.relationships.add(currentRelationshipsBuilder.build());
+                }
+                currentRelationshipsBuilder = null;
                 break;
             case "node":
-                currentNode.id.ifPresent(id -> nodesByIds.put(id, currentNode));
-                nodes.add(currentNode);
-                currentNode = null;
+                Node node = currentNodeBuilder.build();
+                nodes.add(node);
+                currentNodeBuilder = null;
         }
     }
 
-    private PendingRelationships newPendingRelationships(Attributes attributes) {
+    private RelationshipsBuilder newPendingRelationships(Attributes attributes) {
         String type = attributes.getValue("type");
         Relationships.Direction direction = Relationships.Direction.valueOf(attributes.getValue("direction"));
-        return new PendingRelationships(type, direction);
+        return new RelationshipsBuilder(type, direction);
     }
 
-    private PendingRelationship newPendingRelationship(Attributes attributes) {
+    private Relationship newRelationship(Attributes attributes) throws SAXException {
         String nodeRef = attributes.getValue("node");
+        if (nodeRef == null) {
+            throw new SAXException("The relationship must have a valid node reference. Parent node " + displayCurrentNode());
+        }
         ImmutableSet.Builder<Property> propertiesBuilder = ImmutableSet.builder();
         for (int index = 0; index < attributes.getLength(); index++) {
             String attributeName = attributes.getQName(index);
-            if (!attributeName.equals("type") && !attributeName.equals("from") && !attributeName.equals("to")) {
+            if (!attributeName.equals("node")) {
                 String value = attributes.getValue(index);
                 propertiesBuilder.add(new Property(attributeName, value, Property.Type.STRING));
             }
         }
-        return new PendingRelationship(nodeRef, propertiesBuilder.build());
+        return new Relationship(nodeRef, propertiesBuilder.build());
     }
 
-    private PendingNode newNode(Attributes attributes) {
+    private String displayCurrentNode() {
+        return templateNodeBuilder != null ?
+                templateNodeBuilder.id.orElse(MoreObjects.toStringHelper(templateNodeBuilder)
+                        .add("labels", templateNodeBuilder.labels)
+                        .add("keys", templateNodeBuilder.keys)
+                        .toString()) :
+                currentNodeBuilder.id.orElse(MoreObjects.toStringHelper(currentNodeBuilder)
+                        .add("labels", currentNodeBuilder.labels)
+                        .add("keys", currentNodeBuilder.keys)
+                        .toString());
+    }
+
+    private NodeBuilder newNode(Attributes attributes) {
         Optional<String> id = Optional.ofNullable(attributes.getValue("_id"));
         String labelsAttr = attributes.getValue("labels");
         ImmutableList<String> labels = ImmutableList.copyOf(Splitter.on(',').omitEmptyStrings().splitToList(labelsAttr));
@@ -174,29 +183,14 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
                 keysBuilder.put(attributeName, value);
             }
         }
-        return new PendingNode(id, labels, keysBuilder.build());
+        return new NodeBuilder(id, labels, keysBuilder.build());
     }
 
     public SchemaTemplate getTemplate() throws SAXException {
         if (templateNode == null) {
             throw new SAXException("templateNode element is required");
         }
-        ImmutableSet.Builder<Relationship> relationships = ImmutableSet.builder();
-        for (PendingRelationship pendingRelationship : pendingGraph.relationships) {
-            Node from = nodesByIds.get(pendingRelationship.from);
-            Node to = nodesByIds.get(pendingRelationship.to);
-            if (from != null && to != null) {
-                relationships.add(new Relationship(from, to, pendingRelationship.type, pendingRelationship.properties));
-            }
-        }
-        ImmutableSet.Builder<Node> templateNodes = ImmutableSet.builder();
-        Node node = buildNode(templateNode);
-        return new SchemaTemplate(name, version, templateNode, templateNodes);
-    }
-
-    private Node buildNode(PendingNode templateNode) {
-
-        return new Node(templateNode.labels, templateNode.keys, ImmutableSet.copyOf(templateNode.properties), relationships);
+        return new SchemaTemplate(name, version, templateNode, ImmutableSet.copyOf(nodes));
     }
 
 }

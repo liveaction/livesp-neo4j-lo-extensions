@@ -5,12 +5,14 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.CacheNodeFactory;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.iwan.model.schema.model.Node;
 import com.livingobjects.neo4j.iwan.model.schema.model.Property;
+import com.livingobjects.neo4j.iwan.model.schema.model.Relationships;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaTemplate;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
 import org.neo4j.graphdb.Direction;
@@ -34,6 +36,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public final class SchemaTemplateLoader {
 
@@ -66,6 +69,7 @@ public final class SchemaTemplateLoader {
 
                 if (updated % 100 == 0) {
                     committed = commitTx(updated, committed, tx);
+                    updated = 0;
                     tx = graphDB.beginTx();
                 }
 
@@ -89,15 +93,50 @@ public final class SchemaTemplateLoader {
         UniqueEntity<org.neo4j.graphdb.Node> templateNode = createNode(template.templateNode, header, line);
 
         if (shouldApplyTemplate(template, templateNode)) {
-            Node templateVersionNode = new Node(ImmutableList.of("Template"), ImmutableMap.of("name", template.name, "version", template.version.toString()), ImmutableSet.of());
-            CacheNodeFactory factory = nodeFactory(templateVersionNode);
-            UniqueEntity<org.neo4j.graphdb.Node> node = factory.getOrCreate(ImmutableSet.of(template.name, template.version.toString()));
-            node.entity.createRelationshipTo(templateNode.entity, APPLIED_TO_LINK);
+            createAndLinkTemplateVersion(template, templateNode);
+
+            Map<String, org.neo4j.graphdb.Node> identifiedNodes = Maps.newHashMap();
+            Set<CreatedNode> nodeWithRelationships = Sets.newHashSet();
+            for (Node node : template.nodes) {
+                UniqueEntity<org.neo4j.graphdb.Node> entity = createNode(node, header, line);
+                node.id.ifPresent(id -> identifiedNodes.put(id, entity.entity));
+                if (!node.relationships.isEmpty()) {
+                    nodeWithRelationships.add(new CreatedNode(node, entity.entity));
+                }
+            }
+
+            for (CreatedNode node : nodeWithRelationships) {
+                for (Relationships relationships : node.node.relationships) {
+                    DynamicRelationshipType relationshipType = DynamicRelationshipType.withName(relationships.type);
+                    Iterable<Relationship> existingRelationship = node.createdNode.getRelationships(relationshipType, relationships.direction.neo4jDirection);
+                    for (Relationship relationship : existingRelationship) {
+                        relationship.delete();
+                    }
+                    for (com.livingobjects.neo4j.iwan.model.schema.model.Relationship relationshipToCreate : relationships.relationships) {
+                        org.neo4j.graphdb.Node otherSideNode = identifiedNodes.get(relationshipToCreate.node);
+                        if (otherSideNode == null) {
+                            throw new IllegalStateException("Unable to create relationship involving node '" + relationshipToCreate.node + "' because this node is not found in template file.");
+                        } else {
+                            if (relationships.direction == Relationships.Direction.incoming) {
+                                otherSideNode.createRelationshipTo(node.createdNode, relationshipType);
+                            } else {
+                                node.createdNode.createRelationshipTo(otherSideNode, relationshipType);
+                            }
+                        }
+                    }
+                }
+            }
 
             return true;
         } else {
             return false;
         }
+    }
+
+    private void createAndLinkTemplateVersion(SchemaTemplate template, UniqueEntity<org.neo4j.graphdb.Node> templateNode) {
+        CacheNodeFactory factory = nodeFactory(ImmutableList.of("Template"), ImmutableSet.of("name", "version"));
+        UniqueEntity<org.neo4j.graphdb.Node> node = factory.getOrCreate(ImmutableSet.of(template.name, template.version.toString()));
+        node.entity.createRelationshipTo(templateNode.entity, APPLIED_TO_LINK);
     }
 
     private boolean shouldApplyTemplate(SchemaTemplate template, UniqueEntity<org.neo4j.graphdb.Node> templateNode) {
@@ -132,7 +171,7 @@ public final class SchemaTemplateLoader {
     }
 
     private UniqueEntity<org.neo4j.graphdb.Node> createNode(Node node, ImmutableMap<String, Integer> header, String[] line) {
-        CacheNodeFactory factory = nodeFactory(node);
+        CacheNodeFactory factory = nodeFactory(node.labels, node.keys.keySet());
 
         ImmutableSet.Builder<String> transformedKeys = ImmutableSet.builder();
         for (Map.Entry<String, String> keyProperty : node.keys.entrySet()) {
@@ -181,10 +220,9 @@ public final class SchemaTemplateLoader {
         return headerBuilder.build();
     }
 
-    private CacheNodeFactory nodeFactory(Node node) {
-        ImmutableSet<String> keys = node.keys.keySet();
-        NodeType nodeType = new NodeType(node.labels, keys);
-        return nodeFactories.computeIfAbsent(nodeType, k -> CacheNodeFactory.of(graphDB, node.labels, keys));
+    private CacheNodeFactory nodeFactory(ImmutableList<String> labels, ImmutableSet<String> keys) {
+        NodeType nodeType = new NodeType(labels, keys);
+        return nodeFactories.computeIfAbsent(nodeType, k -> CacheNodeFactory.of(graphDB, labels, keys));
     }
 
     private final class NodeType {
@@ -210,6 +248,16 @@ public final class SchemaTemplateLoader {
             return Objects.hash(labels, keys);
         }
 
+    }
+
+    private final class CreatedNode {
+        public final Node node;
+        public final org.neo4j.graphdb.Node createdNode;
+
+        public CreatedNode(Node node, org.neo4j.graphdb.Node createdNode) {
+            this.node = node;
+            this.createdNode = createdNode;
+        }
     }
 
 }

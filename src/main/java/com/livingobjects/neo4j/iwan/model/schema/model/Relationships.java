@@ -6,7 +6,17 @@ import java.util.Objects;
 
 public final class Relationships {
 
-    public enum Direction {incoming, outgoing}
+    public enum Direction {
+
+        incoming(org.neo4j.graphdb.Direction.INCOMING), outgoing(org.neo4j.graphdb.Direction.OUTGOING);
+
+        public final org.neo4j.graphdb.Direction neo4jDirection;
+
+        Direction(org.neo4j.graphdb.Direction neo4jDirection) {
+            this.neo4jDirection = neo4jDirection;
+        }
+
+    }
 
     public final String type;
 
