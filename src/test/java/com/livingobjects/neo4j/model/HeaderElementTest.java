@@ -22,7 +22,7 @@ public final class HeaderElementTest {
             "(neType:interface" + ELEMENT_SEPARATOR + "neType:cos).id:NUMBER, id, NUMBER, false, neType:interface, neType:cos",
     })
     public void shouldReadCsvHeader(
-            String header, String expectedProperty, HeaderElement.Type expectedType, boolean expectedIsArray,
+            String header, String expectedProperty, PropertyType expectedType, boolean expectedIsArray,
             String... expectedName) throws Exception {
 
         HeaderElement actual = HeaderElement.of(header, 1);

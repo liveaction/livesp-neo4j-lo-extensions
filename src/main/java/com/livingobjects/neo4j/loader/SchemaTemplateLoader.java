@@ -6,12 +6,13 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.CacheNodeFactory;
+import com.livingobjects.neo4j.helper.CacheNodeLoader;
+import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.livingobjects.neo4j.helper.StringTemplate;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.model.header.HeaderElement;
-import com.livingobjects.neo4j.helper.CacheNodeFactory;
-import com.livingobjects.neo4j.helper.CacheNodeLoader;
-import com.livingobjects.neo4j.helper.StringTemplate;
 import com.livingobjects.neo4j.model.schema.Property;
 import com.livingobjects.neo4j.model.schema.SchemaTemplate;
 import com.livingobjects.neo4j.model.schema.SchemaVersion;
@@ -235,16 +236,19 @@ public final class SchemaTemplateLoader {
         }
 
         UniqueEntity<org.neo4j.graphdb.Node> entity = factory.getOrCreate(transformedKeys.build());
-        if (entity.wasCreated) {
-            setProperties(node.properties, header, line, entity.entity);
-        }
+        setProperties(node.properties, header, line, entity.entity);
         return entity;
     }
 
     private void setProperties(ImmutableSet<Property> properties, ImmutableMap<String, Integer> header, String[] line, PropertyContainer entity) {
         for (Property property : properties) {
             String value = StringTemplate.template(property.value, header, line);
-            entity.setProperty(property.name, value);
+            Object propertyValue = PropertyConverter.convert(value, property.type, property.isArray);
+            if (propertyValue != null) {
+                entity.setProperty(property.name, propertyValue);
+            } else {
+                entity.removeProperty(property.name);
+            }
         }
     }
 

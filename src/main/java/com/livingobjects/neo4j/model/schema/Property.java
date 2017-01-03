@@ -1,23 +1,25 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
+import com.livingobjects.neo4j.model.PropertyType;
 
 import java.util.Objects;
 
 public final class Property {
 
-    public enum Type {STRING, NUMBER, BOOLEAN}
-
     public final String name;
 
     public final String value;
 
-    public final Type type;
+    public final PropertyType type;
 
-    public Property(String name, String value, Type type) {
+    public final boolean isArray;
+
+    public Property(String name, String value, PropertyType type, boolean isArray) {
         this.name = name;
         this.value = value;
         this.type = type;
+        this.isArray = isArray;
     }
 
     @Override
@@ -25,14 +27,15 @@ public final class Property {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Property property = (Property) o;
-        return Objects.equals(name, property.name) &&
+        return isArray == property.isArray &&
+                Objects.equals(name, property.name) &&
                 Objects.equals(value, property.value) &&
-                Objects.equals(type, property.type);
+                type == property.type;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, value, type);
+        return Objects.hash(name, value, type, isArray);
     }
 
     @Override
@@ -41,6 +44,7 @@ public final class Property {
                 .add("name", name)
                 .add("value", value)
                 .add("type", type)
+                .add("isArray", isArray)
                 .toString();
     }
 }

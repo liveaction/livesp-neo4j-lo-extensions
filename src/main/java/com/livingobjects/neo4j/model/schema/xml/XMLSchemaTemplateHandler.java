@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.model.PropertyType;
 import com.livingobjects.neo4j.model.schema.Node;
 import com.livingobjects.neo4j.model.schema.Property;
 import com.livingobjects.neo4j.model.schema.SchemaTemplate;
@@ -46,10 +47,15 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
             case "property":
                 String name = attributes.getValue("name");
                 String value = attributes.getValue("value");
-                Property.Type type = Optional.ofNullable(attributes.getValue("type"))
-                        .map(Property.Type::valueOf)
-                        .orElse(Property.Type.STRING);
-                Property property = new Property(name, value, type);
+                PropertyType type = Optional.ofNullable(attributes.getValue("type"))
+                        .map(PropertyType::valueOf)
+                        .orElse(PropertyType.STRING);
+                String isArrayAttribute = attributes.getValue("isArray");
+                boolean isArray = false;
+                if (isArrayAttribute != null) {
+                    isArray = Boolean.valueOf(isArrayAttribute);
+                }
+                Property property = new Property(name, value, type, isArray);
                 if (currentNodeBuilder == null) {
                     if (templateNodeBuilder != null) {
                         templateNodeBuilder.properties.add(property);
@@ -122,7 +128,7 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
             String attributeName = attributes.getQName(index);
             if (!attributeName.equals("node") && !attributeName.equals("cypher")) {
                 String value = attributes.getValue(index);
-                propertiesBuilder.add(new Property(attributeName, value, Property.Type.STRING));
+                propertiesBuilder.add(new Property(attributeName, value, PropertyType.STRING, false));
             }
         }
         if (nodeRef != null) {

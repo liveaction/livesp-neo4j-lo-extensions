@@ -9,18 +9,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.google.common.primitives.Booleans;
-import com.google.common.primitives.Doubles;
-import com.google.common.primitives.Floats;
-import com.google.common.primitives.Ints;
-import com.google.common.primitives.Longs;
-import com.google.common.primitives.Shorts;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
-import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.model.exception.ImportException;
@@ -30,9 +22,8 @@ import com.livingobjects.neo4j.model.header.HeaderElement;
 import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
-import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
+import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -48,8 +39,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -61,15 +50,6 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 
 public final class IWanTopologyLoader {
-
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-    private static final TypeReference STRING_LIST_TYPE = new TypeReference<List<String>>() {
-    };
-    private static final TypeReference BOOLEAN_LIST_TYPE = new TypeReference<List<Boolean>>() {
-    };
-    private static final TypeReference DOUBLE_LIST_TYPE = new TypeReference<List<Number>>() {
-    };
 
     private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
     private static final int MAX_TRANSACTION_COUNT = 500;
@@ -476,23 +456,8 @@ public final class IWanTopologyLoader {
     }
 
     private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, String[] line, T elementNode) {
-        Object value;
         String field = line[header.index];
-        try {
-            switch (header.type) {
-                case BOOLEAN:
-                    value = readBooleanField(header, field);
-                    break;
-                case NUMBER:
-                    value = readNumberField(header, field);
-                    break;
-                default:
-                    value = readStringField(header, field);
-            }
-        } catch (Exception ignored) {
-            LOGGER.debug("Unable to parse value " + field + " as " + header.type);
-            value = field;
-        }
+        Object value = PropertyConverter.convert(field, header.type, header.isArray);
         if (value != null) {
             elementNode.setProperty(header.propertyName, value);
         } else {
@@ -567,60 +532,4 @@ public final class IWanTopologyLoader {
         return bldr;
     }
 
-    private static Object readStringField(HeaderElement header, String field) throws IOException {
-        if (field != null && !field.trim().isEmpty()) {
-            if (header.isArray) {
-                return Iterables.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE), String.class);
-            } else {
-                return field;
-            }
-        } else {
-            return null;
-        }
-    }
-
-    private static Object readBooleanField(HeaderElement header, String field) throws IOException {
-        if (field != null && !field.trim().isEmpty()) {
-            if (header.isArray) {
-                return Booleans.toArray(JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE));
-            } else {
-                return Boolean.parseBoolean(field);
-            }
-        } else {
-            return null;
-        }
-    }
-
-    private static Object readNumberField(HeaderElement header, String field) throws IOException {
-        if (field != null && !field.trim().isEmpty()) {
-            if (header.isArray) {
-                Collection<? extends Number> numbers = JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
-                Iterator<? extends Number> iterator = numbers.iterator();
-                if (iterator.hasNext()) {
-                    Number next = iterator.next();
-                    if (next instanceof Short) {
-                        return Shorts.toArray(numbers);
-                    } else if (next instanceof Integer) {
-                        return Ints.toArray(numbers);
-                    } else if (next instanceof Long) {
-                        return Longs.toArray(numbers);
-                    } else if (next instanceof Float) {
-                        return Floats.toArray(numbers);
-                    } else {
-                        return Doubles.toArray(numbers);
-                    }
-                } else {
-                    return new int[0];
-                }
-            } else {
-                try {
-                    return JSON_MAPPER.readValue(field, Number.class);
-                } catch (JsonMappingException e) {
-                    return null;
-                }
-            }
-        } else {
-            return null;
-        }
-    }
 }

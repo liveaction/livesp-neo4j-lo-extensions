@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.livingobjects.neo4j.model.header.HeaderElement;
+import com.livingobjects.neo4j.model.PropertyType;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import org.neo4j.graphdb.Node;
 
@@ -67,11 +67,11 @@ public final class Lineages {
 
     public static String getSimpleType(Class<?> clazz) {
         if (Number.class.isAssignableFrom(clazz)) {
-            return HeaderElement.Type.NUMBER.name();
+            return PropertyType.NUMBER.name();
         } else if (Boolean.class.isAssignableFrom(clazz)) {
-            return HeaderElement.Type.BOOLEAN.name();
+            return PropertyType.BOOLEAN.name();
         } else {
-            return HeaderElement.Type.STRING.name();
+            return PropertyType.STRING.name();
         }
     }
 

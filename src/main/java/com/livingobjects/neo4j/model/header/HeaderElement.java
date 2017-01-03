@@ -1,5 +1,7 @@
 package com.livingobjects.neo4j.model.header;
 
+import com.livingobjects.neo4j.model.PropertyType;
+
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,15 +16,13 @@ public abstract class HeaderElement {
             "\\(?(?<name>" + NAME_PATTERN + ")(" + ELEMENT_SEPARATOR + "?(?<target>" + NAME_PATTERN + ")\\))?\\.(?<prop>" + PROP_PATTERN + "):?(?<type>" + TYPE_PATTERN + ")?(?<isArray>" + ARRAY_PATTERN + ")?",
             Pattern.UNICODE_CHARACTER_CLASS);
 
-    public enum Type {STRING, NUMBER, BOOLEAN}
-
     public final String elementName;
     public final String propertyName;
-    public final Type type;
+    public final PropertyType type;
     public final boolean isArray;
     public final int index;
 
-    HeaderElement(String elementName, String propertyName, Type type, boolean isArray, int idx) {
+    HeaderElement(String elementName, String propertyName, PropertyType type, boolean isArray, int idx) {
         this.elementName = elementName;
         this.propertyName = propertyName;
         this.type = type;
@@ -39,10 +39,10 @@ public abstract class HeaderElement {
         String name = m.group("name");
         String target = m.group("target");
         String prop = m.group("prop");
-        Type type = Optional.ofNullable(m.group("type"))
+        PropertyType type = Optional.ofNullable(m.group("type"))
                 .map(String::toUpperCase)
-                .map(Type::valueOf)
-                .orElse(Type.STRING);
+                .map(PropertyType::valueOf)
+                .orElse(PropertyType.STRING);
         boolean isArray = m.group("isArray") != null;
 
         if (target != null) {
@@ -58,6 +58,7 @@ public abstract class HeaderElement {
 
     public interface Visitor<R> {
         R visitSimple(SimpleElementHeader header);
+
         R visitMulti(MultiElementHeader header);
     }
 }
