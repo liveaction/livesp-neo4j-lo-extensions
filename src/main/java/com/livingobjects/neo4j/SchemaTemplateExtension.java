@@ -1,7 +1,8 @@
 package com.livingobjects.neo4j;
 
-import com.livingobjects.neo4j.iwan.model.exception.SchemaTemplateException;
-import com.livingobjects.neo4j.iwan.model.schema.SchemaTemplateLoader;
+import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
+import com.livingobjects.neo4j.loader.SchemaTemplateLoader;
+import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.neo4j.graphdb.GraphDatabaseService;
