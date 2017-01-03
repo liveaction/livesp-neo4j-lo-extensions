@@ -4,6 +4,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationships;
 
 import java.util.Objects;
 import java.util.Optional;

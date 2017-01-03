@@ -49,7 +49,6 @@ public class SchemaTemplateExtension {
                  InputStream xmlInputStream = new FileInputStream(xml)) {
                 SchemaTemplateLoader loader = new SchemaTemplateLoader(graphDb);
                 int appliedTemplate = loader.loadAndApplyTemplate(csvInputStream, xmlInputStream);
-                LOGGER.info("{} topology schemas updated.", appliedTemplate);
                 String json = JSON_MAPPER.writeValueAsString(appliedTemplate);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
             }

@@ -1,4 +1,4 @@
-package com.livingobjects.neo4j.iwan.model.schema;
+package com.livingobjects.neo4j.iwan.model.schema.xml;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Splitter;
@@ -8,10 +8,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.iwan.model.schema.model.Node;
 import com.livingobjects.neo4j.iwan.model.schema.model.Property;
-import com.livingobjects.neo4j.iwan.model.schema.model.Relationship;
-import com.livingobjects.neo4j.iwan.model.schema.model.Relationships;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaTemplate;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
+import com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationship;
+import com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationships;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
@@ -29,47 +29,6 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
     private NodeBuilder templateNodeBuilder;
     private NodeBuilder currentNodeBuilder;
     private RelationshipsBuilder currentRelationshipsBuilder;
-
-    public class NodeBuilder {
-
-        public final Optional<String> id;
-
-        public final ImmutableList<String> labels;
-
-        public final ImmutableMap<String, String> keys;
-
-        public final Set<Property> properties = Sets.newHashSet();
-
-        public final Set<Relationships> relationships = Sets.newHashSet();
-
-        public NodeBuilder(Optional<String> id, ImmutableList<String> labels, ImmutableMap<String, String> keys) {
-            this.id = id;
-            this.labels = labels;
-            this.keys = keys;
-        }
-
-        public Node build() {
-            return new Node(id, labels, keys, ImmutableSet.copyOf(properties), ImmutableSet.copyOf(relationships));
-        }
-    }
-
-    public class RelationshipsBuilder {
-
-        public final String type;
-
-        public final Relationships.Direction direction;
-
-        public final Set<Relationship> relationships = Sets.newHashSet();
-
-        public RelationshipsBuilder(String type, Relationships.Direction direction) {
-            this.type = type;
-            this.direction = direction;
-        }
-
-        public Relationships build() {
-            return new Relationships(type, direction, ImmutableSet.copyOf(relationships));
-        }
-    }
 
     @Override
     public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
@@ -134,29 +93,43 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
                 Node node = currentNodeBuilder.build();
                 nodes.add(node);
                 currentNodeBuilder = null;
+                break;
         }
     }
 
     private RelationshipsBuilder newPendingRelationships(Attributes attributes) {
         String type = attributes.getValue("type");
         Relationships.Direction direction = Relationships.Direction.valueOf(attributes.getValue("direction"));
-        return new RelationshipsBuilder(type, direction);
+        String replaceAttribute = attributes.getValue("replace");
+        boolean replace = true;
+        if (replaceAttribute != null) {
+            replace = Boolean.valueOf(replaceAttribute);
+        }
+        return new RelationshipsBuilder(type, direction, replace);
     }
 
     private Relationship newRelationship(Attributes attributes) throws SAXException {
         String nodeRef = attributes.getValue("node");
-        if (nodeRef == null) {
-            throw new SAXException("The relationship must have a valid node reference. Parent node " + displayCurrentNode());
+        String cypher = attributes.getValue("cypher");
+        if (nodeRef == null && cypher == null) {
+            throw new SAXException("The relationship must have an attribute 'node' or 'cypher'. Parent node : " + displayCurrentNode());
+        }
+        if (nodeRef != null && cypher != null) {
+            throw new SAXException("The relationship cannot have both 'node' and 'cypher' attribute. Parent node : " + displayCurrentNode());
         }
         ImmutableSet.Builder<Property> propertiesBuilder = ImmutableSet.builder();
         for (int index = 0; index < attributes.getLength(); index++) {
             String attributeName = attributes.getQName(index);
-            if (!attributeName.equals("node")) {
+            if (!attributeName.equals("node") && !attributeName.equals("cypher")) {
                 String value = attributes.getValue(index);
                 propertiesBuilder.add(new Property(attributeName, value, Property.Type.STRING));
             }
         }
-        return new Relationship(nodeRef, propertiesBuilder.build());
+        if (nodeRef != null) {
+            return Relationship.node(propertiesBuilder.build(), nodeRef);
+        } else {
+            return Relationship.cypher(propertiesBuilder.build(), cypher);
+        }
     }
 
     private String displayCurrentNode() {
@@ -191,6 +164,50 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
             throw new SAXException("templateNode element is required");
         }
         return new SchemaTemplate(name, version, templateNode, ImmutableSet.copyOf(nodes));
+    }
+
+    private class NodeBuilder {
+
+        public final Optional<String> id;
+
+        public final ImmutableList<String> labels;
+
+        public final ImmutableMap<String, String> keys;
+
+        public final Set<Property> properties = Sets.newHashSet();
+
+        public final Set<Relationships> relationships = Sets.newHashSet();
+
+        public NodeBuilder(Optional<String> id, ImmutableList<String> labels, ImmutableMap<String, String> keys) {
+            this.id = id;
+            this.labels = labels;
+            this.keys = keys;
+        }
+
+        public Node build() {
+            return new Node(id, labels, keys, ImmutableSet.copyOf(properties), ImmutableSet.copyOf(relationships));
+        }
+    }
+
+    private class RelationshipsBuilder {
+
+        public final String type;
+
+        public final Relationships.Direction direction;
+
+        public final boolean replace;
+
+        public final Set<Relationship> relationships = Sets.newHashSet();
+
+        public RelationshipsBuilder(String type, Relationships.Direction direction, boolean replace) {
+            this.type = type;
+            this.direction = direction;
+            this.replace = replace;
+        }
+
+        public Relationships build() {
+            return new Relationships(type, direction, replace, ImmutableSet.copyOf(relationships));
+        }
     }
 
 }

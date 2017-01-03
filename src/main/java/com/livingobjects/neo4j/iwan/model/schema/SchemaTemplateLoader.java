@@ -6,22 +6,25 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.livingobjects.neo4j.iwan.model.CacheNodeFactory;
 import com.livingobjects.neo4j.iwan.model.HeaderElement;
 import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import com.livingobjects.neo4j.iwan.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.iwan.model.schema.model.Node;
 import com.livingobjects.neo4j.iwan.model.schema.model.Property;
-import com.livingobjects.neo4j.iwan.model.schema.model.Relationships;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaTemplate;
 import com.livingobjects.neo4j.iwan.model.schema.model.SchemaVersion;
+import com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationships;
+import com.livingobjects.neo4j.iwan.model.schema.xml.XMLSchemaTemplateHandler;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
+import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
@@ -40,22 +43,31 @@ import java.util.Set;
 
 public final class SchemaTemplateLoader {
 
-    public static final DynamicRelationshipType APPLIED_TO_LINK = DynamicRelationshipType.withName("AppliedTo");
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateLoader.class);
+
+    private static final DynamicRelationshipType APPLIED_TO_LINK = DynamicRelationshipType.withName("AppliedTo");
+    public static final int SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION = 400;
+
     private final GraphDatabaseService graphDB;
 
     private final Map<NodeType, CacheNodeFactory> nodeFactories = Maps.newHashMap();
 
+    private final CacheNodeLoader cacheNodeLoader;
+
     public SchemaTemplateLoader(GraphDatabaseService graphDB) {
         this.graphDB = graphDB;
+        this.cacheNodeLoader = new CacheNodeLoader(graphDB);
     }
 
     public int loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException, IllegalStateException {
+        long time = System.currentTimeMillis();
         CSVReader reader = new CSVReader(new InputStreamReader(csv));
         ImmutableMap<String, Integer> header = readCsvHeader(reader);
 
         SchemaTemplate template = parseTemplate(xmlTemplate);
 
         int updated = 0;
+        int alreadyUpdated = 0;
         int committed = 0;
         String[] line = reader.readNext();
 
@@ -65,9 +77,11 @@ public final class SchemaTemplateLoader {
 
                 if (applyTemplate(template, header, line)) {
                     updated++;
+                } else {
+                    alreadyUpdated++;
                 }
 
-                if (updated % 100 == 0) {
+                if (updated > 0 && (updated % SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION) == 0) {
                     committed = commitTx(updated, committed, tx);
                     updated = 0;
                     tx = graphDB.beginTx();
@@ -75,9 +89,14 @@ public final class SchemaTemplateLoader {
 
                 line = reader.readNext();
             }
-        } finally {
-            committed = commitTx(updated, committed, tx);
+            if (updated > 0) {
+                committed = commitTx(updated, committed, tx);
+            }
+        } catch (Throwable e) {
+            tx.close();
+            throw e;
         }
+        LOGGER.info("{} topology schema(s) updated in {} ms. {} schema(s) already up to date.", committed, (System.currentTimeMillis() - time), alreadyUpdated);
         return committed;
     }
 
@@ -85,7 +104,9 @@ public final class SchemaTemplateLoader {
         tx.success();
         tx.close();
         nodeFactories.clear();
+        cacheNodeLoader.clear();
         committed += applied;
+        LOGGER.info("{} schema committed", committed);
         return committed;
     }
 
@@ -108,21 +129,39 @@ public final class SchemaTemplateLoader {
             for (CreatedNode node : nodeWithRelationships) {
                 for (Relationships relationships : node.node.relationships) {
                     DynamicRelationshipType relationshipType = DynamicRelationshipType.withName(relationships.type);
+                    Set<org.neo4j.graphdb.Node> alreadyLinkedNodes = Sets.newHashSet();
                     Iterable<Relationship> existingRelationship = node.createdNode.getRelationships(relationshipType, relationships.direction.neo4jDirection);
                     for (Relationship relationship : existingRelationship) {
-                        relationship.delete();
-                    }
-                    for (com.livingobjects.neo4j.iwan.model.schema.model.Relationship relationshipToCreate : relationships.relationships) {
-                        org.neo4j.graphdb.Node otherSideNode = identifiedNodes.get(relationshipToCreate.node);
-                        if (otherSideNode == null) {
-                            throw new IllegalStateException("Unable to create relationship involving node '" + relationshipToCreate.node + "' because this node is not found in template file.");
+                        if (relationships.replace) {
+                            relationship.delete();
                         } else {
                             if (relationships.direction == Relationships.Direction.incoming) {
-                                otherSideNode.createRelationshipTo(node.createdNode, relationshipType);
+                                alreadyLinkedNodes.add(relationship.getStartNode());
                             } else {
-                                node.createdNode.createRelationshipTo(otherSideNode, relationshipType);
+                                alreadyLinkedNodes.add(relationship.getEndNode());
                             }
                         }
+                    }
+                    for (com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationship relationshipToCreate : relationships.relationships) {
+                        relationshipToCreate.visit(new com.livingobjects.neo4j.iwan.model.schema.model.relationships.Relationship.Visitor() {
+                            @Override
+                            public void node(ImmutableSet<Property> properties, String relNode) {
+                                org.neo4j.graphdb.Node otherSideNode = identifiedNodes.get(relNode);
+                                if (otherSideNode == null) {
+                                    throw new IllegalStateException("Unable to create relationship involving node '" + relNode + "' because this node is not found in template file.");
+                                } else {
+                                    createRelationship(properties, otherSideNode, relationships, alreadyLinkedNodes, node, relationshipType, header, line);
+                                }
+                            }
+
+                            @Override
+                            public void cypher(ImmutableSet<Property> properties, String cypher) {
+                                ImmutableSet<org.neo4j.graphdb.Node> nodes = cacheNodeLoader.load(cypher);
+                                for (org.neo4j.graphdb.Node nodeToLink : nodes) {
+                                    createRelationship(properties, nodeToLink, relationships, alreadyLinkedNodes, node, relationshipType, header, line);
+                                }
+                            }
+                        });
                     }
                 }
             }
@@ -130,6 +169,18 @@ public final class SchemaTemplateLoader {
             return true;
         } else {
             return false;
+        }
+    }
+
+    private void createRelationship(ImmutableSet<Property> properties, org.neo4j.graphdb.Node otherSideNode, Relationships relationships, Set<org.neo4j.graphdb.Node> alreadyLinkedNodes, CreatedNode node, DynamicRelationshipType relationshipType, ImmutableMap<String, Integer> header, String[] line) {
+        if (relationships.replace || !alreadyLinkedNodes.contains(otherSideNode)) {
+            Relationship createdRelationship;
+            if (relationships.direction == Relationships.Direction.incoming) {
+                createdRelationship = otherSideNode.createRelationshipTo(node.createdNode, relationshipType);
+            } else {
+                createdRelationship = node.createdNode.createRelationshipTo(otherSideNode, relationshipType);
+            }
+            setProperties(properties, header, line, createdRelationship);
         }
     }
 
@@ -182,12 +233,16 @@ public final class SchemaTemplateLoader {
 
         UniqueEntity<org.neo4j.graphdb.Node> entity = factory.getOrCreate(transformedKeys.build());
         if (entity.wasCreated) {
-            for (Property property : node.properties) {
-                String value = StringTemplate.template(property.value, header, line);
-                entity.entity.setProperty(property.name, value);
-            }
+            setProperties(node.properties, header, line, entity.entity);
         }
         return entity;
+    }
+
+    private void setProperties(ImmutableSet<Property> properties, ImmutableMap<String, Integer> header, String[] line, PropertyContainer entity) {
+        for (Property property : properties) {
+            String value = StringTemplate.template(property.value, header, line);
+            entity.setProperty(property.name, value);
+        }
     }
 
     private SchemaTemplate parseTemplate(InputStream xmlTemplate) throws SchemaTemplateException {

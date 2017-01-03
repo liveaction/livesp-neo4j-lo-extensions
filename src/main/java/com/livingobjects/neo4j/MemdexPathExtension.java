@@ -95,7 +95,6 @@ public final class MemdexPathExtension {
                         jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
                     }
                 }
-
             }
 
             jg.writeEndObject();

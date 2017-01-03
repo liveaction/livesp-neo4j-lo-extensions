@@ -1,9 +1,10 @@
-package com.livingobjects.neo4j.iwan.model;
+package com.livingobjects.neo4j.iwan.model.schema;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.UnmodifiableIterator;
+import com.livingobjects.neo4j.iwan.model.UniqueEntity;
 import org.neo4j.graphdb.DynamicLabel;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
