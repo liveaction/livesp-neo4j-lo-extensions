@@ -7,9 +7,10 @@ import com.codahale.metrics.Slf4jReporter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.livingobjects.neo4j.iwan.model.IwanModelConstants;
-import com.livingobjects.neo4j.iwan.model.export.Lineage;
-import com.livingobjects.neo4j.iwan.model.export.Lineages;
+import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.export.Lineage;
+import com.livingobjects.neo4j.model.export.Lineages;
+import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
@@ -39,8 +40,8 @@ import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/export")
 public final class ExportCSVExtension {

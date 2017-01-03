@@ -3,7 +3,7 @@ package com.livingobjects.neo4j;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.iwan.model.MemdexPath;
+import com.livingobjects.neo4j.model.MemdexPath;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -33,7 +33,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/memdexpath")
 public final class MemdexPathExtension {
@@ -95,7 +95,6 @@ public final class MemdexPathExtension {
                         jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
                     }
                 }
-
             }
 
             jg.writeEndObject();

@@ -1,6 +1,6 @@
 package com.livingobjects.neo4j;
 
-import com.livingobjects.neo4j.iwan.model.export.Lineage;
+import com.livingobjects.neo4j.model.export.Lineage;
 
 public class LineageCardinalityException extends Throwable {
 
