@@ -6,11 +6,11 @@ import com.livingobjects.neo4j.model.schema.Property;
 
 import java.util.Objects;
 
-public final class CypherRelationship extends Relationship {
+public final class HookRelationship extends Relationship {
 
     public final String cypher;
 
-    CypherRelationship(ImmutableSet<Property> properties, String cypher) {
+    HookRelationship(ImmutableSet<Property> properties, String cypher) {
         super(properties);
         this.cypher = cypher;
     }
@@ -24,7 +24,7 @@ public final class CypherRelationship extends Relationship {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        CypherRelationship that = (CypherRelationship) o;
+        HookRelationship that = (HookRelationship) o;
         return Objects.equals(cypher, that.cypher);
     }
 

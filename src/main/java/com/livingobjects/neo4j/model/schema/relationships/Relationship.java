@@ -15,8 +15,8 @@ public abstract class Relationship {
         return new NodeRelationship(properties, node);
     }
 
-    public static CypherRelationship cypher(ImmutableSet<Property> properties, String cypher) {
-        return new CypherRelationship(properties, cypher);
+    public static HookRelationship cypher(ImmutableSet<Property> properties, String cypher) {
+        return new HookRelationship(properties, cypher);
     }
 
     public interface Visitor {

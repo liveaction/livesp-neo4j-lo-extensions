@@ -67,8 +67,11 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
             case "relationships":
                 currentRelationshipsBuilder = newPendingRelationships(attributes);
                 break;
+            case "relationshipHook":
+                currentRelationshipsBuilder.relationships.add(newRelationship(attributes, true));
+                break;
             case "relationship":
-                currentRelationshipsBuilder.relationships.add(newRelationship(attributes));
+                currentRelationshipsBuilder.relationships.add(newRelationship(attributes, false));
                 break;
             case "section":
                 break;
@@ -114,15 +117,8 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
         return new RelationshipsBuilder(type, direction, replace);
     }
 
-    private Relationship newRelationship(Attributes attributes) throws SAXException {
-        String nodeRef = attributes.getValue("node");
-        String cypher = attributes.getValue("cypher");
-        if (nodeRef == null && cypher == null) {
-            throw new SAXException("The relationship must have an attribute 'node' or 'cypher'. Parent node : " + displayCurrentNode());
-        }
-        if (nodeRef != null && cypher != null) {
-            throw new SAXException("The relationship cannot have both 'node' and 'cypher' attribute. Parent node : " + displayCurrentNode());
-        }
+    private Relationship newRelationship(Attributes attributes, boolean hook) throws SAXException {
+
         ImmutableSet.Builder<Property> propertiesBuilder = ImmutableSet.builder();
         for (int index = 0; index < attributes.getLength(); index++) {
             String attributeName = attributes.getQName(index);
@@ -131,10 +127,19 @@ public final class XMLSchemaTemplateHandler extends DefaultHandler {
                 propertiesBuilder.add(new Property(attributeName, value, PropertyType.STRING, false));
             }
         }
-        if (nodeRef != null) {
-            return Relationship.node(propertiesBuilder.build(), nodeRef);
-        } else {
+
+        if (hook) {
+            String cypher = attributes.getValue("cypher");
+            if (cypher == null) {
+                throw new SAXException("The relationshipHook must have a 'cypher' attribute. Parent node : " + displayCurrentNode());
+            }
             return Relationship.cypher(propertiesBuilder.build(), cypher);
+        } else {
+            String nodeRef = attributes.getValue("node");
+            if (nodeRef == null) {
+                throw new SAXException("The relationship must have a 'node' attribute. Parent node : " + displayCurrentNode());
+            }
+            return Relationship.node(propertiesBuilder.build(), nodeRef);
         }
     }
 
