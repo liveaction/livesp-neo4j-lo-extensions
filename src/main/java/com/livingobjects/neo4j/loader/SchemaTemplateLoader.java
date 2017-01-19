@@ -124,7 +124,12 @@ public final class SchemaTemplateLoader {
             Set<CreatedNode> nodeWithRelationships = Sets.newHashSet();
             for (com.livingobjects.neo4j.model.schema.Node node : template.nodes) {
                 UniqueEntity<org.neo4j.graphdb.Node> entity = createNode(node, header, line);
-                node.id.ifPresent(id -> identifiedNodes.put(id, entity.entity));
+                node.id.ifPresent(id -> {
+                    Node previsousNode = identifiedNodes.put(id, entity.entity);
+                    if (previsousNode != null && !previsousNode.equals(entity.entity)) {
+                        throw new IllegalStateException("Two diffenrnt nodes referenced with id = '" + id + "' in template XML file.");
+                    }
+                });
                 if (!node.relationships.isEmpty()) {
                     nodeWithRelationships.add(new CreatedNode(node, entity.entity));
                 }
@@ -256,12 +261,14 @@ public final class SchemaTemplateLoader {
         try {
             SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
             SAXParserFactory factory = SAXParserFactory.newInstance();
-            javax.xml.validation.Schema xsdSchema = schemaFactory.newSchema(new SAXSource(new InputSource(getClass().getResourceAsStream("/schema-template.xsd"))));
-            factory.setSchema(xsdSchema);
-            SAXParser saxParser = factory.newSAXParser();
-            XMLSchemaTemplateHandler handler = new XMLSchemaTemplateHandler();
-            saxParser.parse(xmlTemplate, handler);
-            return handler.getTemplate();
+            try (InputStream resourceAsStream = getClass().getResourceAsStream("/schema-template.xsd")) {
+                javax.xml.validation.Schema xsdSchema = schemaFactory.newSchema(new SAXSource(new InputSource(resourceAsStream)));
+                factory.setSchema(xsdSchema);
+                SAXParser saxParser = factory.newSAXParser();
+                XMLSchemaTemplateHandler handler = new XMLSchemaTemplateHandler();
+                saxParser.parse(xmlTemplate, handler);
+                return handler.getTemplate();
+            }
         } catch (ParserConfigurationException | SAXException e) {
             throw new SchemaTemplateException("Unable to instanciate XML parser", e);
         } catch (IOException e) {
