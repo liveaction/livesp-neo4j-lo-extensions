@@ -50,7 +50,10 @@ public final class SchemaTemplateLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateLoader.class);
 
     private static final DynamicRelationshipType APPLIED_TO_LINK = DynamicRelationshipType.withName("AppliedTo");
-    public static final int SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION = 35;
+    private static final int SCHEMA_TEMPLATE_MEMORY_COEF = 60_000_000;
+    private static final int MAX_APPLIED_TRANSACTION = 400;
+
+    private final long appliedTransactions;
 
     private final GraphDatabaseService graphDB;
 
@@ -61,6 +64,10 @@ public final class SchemaTemplateLoader {
     public SchemaTemplateLoader(GraphDatabaseService graphDB) {
         this.graphDB = graphDB;
         this.cacheNodeLoader = new CacheNodeLoader(graphDB);
+        this.appliedTransactions = Math.min(
+                Runtime.getRuntime().maxMemory() / SCHEMA_TEMPLATE_MEMORY_COEF,
+                MAX_APPLIED_TRANSACTION);
+        LOGGER.info("Max applied transaction : {}", appliedTransactions);
     }
 
     public int loadAndApplyTemplate(InputStream csv, InputStream xmlTemplate) throws IOException, IllegalStateException {
@@ -85,7 +92,7 @@ public final class SchemaTemplateLoader {
                     alreadyUpdated++;
                 }
 
-                if (updated > 0 && (updated % SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION) == 0) {
+                if (updated > 0 && (updated % appliedTransactions) == 0) {
                     committed = commitTx(updated, committed, tx);
                     updated = 0;
                     tx = graphDB.beginTx();
