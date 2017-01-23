@@ -50,7 +50,7 @@ public final class SchemaTemplateLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateLoader.class);
 
     private static final DynamicRelationshipType APPLIED_TO_LINK = DynamicRelationshipType.withName("AppliedTo");
-    public static final int SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION = 400;
+    public static final int SCHEMA_TEMPLATE_APPLIED_IN_TRANSACTION = 35;
 
     private final GraphDatabaseService graphDB;
 
