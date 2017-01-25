@@ -189,7 +189,7 @@ public final class SchemaTemplateLoader {
     }
 
     private void createRelationship(ImmutableSet<Property> properties, org.neo4j.graphdb.Node otherSideNode, Relationships relationships, Set<org.neo4j.graphdb.Node> alreadyLinkedNodes, CreatedNode node, DynamicRelationshipType relationshipType, ImmutableMap<String, Integer> header, String[] line) {
-        if (relationships.replace || !alreadyLinkedNodes.contains(otherSideNode)) {
+        if (!alreadyLinkedNodes.contains(otherSideNode)) {
             Relationship createdRelationship;
             if (relationships.direction == Relationships.Direction.incoming) {
                 createdRelationship = otherSideNode.createRelationshipTo(node.createdNode, relationshipType);
