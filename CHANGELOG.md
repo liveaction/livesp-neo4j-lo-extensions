@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5 _(2017-01-30)_
+* New SchemaTemplateExtension based on XML template file
+* Refactor model subpackages
+* fix(memdexPath): Fix connerie ! do not remove public for MemdexPathWithRealm
+* feat(memdexPath): Add specializer to MemdexPath attribute when needed
+* fix(memdexPath): Fix error when multiple Attribute with different _type have the same name
+* fix(pom): Fix plugin gpg version
+* fix(pom): Fix parent for compilation problems
+* fix(pom): Fix dependency for jetty-servlets
+
 ## 1.4 _(2016-11-28)_
 * Add MemdexPathExtension (/memdexpath)
 * Add CustomerSchemaExtension (/schema)

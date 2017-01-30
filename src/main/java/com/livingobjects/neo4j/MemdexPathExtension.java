@@ -3,7 +3,7 @@ package com.livingobjects.neo4j;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.iwan.model.MemdexPath;
+import com.livingobjects.neo4j.model.MemdexPath;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -29,18 +29,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LABEL_PLANET;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_ATTRIBUTE;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_MEMDEXPATH;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.LINK_PROVIDED;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants.PATH;
-import static com.livingobjects.neo4j.iwan.model.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/memdexpath")
 public final class MemdexPathExtension {
@@ -88,7 +81,7 @@ public final class MemdexPathExtension {
                                         staticMatching++;
                                     }
                                 } else {
-                                    String attribute = type + ':' + name;
+                                    String attribute = type + KEYTYPE_SEPARATOR + name;
                                     if (filter.dynamicAttributes.contains(attribute)) {
                                         dynamicAttribute = Optional.of(attribute);
                                     }
@@ -102,7 +95,6 @@ public final class MemdexPathExtension {
                         jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
                     }
                 }
-
             }
 
             jg.writeEndObject();
@@ -121,7 +113,19 @@ public final class MemdexPathExtension {
             jg.writeStartArray();
 
             try (Transaction ignored = graphDb.beginTx()) {
-                Node realmNode = graphDb.findNode(LABEL_ATTRIBUTE, "name", realm);
+                ResourceIterator<Node> itRealms = graphDb.findNodes(LABEL_ATTRIBUTE, "name", realm);
+                Node realmNode = null;
+                while (itRealms.hasNext()) {
+                    Node tmpNode = itRealms.next();
+                    if ("realm".equals(tmpNode.getProperty("_type"))) {
+                        realmNode = tmpNode;
+                        break;
+                    }
+                }
+                if (realmNode == null) {
+                    throw new NoSuchElementException("Element of type 'realm' with name '" + realm + "' not found in database !");
+                }
+
                 Node firstPlanet = realmNode.getSingleRelationship(LINK_ATTRIBUTE, Direction.INCOMING).getStartNode();
 
                 MemdexPath memdexPath = browsePlanetToMemdexPath(firstPlanet);
@@ -143,8 +147,13 @@ public final class MemdexPathExtension {
         ImmutableList.Builder<String> attributes = ImmutableList.builder();
         planet.getRelationships(LINK_ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
+            Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
             Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);
-            attributes.add(properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString());
+            String attribute = properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString();
+            if (specializer != null) {
+                attribute = attribute + KEYTYPE_SEPARATOR + specializer.toString();
+            }
+            attributes.add(attribute);
         });
 
         ImmutableList.Builder<Map<String, Object>> counters = ImmutableList.builder();
@@ -168,8 +177,8 @@ public final class MemdexPathExtension {
     }
 
     private static final class Request {
-        public final Map<String, String> staticAttributes;
-        public final Set<String> dynamicAttributes;
+        final Map<String, String> staticAttributes;
+        final Set<String> dynamicAttributes;
 
         public Request(
                 @JsonProperty("staticAttributes") Map<String, String> staticAttributes,
