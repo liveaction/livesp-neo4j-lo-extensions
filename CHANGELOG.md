@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.5.1 _(2017-02-14)_
+* fix(SchemaTemplateLoader): tx was never closed when no schema is updated
+
 ## 1.5 _(2017-01-30)_
 * New SchemaTemplateExtension based on XML template file
 * Refactor model subpackages
