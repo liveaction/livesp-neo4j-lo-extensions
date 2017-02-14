@@ -93,27 +93,30 @@ public final class SchemaTemplateLoader {
                 }
 
                 if (updated > 0 && (updated % appliedTransactions) == 0) {
-                    committed = commitTx(updated, committed, tx);
+                    committed = commitTx(updated, committed, tx, true);
                     updated = 0;
                     tx = graphDB.beginTx();
                 }
 
                 line = reader.readNext();
             }
-            if (updated > 0) {
-                committed = commitTx(updated, committed, tx);
-            }
+            committed = commitTx(updated, committed, tx, false);
         } catch (Throwable e) {
-            tx.close();
+            tx.failure();
+            LOGGER.error("Error during schema template update. Transaction rollbacked.", e);
             throw e;
+        } finally {
+            tx.close();
         }
         LOGGER.info("{} topology schema(s) updated in {} ms. {} schema(s) already up to date.", committed, (System.currentTimeMillis() - time), alreadyUpdated);
         return committed;
     }
 
-    private int commitTx(int applied, int committed, Transaction tx) {
+    private int commitTx(int applied, int committed, Transaction tx, boolean close) {
         tx.success();
-        tx.close();
+        if (close) {
+            tx.close();
+        }
         nodeFactories.clear();
         cacheNodeLoader.clear();
         committed += applied;
