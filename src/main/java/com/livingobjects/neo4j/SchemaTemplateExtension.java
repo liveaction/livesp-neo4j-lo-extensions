@@ -1,25 +1,44 @@
 package com.livingobjects.neo4j;
 
-import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.loader.SchemaTemplateLoader;
+import com.livingobjects.neo4j.model.MemdexPath;
+import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
+import com.livingobjects.neo4j.model.iwan.Labels;
+import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.sun.jersey.multipart.MultiPart;
+import org.codehaus.jackson.JsonEncoding;
+import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.servlet.ServletException;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Map;
+
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -27,6 +46,7 @@ public class SchemaTemplateExtension {
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateExtension.class);
 
     private final GraphDatabaseService graphDb;
+    private final ObjectMapper json = new ObjectMapper();
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -57,6 +77,82 @@ public class SchemaTemplateExtension {
             LOGGER.error("Unable to update schemas", e);
             return errorResponse(e);
         }
+    }
+
+    @GET
+    @Path("{id}")
+    @Produces({"application/json", "text/plain"})
+    public Response getSchema(@PathParam("id") String schemaId) {
+        StreamingOutput stream = outputStream -> {
+            JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+
+
+            try (Transaction ignored = graphDb.beginTx()) {
+                Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+                jg.writeStartObject();
+                jg.writeStringField(ID, schemaId);
+                jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
+                jg.flush();
+
+                jg.writeObjectFieldStart("realms");
+                schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
+                    try {
+                        Node realmTemplateNode = rel.getEndNode();
+                        Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
+                        Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
+                        MemdexPath memdexPath = browsePlanetToMemdexPath(firstSegment);
+                        jg.writeObjectField(realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
+                        jg.flush();
+                    } catch (IOException e) {
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
+                        }
+                    }
+                });
+                jg.writeEndObject();
+                jg.writeEndObject();
+            }
+            jg.flush();
+            jg.close();
+        };
+
+        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+    }
+
+    private MemdexPath browsePlanetToMemdexPath(Node planet) {
+
+        ImmutableList.Builder<String> attributes = ImmutableList.builder();
+        planet.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
+            Node attributeNode = link.getEndNode();
+            Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
+            Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);
+            String attribute = properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString();
+            if (specializer != null) {
+                attribute = attribute + KEYTYPE_SEPARATOR + specializer.toString();
+            }
+            attributes.add(attribute);
+        });
+
+        ImmutableList.Builder<Map<String, Object>> counters = ImmutableList.builder();
+        planet.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
+            Node counterNode = link.getStartNode();
+            ImmutableMap<String, Object> properties = ImmutableMap.copyOf(counterNode.getAllProperties());
+            counters.add(properties);
+        });
+
+        ImmutableList.Builder<MemdexPath> memdexpaths = ImmutableList.builder();
+        planet.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(link -> {
+            Node nextPlanetNode = link.getEndNode();
+            memdexpaths.add(browsePlanetToMemdexPath(nextPlanetNode));
+        });
+
+        return MemdexPath.build(
+                planet.getProperty(PATH).toString(),
+                planet.getProperty(TEMPLATE).toString(),
+                attributes.build(),
+                counters.build(),
+                memdexpaths.build());
     }
 
     private Response errorResponse(Throwable cause) throws IOException {

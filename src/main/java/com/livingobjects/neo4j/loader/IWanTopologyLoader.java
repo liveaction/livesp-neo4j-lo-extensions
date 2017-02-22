@@ -23,6 +23,8 @@ import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.Labels;
+import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -80,7 +82,7 @@ public final class IWanTopologyLoader {
             ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
             ImmutableList.Builder<String> scopesBldr = ImmutableList.builder();
-            graphDb.findNodes(IwanModelConstants.LABEL_ATTRIBUTE).forEachRemaining(n -> {
+            graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
                 String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
                 String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(IwanModelConstants.NAME).toString();
                 attributesBldr.put(key, n);
@@ -88,11 +90,11 @@ public final class IWanTopologyLoader {
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                     ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
                     ImmutableSet.Builder<String> crossRels = ImmutableSet.builder();
-                    n.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_PARENT).forEach(crels::add);
-                    n.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_PARENT).forEach(prels::add);
-                    n.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_CROSS_ATTRIBUTE).forEach(r -> {
+                    n.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
+                    n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
+                    n.getRelationships(Direction.OUTGOING, RelationshipTypes.CROSS_ATTRIBUTE).forEach(r -> {
                         Node endNode = r.getEndNode();
-                        if (endNode.hasLabel(IwanModelConstants.LABEL_ATTRIBUTE)) {
+                        if (endNode.hasLabel(Labels.ATTRIBUTE)) {
                             Object typeProperty = endNode.getProperty(IwanModelConstants._TYPE);
                             Object nameProperty = endNode.getProperty(IwanModelConstants.NAME);
                             if (typeProperty != null && nameProperty != null) {
@@ -229,7 +231,7 @@ public final class IWanTopologyLoader {
                             Node node = nodeEntity.entity;
                             long id = node.getId();
                             if (!planetLinksCreatedForNodes.contains(id)) {
-                                createOutgoingUniqueLinks(node, parents, IwanModelConstants.LINK_ATTRIBUTE);
+                                createOutgoingUniqueLinks(node, parents, RelationshipTypes.ATTRIBUTE);
                                 planetLinksCreatedForNodes.add(id);
                             }
                         }
@@ -274,7 +276,7 @@ public final class IWanTopologyLoader {
                 for (String endKeyType : rel.getValue()) {
                     Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
                     optEndNode.ifPresent(toNode -> {
-                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, IwanModelConstants.LINK_CROSS_ATTRIBUTE);
+                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
                         String key = keyType + ELEMENT_SEPARATOR + endKeyType;
                         multiElementLinks.put(key, link);
                     });
@@ -307,7 +309,7 @@ public final class IWanTopologyLoader {
 
                 for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
                     ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node.entity, parents, IwanModelConstants.LINK_ATTRIBUTE));
+                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node.entity, parents, RelationshipTypes.ATTRIBUTE));
                 }
             } else {
                 throw new InvalidScopeException("No scope id provided.");
@@ -331,7 +333,7 @@ public final class IWanTopologyLoader {
                     continue;
                 }
                 ++relCount;
-                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, IwanModelConstants.LINK_CONNECT);
+                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT);
             }
 
             return relCount;
@@ -361,7 +363,7 @@ public final class IWanTopologyLoader {
     private Optional<UniqueEntity<Node>> createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
             if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementName)) {
-                return Optional.of(UniqueEntity.existing(graphDb.findNode(IwanModelConstants.LABEL_SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
+                return Optional.of(UniqueEntity.existing(graphDb.findNode(Labels.SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
             }
 
             Node elementAttNode = attributeNodes.get(elementName);
@@ -390,7 +392,7 @@ public final class IWanTopologyLoader {
 
                 if (uniqueEntity.wasCreated) {
                     if (scopes.contains(elementName)) {
-                        elementNode.addLabel(IwanModelConstants.LABEL_SCOPE);
+                        elementNode.addLabel(Labels.SCOPE);
                     }
                     elementNode.setProperty(IwanModelConstants._TYPE, elementName);
                     if (isOverridable) {
@@ -399,7 +401,7 @@ public final class IWanTopologyLoader {
                 } else {
                     elementNode.setProperty(IwanModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
 
-                    elementNode.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_CONNECT).forEach(r -> {
+                    elementNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT).forEach(r -> {
                         String type = r.getEndNode().getProperty(IwanModelConstants._TYPE, IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
                         if (todelete.contains(type)) {
                             r.delete();
@@ -429,7 +431,7 @@ public final class IWanTopologyLoader {
             throw new NoSuchElementException("Element " + elementName + " not found in database for update");
         }
 
-        Node node = graphDb.findNode(IwanModelConstants.LABEL_NETWORK_ELEMENT, IwanModelConstants.TAG, tag);
+        Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, IwanModelConstants.TAG, tag);
         if (node != null) {
             persistElementProperties(line, elementHeaders, node);
             return Optional.of(UniqueEntity.existing(node));
@@ -473,7 +475,7 @@ public final class IWanTopologyLoader {
                 Node attClientNode = attributeNodes.get(clientAttribute);
                 if (attClientNode != null) {
                     Builder<String, Node> bldr = ImmutableMultimap.builder();
-                    attClientNode.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_ATTRIBUTE)
+                    attClientNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE)
                             .forEach(pr -> collectPlanetConsumer(pr, bldr));
                     planets = bldr.build();
                     planetsByClient.put(clientAttribute, planets);
@@ -492,13 +494,13 @@ public final class IWanTopologyLoader {
             try (Context ignore = metrics.timer("IWanTopologyLoader-getGlobalPlanets").time()) {
                 Node scopeGlobal = attributeNodes.get(IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE);
                 Builder<String, Node> bldr = ImmutableMultimap.builder();
-                scopeGlobal.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_PARENT).forEach(r -> {
+                scopeGlobal.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(r -> {
                     Node keyAttributeNode = r.getStartNode();
                     if (!IwanModelConstants.KEY_TYPES.contains(keyAttributeNode.getProperty(IwanModelConstants._TYPE).toString())) {
                         return;
                     }
 
-                    keyAttributeNode.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_ATTRIBUTE)
+                    keyAttributeNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE)
                             .forEach(pr -> collectPlanetConsumer(pr, bldr));
                 });
 
@@ -512,18 +514,18 @@ public final class IWanTopologyLoader {
 
     private void collectPlanetConsumer(Relationship pr, Builder<String, Node> bldr) {
         Node planet = pr.getStartNode();
-        if (!planet.hasLabel(IwanModelConstants.LABEL_PLANET)) {
+        if (!planet.hasLabel(Labels.PLANET)) {
             return;
         }
 
-        planet.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_ATTRIBUTE)
+        planet.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)
                 .forEach(l -> getRelationshipConsumer(l, bldr));
     }
 
     private Builder<String, Node> getRelationshipConsumer(Relationship l, Builder<String, Node> bldr) {
         Node planet = l.getStartNode();
         Node attribute = l.getEndNode();
-        if (attribute.hasLabel(IwanModelConstants.LABEL_ATTRIBUTE)) {
+        if (attribute.hasLabel(Labels.ATTRIBUTE)) {
             String type = attribute.getProperty(IwanModelConstants._TYPE).toString();
             if (IwanModelConstants.KEY_TYPES.contains(type)) {
                 bldr.put(type + IwanModelConstants.KEYTYPE_SEPARATOR + attribute.getProperty(IwanModelConstants.NAME), planet);

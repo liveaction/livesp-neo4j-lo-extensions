@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.helper;
 
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.Labels;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
@@ -65,7 +66,7 @@ public final class UniqueElementFactory {
     }
 
     public static UniqueElementFactory networkElementFactory(GraphDatabaseService graphdb) {
-        return new UniqueElementFactory(graphdb, IwanModelConstants.LABEL_NETWORK_ELEMENT, Optional.of(IwanModelConstants.LABEL_ELEMENT));
+        return new UniqueElementFactory(graphdb, Labels.NETWORK_ELEMENT, Optional.of(Labels.ELEMENT));
     }
 
 }
