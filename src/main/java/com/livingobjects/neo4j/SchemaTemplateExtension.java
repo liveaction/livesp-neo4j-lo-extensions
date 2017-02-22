@@ -37,6 +37,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
@@ -82,42 +83,47 @@ public class SchemaTemplateExtension {
     @GET
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
-    public Response getSchema(@PathParam("id") String schemaId) {
+    public Response getSchema(@PathParam("id") String schemaId) throws IOException {
+        Transaction tx = graphDb.beginTx();
+        Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+        if (schemaNode == null) {
+            return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
+        }
+
         StreamingOutput stream = outputStream -> {
             JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
 
 
-            try (Transaction ignored = graphDb.beginTx()) {
-                Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
-                jg.writeStartObject();
-                jg.writeStringField(ID, schemaId);
-                jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
-                jg.flush();
+            jg.writeStartObject();
+            jg.writeStringField(ID, schemaId);
+            jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
+            jg.flush();
 
-                jg.writeObjectFieldStart("realms");
-                schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
-                    try {
-                        Node realmTemplateNode = rel.getEndNode();
-                        Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
-                        Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
-                        MemdexPath memdexPath = browsePlanetToMemdexPath(firstSegment);
-                        jg.writeObjectField(realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
-                        jg.flush();
-                    } catch (IOException e) {
-                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("STACKTRACE", e);
-                        }
+            jg.writeObjectFieldStart("realms");
+            schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
+                try {
+                    Node realmTemplateNode = rel.getEndNode();
+                    Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
+                    Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
+                    MemdexPath memdexPath = browsePlanetToMemdexPath(firstSegment);
+                    jg.writeObjectField(realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
+                    jg.flush();
+                } catch (IOException e) {
+                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("STACKTRACE", e);
                     }
-                });
-                jg.writeEndObject();
-                jg.writeEndObject();
-            }
+                }
+            });
+            tx.close();
+
+            jg.writeEndObject();
+            jg.writeEndObject();
             jg.flush();
             jg.close();
         };
-
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+
     }
 
     private MemdexPath browsePlanetToMemdexPath(Node planet) {
