@@ -93,8 +93,8 @@ public class SchemaTemplateExtension {
         StreamingOutput stream = outputStream -> {
             JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
 
-
             jg.writeStartObject();
+            jg.writeStringField("type", "template");
             jg.writeStringField(ID, schemaId);
             jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
             jg.flush();
