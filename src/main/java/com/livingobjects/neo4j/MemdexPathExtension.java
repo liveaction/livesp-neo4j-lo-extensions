@@ -3,7 +3,7 @@ package com.livingobjects.neo4j;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.model.MemdexPath;
+import com.livingobjects.neo4j.model.MemdexPathNode;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.codehaus.jackson.JsonEncoding;
@@ -93,7 +93,7 @@ public final class MemdexPathExtension {
                     }
 
                     if (realm.isPresent() && staticMatching == filter.staticAttributes.size() && dynamicAttribute.isPresent()) {
-                        MemdexPath memdexPath = browsePlanetToMemdexPath(planetNode);
+                        MemdexPathNode memdexPath = browsePlanetToMemdexPath(planetNode);
                         jg.writeObjectField(dynamicAttribute.get(), new MemdexPathWithRealm(realm.get(), memdexPath));
                     }
                 }
@@ -130,7 +130,7 @@ public final class MemdexPathExtension {
 
                 Node firstPlanet = realmNode.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.INCOMING).getStartNode();
 
-                MemdexPath memdexPath = browsePlanetToMemdexPath(firstPlanet);
+                MemdexPathNode memdexPath = browsePlanetToMemdexPath(firstPlanet);
 
                 jg.writeObject(Maps.immutableEntry(realm, memdexPath));
                 jg.flush();
@@ -144,7 +144,7 @@ public final class MemdexPathExtension {
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
     }
 
-    private MemdexPath browsePlanetToMemdexPath(Node planet) {
+    private MemdexPathNode browsePlanetToMemdexPath(Node planet) {
 
         ImmutableList.Builder<String> attributes = ImmutableList.builder();
         planet.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
@@ -165,13 +165,13 @@ public final class MemdexPathExtension {
             counters.add(properties);
         });
 
-        ImmutableList.Builder<MemdexPath> memdexpaths = ImmutableList.builder();
+        ImmutableList.Builder<MemdexPathNode> memdexpaths = ImmutableList.builder();
         planet.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(link -> {
             Node nextPlanetNode = link.getEndNode();
             memdexpaths.add(browsePlanetToMemdexPath(nextPlanetNode));
         });
 
-        return MemdexPath.build(
+        return MemdexPathNode.build(
                 planet.getProperty(PATH).toString(),
                 planet.getProperty(NAME).toString(),
                 attributes.build(),
@@ -193,11 +193,11 @@ public final class MemdexPathExtension {
 
     private static final class MemdexPathWithRealm {
         public final String realm;
-        public final MemdexPath memdexPath;
+        public final MemdexPathNode memdexPath;
 
         public MemdexPathWithRealm(
                 @JsonProperty("realm") String realm,
-                @JsonProperty("memdexPath") MemdexPath memdexPath) {
+                @JsonProperty("memdexPath") MemdexPathNode memdexPath) {
             this.realm = realm;
             this.memdexPath = memdexPath;
         }

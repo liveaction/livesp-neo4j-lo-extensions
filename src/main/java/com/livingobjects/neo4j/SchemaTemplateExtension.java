@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.loader.SchemaTemplateLoader;
-import com.livingobjects.neo4j.model.MemdexPath;
+import com.livingobjects.neo4j.model.MemdexPathNode;
 import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -105,7 +105,7 @@ public class SchemaTemplateExtension {
                     Node realmTemplateNode = rel.getEndNode();
                     Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
                     Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
-                    MemdexPath memdexPath = browsePlanetToMemdexPath(firstSegment);
+                    MemdexPathNode memdexPath = browsePlanetToMemdexPath(firstSegment);
                     jg.writeObjectField(realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
                     jg.flush();
                 } catch (IOException e) {
@@ -126,7 +126,7 @@ public class SchemaTemplateExtension {
 
     }
 
-    private MemdexPath browsePlanetToMemdexPath(Node planet) {
+    private MemdexPathNode browsePlanetToMemdexPath(Node planet) {
 
         ImmutableList.Builder<String> attributes = ImmutableList.builder();
         planet.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
@@ -147,13 +147,13 @@ public class SchemaTemplateExtension {
             counters.add(properties);
         });
 
-        ImmutableList.Builder<MemdexPath> memdexpaths = ImmutableList.builder();
+        ImmutableList.Builder<MemdexPathNode> memdexpaths = ImmutableList.builder();
         planet.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(link -> {
             Node nextPlanetNode = link.getEndNode();
             memdexpaths.add(browsePlanetToMemdexPath(nextPlanetNode));
         });
 
-        return MemdexPath.build(
+        return MemdexPathNode.build(
                 planet.getProperty(PATH).toString(),
                 planet.getProperty(TEMPLATE).toString(),
                 attributes.build(),
