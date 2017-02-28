@@ -106,7 +106,7 @@ public class SchemaTemplateExtension {
                     Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
                     Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
                     MemdexPathNode memdexPath = browsePlanetToMemdexPath(firstSegment);
-                    jg.writeObjectField(realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
+                    jg.writeObjectField("realm:" + realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
                     jg.flush();
                 } catch (IOException e) {
                     LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
