@@ -1,10 +1,8 @@
 package com.livingobjects.neo4j;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.loader.SchemaTemplateLoader;
-import com.livingobjects.neo4j.model.MemdexPathNode;
 import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -13,10 +11,12 @@ import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.node.ArrayNode;
+import org.codehaus.jackson.node.JsonNodeFactory;
+import org.codehaus.jackson.node.ObjectNode;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +36,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
@@ -89,24 +91,73 @@ public class SchemaTemplateExtension {
         if (schemaNode == null) {
             return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
         }
+        Map<String, Node> planetNodes = Maps.newHashMap();
+        List<Node> realmNodes = Lists.newArrayList();
 
         StreamingOutput stream = outputStream -> {
             JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
 
             jg.writeStartObject();
-            jg.writeStringField("type", "template");
             jg.writeStringField(ID, schemaId);
             jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
+            jg.writeArrayFieldStart("planets");
             jg.flush();
 
-            jg.writeObjectFieldStart("realms");
             schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
                 try {
-                    Node realmTemplateNode = rel.getEndNode();
-                    Iterable<Relationship> planetRels = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH);
-                    Node firstSegment = Iterables.getOnlyElement(planetRels).getEndNode();
-                    MemdexPathNode memdexPath = browsePlanetToMemdexPath(firstSegment);
-                    jg.writeObjectField("realm:" + realmTemplateNode.getProperty(TEMPLATE).toString(), memdexPath);
+                    Node targetNode = rel.getEndNode();
+                    if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
+                        String name = targetNode.getProperty("name").toString();
+                        planetNodes.put(name, targetNode);
+                        jg.writeStartObject();
+                        jg.writeStringField(NAME, name);
+                        jg.writeObjectField("attributes", browseAttributes(targetNode));
+                        jg.writeEndObject();
+                        jg.flush();
+
+                    } else if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                        realmNodes.add(targetNode);
+                    }
+                } catch (IOException e) {
+                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("STACKTRACE", e);
+                    }
+                }
+            });
+            jg.writeEndArray();
+
+            Map<String, Node> countersDictionary = Maps.newHashMap();
+            Map<String, ObjectNode> memdexPaths = Maps.newHashMap();
+            realmNodes.forEach(realmNode -> {
+                String name = realmNode.getProperty(NAME).toString();
+                Node segment = realmNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).getEndNode();
+                Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
+                countersDictionary.putAll(segments.getValue());
+                memdexPaths.put("realm:" + name, segments.getKey());
+            });
+
+            jg.writeObjectFieldStart("counters");
+            jg.flush();
+            countersDictionary.entrySet().forEach(counterNode -> {
+                try {
+                    ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
+                    counterNode.getValue().getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+                    jg.writeObjectField(counterNode.getKey(), counter);
+                } catch (IOException e) {
+                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("STACKTRACE", e);
+                    }
+                }
+            });
+            jg.writeEndObject();
+
+            jg.writeObjectFieldStart("realms");
+            jg.flush();
+            memdexPaths.entrySet().forEach(memdexPath -> {
+                try {
+                    jg.writeObjectField(memdexPath.getKey(), memdexPath.getValue());
                     jg.flush();
                 } catch (IOException e) {
                     LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -115,6 +166,7 @@ public class SchemaTemplateExtension {
                     }
                 }
             });
+
             tx.close();
 
             jg.writeEndObject();
@@ -126,9 +178,9 @@ public class SchemaTemplateExtension {
 
     }
 
-    private MemdexPathNode browsePlanetToMemdexPath(Node planet) {
-
-        ImmutableList.Builder<String> attributes = ImmutableList.builder();
+    @SuppressWarnings("Duplicates")
+    private ArrayNode browseAttributes(Node planet) {
+        ArrayNode attributes = new ArrayNode(JsonNodeFactory.instance);
         planet.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
             Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
@@ -140,25 +192,39 @@ public class SchemaTemplateExtension {
             attributes.add(attribute);
         });
 
-        ImmutableList.Builder<Map<String, Object>> counters = ImmutableList.builder();
-        planet.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
+        return attributes;
+    }
+
+    /**
+     * @param segment The first segment
+     * @return An Entry of MemdexPath , List<Counter>
+     */
+    private Entry<ObjectNode, Map<String, Node>> browseSegments(Node segment) {
+        ObjectNode memdexPath = new ObjectNode(JsonNodeFactory.instance);
+        Map<String, Node> countersDictionary = Maps.newHashMap();
+
+        Node planetTemplateNode = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING).getEndNode();
+        String name = planetTemplateNode.getProperty(NAME).toString();
+        memdexPath.put("planet", "template:" + name);
+
+        ArrayNode counters = memdexPath.putArray("counters");
+        segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            ImmutableMap<String, Object> properties = ImmutableMap.copyOf(counterNode.getAllProperties());
-            counters.add(properties);
+            String counterRef = "cpt:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
+            counters.add(counterRef);
+            countersDictionary.putIfAbsent(counterRef, counterNode);
         });
 
-        ImmutableList.Builder<MemdexPathNode> memdexpaths = ImmutableList.builder();
-        planet.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(link -> {
-            Node nextPlanetNode = link.getEndNode();
-            memdexpaths.add(browsePlanetToMemdexPath(nextPlanetNode));
+        memdexPath.put("attributes", browseAttributes(segment));
+
+        ArrayNode children = memdexPath.putArray("children");
+        segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(path -> {
+            Entry<ObjectNode, Map<String, Node>> entry = browseSegments(path.getEndNode());
+            children.add(entry.getKey());
+            countersDictionary.putAll(entry.getValue());
         });
 
-        return MemdexPathNode.build(
-                planet.getProperty(PATH).toString(),
-                planet.getProperty(TEMPLATE).toString(),
-                attributes.build(),
-                counters.build(),
-                memdexpaths.build());
+        return Maps.immutableEntry(memdexPath, countersDictionary);
     }
 
     private Response errorResponse(Throwable cause) throws IOException {
@@ -167,5 +233,5 @@ public class SchemaTemplateExtension {
         String json = JSON_MAPPER.writeValueAsString(error);
         return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
-
+//counterNode.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
 }
