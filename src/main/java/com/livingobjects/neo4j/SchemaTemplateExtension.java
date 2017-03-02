@@ -110,6 +110,7 @@ public class SchemaTemplateExtension {
                         String name = targetNode.getProperty("name").toString();
                         planetNodes.put(name, targetNode);
                         jg.writeStartObject();
+                        jg.writeStringField("type", "template");
                         jg.writeStringField(NAME, name);
                         jg.writeObjectField("attributes", browseAttributes(targetNode));
                         jg.writeEndObject();
@@ -207,10 +208,13 @@ public class SchemaTemplateExtension {
         String name = planetTemplateNode.getProperty(NAME).toString();
         memdexPath.put("planet", "template:" + name);
 
+        String segmentName = segment.getProperty("path").toString();
+        memdexPath.put("segment", segmentName);
+
         ArrayNode counters = memdexPath.putArray("counters");
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            String counterRef = "cpt:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
+            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
             counters.add(counterRef);
             countersDictionary.putIfAbsent(counterRef, counterNode);
         });
