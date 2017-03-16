@@ -245,6 +245,11 @@ public final class Migration_2_00_0 {
         ).entrySet().forEach(e -> {
             try (Transaction tx = graphDb.beginTx()) {
                 Node globalDscp = graphDb.findNode(Labels.PLANET, NAME, e.getValue());
+                globalDscp.getRelationships(RelationshipTypes.ATTRIBUTE).forEach(rl -> {
+                    if (rl.getStartNode().hasLabel(Labels.ELEMENT)) {
+                        rl.delete();
+                    }
+                });
                 graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, e.getKey()).forEachRemaining(dscpNode ->
                         dscpNode.createRelationshipTo(globalDscp, RelationshipTypes.ATTRIBUTE));
                 tx.success();
