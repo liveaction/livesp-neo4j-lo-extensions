@@ -26,9 +26,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._SCOPE;
 
 public final class Migration_2_00_0 {
     private static final Logger LOGGER = LoggerFactory.getLogger(Migration_2_00_0.class);
@@ -147,16 +149,16 @@ public final class Migration_2_00_0 {
 
 
         ImmutableList<Entry<Pattern, String>> renames = ImmutableList.of(
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/snmp/wanLink/cisco"), "iwan/{:scopeId}/wanLink/cisco"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/traffic/viewpoint/cisco"), "iwan/{:scopeId}/viewpoint/cisco"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/network"), "iwan/{:scopeId}/network"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/mastercontroller"), "iwan/{:scopeId}/mastercontroller"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/snmp/ipslaProbe/cisco"), "iwan/{:scopeId}/ipslaProbe/cisco"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/snmp/cpe/cisco"), "iwan/{:scopeId}/cpe/cisco"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/snmp/cos"), "iwan/{:scopeId}/cos"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/borderrouter"), "iwan/{:scopeId}/borderrouter"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/area"), "iwan/{:scopeId}/area"),
-                Maps.immutableEntry(Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/traffic/application/cisco"), "iwan/{:scopeId}/application/cisco")
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/snmp/wanLink/cisco"), "iwan/{:scopeId}/wanLink/cisco"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/netflow/traffic/viewpoint/cisco"), "iwan/{:scopeId}/viewpoint/cisco"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/netflow/path/network"), "iwan/{:scopeId}/network"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/netflow/path/mastercontroller"), "iwan/{:scopeId}/mastercontroller"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/snmp/ipslaProbe/cisco"), "iwan/{:scopeId}/ipslaProbe/cisco"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/snmp/cpe/cisco"), "iwan/{:scopeId}/cpe/cisco"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/snmp/cos"), "iwan/{:scopeId}/cos"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/netflow/path/borderrouter"), "iwan/{:scopeId}/borderrouter"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/area"), "iwan/{:scopeId}/area"),
+                Maps.immutableEntry(Pattern.compile("iwan/(?<cid>[a-zA-Z0-9]*)/netflow/traffic/application/cisco"), "iwan/{:scopeId}/application/cisco")
         );
 
         try {
@@ -171,18 +173,13 @@ public final class Migration_2_00_0 {
                             rl.delete();
                         }
                     });
-                    if (rename.getKey().matcher(name).matches()) {
-                        String scopeId = "";
-                        Iterator<Relationship> it = planet.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE).iterator();
-                        while (it.hasNext()) {
-                            Node attribute = it.next().getEndNode();
-                            if (attribute.hasLabel(Labels.ATTRIBUTE) && "client".equals(attribute.getProperty(_TYPE, "").toString())) {
-                                scopeId = attribute.getProperty(NAME).toString();
-                                break;
-                            }
-                        }
+                    Matcher m = rename.getKey().matcher(name);
+                    if (m.matches()) {
+                        String scopeId = m.group("cid");
                         if (!scopeId.isEmpty()) {
                             planet.setProperty(NAME, rename.getValue().replace("{:scopeId}", scopeId));
+                        } else {
+                            LOGGER.error("Unable to find scopeId for {}", name);
                         }
                         break;
                     }
