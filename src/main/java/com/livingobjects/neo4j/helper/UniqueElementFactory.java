@@ -65,6 +65,10 @@ public final class UniqueElementFactory {
         return created;
     }
 
+    public static UniqueElementFactory planetFactory(GraphDatabaseService graphdb) {
+        return new UniqueElementFactory(graphdb, Labels.PLANET, Optional.empty());
+    }
+
     public static UniqueElementFactory networkElementFactory(GraphDatabaseService graphdb) {
         return new UniqueElementFactory(graphdb, Labels.NETWORK_ELEMENT, Optional.of(Labels.ELEMENT));
     }
