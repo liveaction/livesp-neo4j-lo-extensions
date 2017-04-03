@@ -362,9 +362,13 @@ public final class IWanTopologyLoader {
                                     scopeId = "global";
                                 } else {
                                     Optional<UniqueEntity<Node>> scopeNode = nodes.get(scope);
-                                    scopeId = scopeNode.map(n -> n.entity.getProperty(IwanModelConstants.ID))
-                                            .orElseThrow(() -> new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType)))
-                                            .toString();
+                                    if (scopeNode != null) {
+                                        scopeId = scopeNode.map(n -> n.entity.getProperty(IwanModelConstants.ID))
+                                                .orElseThrow(() -> new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType)))
+                                                .toString();
+                                    } else {
+                                        throw new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType));
+                                    }
                                 }
                                 String planetName = planetTemplateName.replace("{:scopeId}", scopeId);
                                 UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
