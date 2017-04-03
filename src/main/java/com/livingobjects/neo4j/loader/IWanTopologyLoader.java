@@ -3,6 +3,9 @@ package com.livingobjects.neo4j.loader;
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -49,6 +52,7 @@ import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
@@ -74,6 +78,14 @@ public final class IWanTopologyLoader {
 
     private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
     private final Set<Long> planetLinksCreatedForNodes = Sets.newHashSet();
+
+    private final LoadingCache<String, String> planetNameTemplateCache = CacheBuilder.newBuilder()
+            .build(new CacheLoader<String, String>() {
+                @Override
+                public String load(String keyType) throws Exception {
+                    return loadPlanetTemplateName(keyType);
+                }
+            });
 
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
@@ -381,6 +393,14 @@ public final class IWanTopologyLoader {
     }
 
     private String getPlanetTemplateName(String keyType) {
+        try {
+            return planetNameTemplateCache.get(keyType);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private String loadPlanetTemplateName(String keyType) {
         Node attributeNode = attributeNodes.get(keyType);
         Iterator<Relationship> iterator = attributeNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).iterator();
         Node planetTemplate = getNextStartNode(iterator, Labels.PLANET_TEMPLATE);
