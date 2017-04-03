@@ -2,12 +2,9 @@ package com.livingobjects.neo4j;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.loader.SchemaTemplateLoader;
-import com.livingobjects.neo4j.model.exception.SchemaTemplateException;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -21,10 +18,7 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.ServletException;
-import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
-import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -32,16 +26,18 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -57,31 +53,6 @@ public class SchemaTemplateExtension {
         this.graphDb = graphDb;
     }
 
-    @POST
-    @Consumes("multipart/mixed")
-    public Response applyTemplate(MultiPart multiPart) throws IOException, ServletException {
-        try {
-
-            if (multiPart.getBodyParts().size() != 2) {
-                throw new SchemaTemplateException("Request must be a multipart request with two body parts : the csv and the xml");
-            }
-
-            File csv = multiPart.getBodyParts().get(0).getEntityAs(File.class);
-            File xml = multiPart.getBodyParts().get(1).getEntityAs(File.class);
-
-            try (InputStream csvInputStream = new FileInputStream(csv);
-                 InputStream xmlInputStream = new FileInputStream(xml)) {
-                SchemaTemplateLoader loader = new SchemaTemplateLoader(graphDb);
-                int appliedTemplate = loader.loadAndApplyTemplate(csvInputStream, xmlInputStream);
-                String json = JSON_MAPPER.writeValueAsString(appliedTemplate);
-                return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
-            }
-        } catch (Throwable e) {
-            LOGGER.error("Unable to update schemas", e);
-            return errorResponse(e);
-        }
-    }
-
     @GET
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
@@ -91,7 +62,6 @@ public class SchemaTemplateExtension {
         if (schemaNode == null) {
             return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
         }
-        Map<String, Node> planetNodes = Maps.newHashMap();
         List<Node> realmNodes = Lists.newArrayList();
 
         StreamingOutput stream = outputStream -> {
@@ -108,7 +78,6 @@ public class SchemaTemplateExtension {
                     Node targetNode = rel.getEndNode();
                     if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
                         String name = targetNode.getProperty("name").toString();
-                        planetNodes.put(name, targetNode);
                         jg.writeStartObject();
                         jg.writeStringField("type", "template");
                         jg.writeStringField(NAME, name);
@@ -140,11 +109,11 @@ public class SchemaTemplateExtension {
 
             jg.writeObjectFieldStart("counters");
             jg.flush();
-            countersDictionary.entrySet().forEach(counterNode -> {
+            countersDictionary.forEach((key, value) -> {
                 try {
                     ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
-                    counterNode.getValue().getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
-                    jg.writeObjectField(counterNode.getKey(), counter);
+                    value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+                    jg.writeObjectField(key, counter);
                 } catch (IOException e) {
                     LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
                     if (LOGGER.isDebugEnabled()) {
@@ -156,9 +125,9 @@ public class SchemaTemplateExtension {
 
             jg.writeObjectFieldStart("realms");
             jg.flush();
-            memdexPaths.entrySet().forEach(memdexPath -> {
+            memdexPaths.forEach((key, value) -> {
                 try {
-                    jg.writeObjectField(memdexPath.getKey(), memdexPath.getValue());
+                    jg.writeObjectField(key, value);
                     jg.flush();
                 } catch (IOException e) {
                     LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -237,5 +206,5 @@ public class SchemaTemplateExtension {
         String json = JSON_MAPPER.writeValueAsString(error);
         return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
-//counterNode.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+
 }

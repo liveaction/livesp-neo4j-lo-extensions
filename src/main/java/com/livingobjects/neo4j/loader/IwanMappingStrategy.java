@@ -23,44 +23,59 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 final class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
 
+    private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
 
-    private IwanMappingStrategy(ImmutableMultimap<String, HeaderElement> mapping) {
+    private IwanMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
+        this.columnIndexes = columnIndexes;
         this.mapping = mapping;
     }
 
     static IwanMappingStrategy captureHeader(CSVReader reader) throws IOException {
         String[] headers = reader.readNext();
+        ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
 
         LOGGER.debug("header : " + Arrays.toString(headers));
 
-        int idx = 0;
+        int index = 0;
         for (String header : headers) {
-            HeaderElement he = HeaderElement.of(header, idx++);
+            HeaderElement he = HeaderElement.of(header, index);
             mappingBldr.put(he.elementName, he);
+            columnIndexesBldr.put(he.columnIdentifier(), index);
+            index++;
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
         LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[mapping.keySet().size()])));
 
 
-        return new IwanMappingStrategy(mapping);
+        return new IwanMappingStrategy(columnIndexesBldr.build(), mapping);
     }
 
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {
         return mapping.get(name);
     }
 
-    ImmutableMap<String, Set<String>> guessElementCreationStrategy(List<String> scopes, Map<String, ? extends List<Relationship>> children) {
+    int getColumnIndex(String keyType, String property) {
+        String column = keyType + '.' + property;
+        Integer index = columnIndexes.get(column);
+        if (index == null) {
+            throw new NoSuchElementException(String.format("Required column '%s' not found.", column));
+        }
+        return index;
+    }
+
+    ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
-        scopes.stream().filter(this::hasKeyType).forEach(s ->
+        scopeKeyTypes.forEach(s ->
                 collect.putAll(addChildrenAttribute(s, collect, children)));
 
         if (collect.isEmpty()) {
