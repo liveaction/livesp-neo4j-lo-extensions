@@ -10,7 +10,6 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -77,7 +76,6 @@ public final class IWanTopologyLoader {
     private ImmutableMap<String, Set<String>> lineage;
 
     private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
-    private final Set<Long> planetLinksCreatedForNodes = Sets.newHashSet();
 
     private final LoadingCache<String, String> planetNameTemplateCache = CacheBuilder.newBuilder()
             .build(new CacheLoader<String, String>() {
@@ -268,24 +266,6 @@ public final class IWanTopologyLoader {
             createConnectLink(scopeKeytypes, nodes);
 
             createPlanetLink(nodes);
-
-            ImmutableMultimap<String, Node> planets;
-            if (scopeKeytypes.isEmpty()) {
-                planets = getGlobalPlanets();
-                for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
-                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(nodeEntity -> {
-                        if (nodeEntity.wasCreated) {
-                            Node node = nodeEntity.entity;
-                            long id = node.getId();
-                            if (!planetLinksCreatedForNodes.contains(id)) {
-                                createOutgoingUniqueLinks(node, parents, RelationshipTypes.ATTRIBUTE);
-                                planetLinksCreatedForNodes.add(id);
-                            }
-                        }
-                    });
-                }
-            }
         }
     }
 
@@ -588,51 +568,5 @@ public final class IWanTopologyLoader {
         }
         return elementNode;
     }
-
-    private ImmutableMultimap<String, Node> getGlobalPlanets() {
-        ImmutableMultimap<String, Node> planets = planetsByClient.get(Character.toString(IwanModelConstants.KEYTYPE_SEPARATOR));
-        if (planets == null) {
-            try (Context ignore = metrics.timer("IWanTopologyLoader-getGlobalPlanets").time()) {
-                Node scopeGlobal = attributeNodes.get(IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE);
-                Builder<String, Node> bldr = ImmutableMultimap.builder();
-                scopeGlobal.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(r -> {
-                    Node keyAttributeNode = r.getStartNode();
-                    if (!IwanModelConstants.KEY_TYPES.contains(keyAttributeNode.getProperty(IwanModelConstants._TYPE).toString())) {
-                        return;
-                    }
-
-                    keyAttributeNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE)
-                            .forEach(pr -> collectPlanetConsumer(pr, bldr));
-                });
-
-                planets = bldr.build();
-                planetsByClient.put(Character.toString(IwanModelConstants.KEYTYPE_SEPARATOR), planets);
-            }
-        }
-
-        return planets;
-    }
-
-    private void collectPlanetConsumer(Relationship pr, Builder<String, Node> bldr) {
-        Node planet = pr.getStartNode();
-        if (!planet.hasLabel(Labels.PLANET)) {
-            return;
-        }
-
-        planet.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)
-                .forEach(l -> getRelationshipConsumer(l, bldr));
-    }
-
-    private Builder<String, Node> getRelationshipConsumer(Relationship l, Builder<String, Node> bldr) {
-        Node planet = l.getStartNode();
-        Node attribute = l.getEndNode();
-        if (attribute.hasLabel(Labels.ATTRIBUTE)) {
-            String type = attribute.getProperty(IwanModelConstants._TYPE).toString();
-            if (IwanModelConstants.KEY_TYPES.contains(type)) {
-                bldr.put(type + IwanModelConstants.KEYTYPE_SEPARATOR + attribute.getProperty(IwanModelConstants.NAME), planet);
-            }
-        }
-        return bldr;
-    }
-
+    
 }
