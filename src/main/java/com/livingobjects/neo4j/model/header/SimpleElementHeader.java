@@ -16,4 +16,5 @@ public class SimpleElementHeader extends HeaderElement {
     public <R> R visit(Visitor<R> visitor) {
         return visitor.visitSimple(this);
     }
+
 }

@@ -17,6 +17,7 @@ import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.model.exception.ImportException;
 import com.livingobjects.neo4j.model.exception.InvalidSchemaException;
+import com.livingobjects.neo4j.model.exception.InvalidScopeException;
 import com.livingobjects.neo4j.model.header.HeaderElement;
 import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
@@ -360,7 +361,8 @@ public final class IWanTopologyLoader {
                                 if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(scope)) {
                                     scopeId = "global";
                                 } else {
-                                    scopeId = nodes.get(scope).map(scopeNode -> scopeNode.entity.getProperty(IwanModelConstants.ID))
+                                    Optional<UniqueEntity<Node>> scopeNode = nodes.get(scope);
+                                    scopeId = scopeNode.map(n -> n.entity.getProperty(IwanModelConstants.ID))
                                             .orElseThrow(() -> new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType)))
                                             .toString();
                                 }
@@ -403,11 +405,17 @@ public final class IWanTopologyLoader {
 
             int relCount = 0;
             for (Relationship relationship : relationships) {
-                String toKeytype = relationship.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
-                        relationship.getEndNode().getProperty(IwanModelConstants.NAME).toString();
+                Node endNode = relationship.getEndNode();
+                String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
+                        endNode.getProperty(IwanModelConstants.NAME).toString();
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
-                    continue;
+                    String cardinality = relationship.getProperty(IwanModelConstants.CARDINALITY, IwanModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
+                    if (keyTypeNode.wasCreated && IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
+                        throw new IllegalArgumentException(String.format("Unable to import '%s' missing parent '%s'.", keyType, toKeytype));
+                    } else {
+                        continue;
+                    }
                 }
                 ++relCount;
                 createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT);
@@ -466,14 +474,7 @@ public final class IWanTopologyLoader {
                 if (uniqueEntity.wasCreated) {
                     if (scopes.values().contains(elementKeyType)) {
                         elementNode.addLabel(Labels.SCOPE);
-                        int schemaIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.SCHEMA);
-                        String schema = line[schemaIndex];
-                        Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
-                        if (schemaNode != null) {
-                            schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
-                        } else {
-                            throw new IllegalArgumentException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
-                        }
+                        applySchema(strategy, line, elementKeyType, tag, elementNode);
                     }
                     elementNode.setProperty(IwanModelConstants._TYPE, elementKeyType);
                     if (isOverridable) {
@@ -496,6 +497,21 @@ public final class IWanTopologyLoader {
             } else {
                 return Optional.empty();
             }
+        }
+    }
+
+    private void applySchema(IwanMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
+        try {
+            int schemaIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.SCHEMA);
+            String schema = line[schemaIndex];
+            Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
+            if (schemaNode != null) {
+                schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
+            } else {
+                throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
+            }
+        } catch (NoSuchElementException e) {
+            throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
         }
     }
 

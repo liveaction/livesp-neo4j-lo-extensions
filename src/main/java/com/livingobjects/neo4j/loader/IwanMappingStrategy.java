@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,7 +49,7 @@ final class IwanMappingStrategy {
         for (String header : headers) {
             HeaderElement he = HeaderElement.of(header, index);
             mappingBldr.put(he.elementName, he);
-            columnIndexesBldr.put(he.elementName + '.' + he.propertyName, index);
+            columnIndexesBldr.put(he.columnIdentifier(), index);
             index++;
         }
 
@@ -67,7 +68,7 @@ final class IwanMappingStrategy {
         String column = keyType + '.' + property;
         Integer index = columnIndexes.get(column);
         if (index == null) {
-            throw new IllegalArgumentException(String.format("Required column '%s' not found.", column));
+            throw new NoSuchElementException(String.format("Required column '%s' not found.", column));
         }
         return index;
     }
