@@ -9,12 +9,7 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.DynamicLabel;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.neo4j.helpers.collection.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -240,21 +235,21 @@ public final class Migration_2_00_0 {
 
         ImmutableMap.of(
                 "neType:dscp", "iwan/global/dscp/cisco",
-                "neType:application/group", "iwan/global/application/group/cisco",
-                "neType:application/category", "iwan/global/application/category/cisco"
-        ).entrySet().forEach(e -> {
+                "cluster:application/group", "iwan/global/application/group/cisco",
+                "cluster:application/category", "iwan/global/application/category/cisco"
+        ).forEach((key, value) -> {
             try (Transaction tx = graphDb.beginTx()) {
-                Node globalDscp = graphDb.findNode(Labels.PLANET, NAME, e.getValue());
+                Node globalDscp = graphDb.findNode(Labels.PLANET, NAME, value);
                 globalDscp.getRelationships(RelationshipTypes.ATTRIBUTE).forEach(rl -> {
                     if (rl.getStartNode().hasLabel(Labels.ELEMENT)) {
                         rl.delete();
                     }
                 });
-                graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, e.getKey()).forEachRemaining(dscpNode ->
+                graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, key).forEachRemaining(dscpNode ->
                         dscpNode.createRelationshipTo(globalDscp, RelationshipTypes.ATTRIBUTE));
                 tx.success();
             }
-            LOGGER.info("... {} linked with Planet {} !", e.getKey(), e.getValue());
+            LOGGER.info("... {} linked with Planet {} !", key, value);
         });
     }
 
