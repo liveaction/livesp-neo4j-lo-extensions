@@ -111,11 +111,14 @@ public final class Migration_2_00_0 {
                 Pattern.compile("iwan/[a-zA-Z0-9]*/application/group")
         );
 
+        Iterable<Node> nodes;
+        try (Transaction tx = graphDb.beginTx()) {
+            nodes = Iterables.asResourceIterable(graphDb.findNodes(Labels.PLANET));
+            tx.success();
+        }
+
         Transaction tx = graphDb.beginTx();
         try {
-            Iterable<Node> nodes = Iterables.asResourceIterable(graphDb.findNodes(Labels.PLANET));
-            tx = commit(graphDb, tx);
-
             List<Node> toDelete = Lists.newArrayListWithCapacity(MAX_TX_STATEMENT * 100);
             for (Node planet : nodes) {
                 String name = planet.getProperty(NAME).toString();
@@ -158,9 +161,9 @@ public final class Migration_2_00_0 {
 
         try {
             tx = graphDb.beginTx();
-            Iterator<Node> nodes = graphDb.findNodes(Labels.PLANET);
-            while (nodes.hasNext()) {
-                Node planet = nodes.next();
+            Iterator<Node> planetNodes = graphDb.findNodes(Labels.PLANET);
+            while (planetNodes.hasNext()) {
+                Node planet = planetNodes.next();
                 String name = planet.getProperty(NAME).toString();
                 for (Entry<Pattern, String> rename : renames) {
                     planet.getRelationships().forEach(rl -> {
