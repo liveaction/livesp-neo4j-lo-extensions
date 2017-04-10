@@ -6,14 +6,7 @@ import com.codahale.metrics.Timer.Context;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.common.collect.ImmutableCollection;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import com.google.common.collect.*;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
@@ -28,14 +21,7 @@ import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
-import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.PropertyContainer;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,15 +29,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.NoSuchElementException;
-import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
@@ -74,8 +55,6 @@ public final class IWanTopologyLoader {
     private final ImmutableMap<String, String> scopeByKeyTypes;
 
     private ImmutableMap<String, Set<String>> lineage;
-
-    private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
 
     private final LoadingCache<String, String> planetNameTemplateCache = CacheBuilder.newBuilder()
             .build(new CacheLoader<String, String>() {
@@ -143,7 +122,7 @@ public final class IWanTopologyLoader {
             for (Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
                 String keyType = attributeNodeEntry.getKey();
                 Node attributeNode = attributeNodeEntry.getValue();
-                getScope(scopes, attributeNode)
+                getScopeContext(scopes, attributeNode)
                         .ifPresent(scope -> scopeByKeyTypesBldr.put(keyType, scope));
             }
 
@@ -151,9 +130,23 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Optional<String> getScope(ImmutableMap<Node, String> scopes, Node attributeNode) {
+    private Optional<Node> getScopeElement(Node node) {
+        ImmutableSet<String> scopes = ImmutableSet.copyOf(this.scopes.values());
+        for (Relationship next : node.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT)) {
+            Node parentNode = next.getEndNode();
+            String nodeType = parentNode.getProperty(IwanModelConstants._TYPE, "").toString();
+            if (scopes.contains(nodeType)) {
+                return Optional.of(parentNode);
+            }
+            Optional<Node> scopeElement = getScopeElement(parentNode);
+            if (scopeElement.isPresent()) return scopeElement;
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
         return getParent(attributeNode)
-                .map(node -> getScope(scopes, node))
+                .map(node -> getScopeContext(scopes, node))
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
 
@@ -340,32 +333,41 @@ public final class IWanTopologyLoader {
 
     private void createPlanetLink(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
-            node.getValue().ifPresent(
-                    element -> {
-                        if (element.wasCreated) {
-                            String keyType = node.getKey();
-                            String planetTemplateName = getPlanetTemplateName(keyType);
-                            String scope = scopeByKeyTypes.get(keyType);
-                            if (scope == null) {
-                                throw new IllegalArgumentException(String.format("Unable to import element. No scope found for '%s'", keyType));
+            node.getValue().ifPresent(element -> {
+                        String keyType = node.getKey();
+                        if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) return;
+
+                        String planetTemplateName = getPlanetTemplateName(keyType);
+                        String scope = scopeByKeyTypes.get(keyType);
+                        if (scope == null) {
+                            throw new IllegalArgumentException(String.format("Unable to import element. No scope found for '%s'", keyType));
+                        } else {
+                            Optional<String> oScopeId;
+                            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(scope)) {
+                                oScopeId = Optional.of("global");
                             } else {
-                                String scopeId;
-                                if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(scope)) {
-                                    scopeId = "global";
-                                } else {
-                                    Optional<UniqueEntity<Node>> scopeNode = nodes.get(scope);
-                                    if (scopeNode != null) {
-                                        scopeId = scopeNode.map(n -> n.entity.getProperty(IwanModelConstants.ID))
-                                                .orElseThrow(() -> new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType)))
-                                                .toString();
-                                    } else {
-                                        throw new IllegalArgumentException(String.format("Unable to import element. No '%s.id' found for '%s'", scope, keyType));
-                                    }
-                                }
+                                oScopeId = Optional.ofNullable(nodes.get(scope))
+                                        .flatMap(o -> Optional.ofNullable(o.orElse(null)))
+                                        .map(ue -> Optional.of(ue.entity))
+                                        .orElseGet(() -> getScopeElement(element.entity))
+                                        .flatMap(sn -> Optional.ofNullable(sn.getProperty(IwanModelConstants.ID))
+                                                .map(Object::toString));
+
+                            }
+                            oScopeId.ifPresent(scopeId -> {
                                 String planetName = planetTemplateName.replace("{:scopeId}", scopeId);
                                 UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
-                                element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
-                            }
+                                AtomicBoolean present = new AtomicBoolean(false);
+                                element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
+                                    if (r.getEndNode().getId() == planet.entity.getId()) {
+                                        present.set(true);
+                                    } else {
+                                        r.delete();
+                                    }
+                                });
+                                if (!present.get())
+                                    element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+                            });
                         }
                     }
             );
