@@ -3,9 +3,6 @@ package com.livingobjects.neo4j.loader;
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import com.google.common.collect.*;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
@@ -31,7 +28,6 @@ import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -56,13 +52,7 @@ public final class IWanTopologyLoader {
 
     private ImmutableMap<String, Set<String>> lineage;
 
-    private final LoadingCache<String, String> planetNameTemplateCache = CacheBuilder.newBuilder()
-            .build(new CacheLoader<String, String>() {
-                @Override
-                public String load(String keyType) throws Exception {
-                    return loadPlanetTemplateName(keyType);
-                }
-            });
+    private final Map<String, String> planetNameTemplateCache = Maps.newConcurrentMap();
 
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
@@ -190,14 +180,19 @@ public final class IWanTopologyLoader {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, scopeKeytypes);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.warn(e.getLocalizedMessage());
-                LOGGER.debug("STACKTRACE", e);
-                LOGGER.debug(Arrays.toString(nextLine));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("STACKTRACE", e);
+                    LOGGER.debug(Arrays.toString(nextLine));
+                }
+
             } catch (IllegalArgumentException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx, scopeKeytypes);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
-                LOGGER.error("STACKTRACE", e);
-                LOGGER.debug(Arrays.toString(nextLine));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("STACKTRACE", e);
+                    LOGGER.debug(Arrays.toString(nextLine));
+                }
             }
             lineIndex++;
         }
@@ -337,7 +332,7 @@ public final class IWanTopologyLoader {
                         String keyType = node.getKey();
                         if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) return;
 
-                        String planetTemplateName = getPlanetTemplateName(keyType);
+                        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
                         String scope = scopeByKeyTypes.get(keyType);
                         if (scope == null) {
                             throw new IllegalArgumentException(String.format("Unable to import element. No scope found for '%s'", keyType));
@@ -371,14 +366,6 @@ public final class IWanTopologyLoader {
                         }
                     }
             );
-        }
-    }
-
-    private String getPlanetTemplateName(String keyType) {
-        try {
-            return planetNameTemplateCache.get(keyType);
-        } catch (ExecutionException e) {
-            throw new IllegalStateException(e);
         }
     }
 
@@ -438,17 +425,6 @@ public final class IWanTopologyLoader {
             }
         }
         return node.createRelationshipTo(parent, linkType);
-    }
-
-    private void createOutgoingUniqueLinks(Node node, ImmutableCollection<Node> parents, RelationshipType linkType) {
-        if (!parents.isEmpty()) {
-            Set<Node> relationshipsToCreate = Sets.newHashSet(parents);
-            for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
-                Node endNode = next.getEndNode();
-                relationshipsToCreate.remove(endNode);
-            }
-            relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
-        }
     }
 
     private Optional<UniqueEntity<Node>> createElement(IwanMappingStrategy strategy, String[] line, String elementKeyType) {
@@ -560,7 +536,7 @@ public final class IWanTopologyLoader {
                 }));
     }
 
-    private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, String[] line, T elementNode) {
+    private static <T extends PropertyContainer> void persistElementProperty(HeaderElement header, String[] line, T elementNode) {
         String field = line[header.index];
         Object value = PropertyConverter.convert(field, header.type, header.isArray);
         if (value != null) {
@@ -568,7 +544,6 @@ public final class IWanTopologyLoader {
         } else {
             elementNode.removeProperty(header.propertyName);
         }
-        return elementNode;
     }
 
 }
