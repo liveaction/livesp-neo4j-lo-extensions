@@ -183,6 +183,8 @@ public class SchemaTemplateExtension {
         ArrayNode counters = memdexPath.putArray("counters");
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
+            if (!counterNode.hasProperty("name") || counterNode.hasProperty("context")) return;
+
             String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
             counters.add(counterRef);
             countersDictionary.putIfAbsent(counterRef, counterNode);
