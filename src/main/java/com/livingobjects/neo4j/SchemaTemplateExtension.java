@@ -14,6 +14,7 @@ import org.codehaus.jackson.node.ObjectNode;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,12 +33,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -103,6 +99,7 @@ public class SchemaTemplateExtension {
                 String name = realmNode.getProperty(NAME).toString();
                 Node segment = realmNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).getEndNode();
                 Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
+                if (segments == null) return;
                 countersDictionary.putAll(segments.getValue());
                 memdexPaths.put("realm:" + name, segments.getKey());
             });
@@ -173,7 +170,12 @@ public class SchemaTemplateExtension {
         ObjectNode memdexPath = new ObjectNode(JsonNodeFactory.instance);
         Map<String, Node> countersDictionary = Maps.newHashMap();
 
-        Node planetTemplateNode = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING).getEndNode();
+        Relationship extendRel = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING);
+        if (extendRel == null) {
+            LOGGER.warn("The segment {} doesn't extand any PlanetTemplate !", segment);
+            return null;
+        }
+        Node planetTemplateNode = extendRel.getEndNode();
         String name = planetTemplateNode.getProperty(NAME).toString();
         memdexPath.put("planet", "template:" + name);
 
@@ -183,7 +185,7 @@ public class SchemaTemplateExtension {
         ArrayNode counters = memdexPath.putArray("counters");
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            if (!counterNode.hasProperty("name") || counterNode.hasProperty("context")) return;
+            if (!counterNode.hasProperty("name") || !counterNode.hasProperty("context")) return;
 
             String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
             counters.add(counterRef);
