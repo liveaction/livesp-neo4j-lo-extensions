@@ -58,7 +58,7 @@ public final class LoadCSVExtension {
     @Consumes("multipart/mixed")
     public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
         Stopwatch sWatch = Stopwatch.createStarted();
-        long lineCounter = 0;
+        long importedElementsCounter = 0;
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
             File csv = multiPart.getBodyParts().stream()
                     .filter(bp -> TEXT_CSV_MEDIATYPE.equals(bp.getMediaType()))
@@ -68,7 +68,7 @@ public final class LoadCSVExtension {
 
             try (InputStream is = new FileInputStream(csv)) {
                 Neo4jLoadResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
-                lineCounter = result.imported;
+                importedElementsCounter = result.importedElementsByScope.values().size();
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
@@ -86,9 +86,9 @@ public final class LoadCSVExtension {
             return Response.status(Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             return errorResponse(e);
-            
+
         } finally {
-            LOGGER.info("Import {} line(s) in {}ms.", lineCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
+            LOGGER.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
             if (PACKAGE_LOGGER.isDebugEnabled()) {
                 reporter.stop();
                 reporter.report();
