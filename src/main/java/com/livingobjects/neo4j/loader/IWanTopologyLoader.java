@@ -180,6 +180,7 @@ public final class IWanTopologyLoader {
         String[] nextLine;
 
         int lineIndex = 0;
+        int imported = 0;
         Map<TypedScope, Set<String>> importedElementByScope = Maps.newHashMap();
         List<String[]> currentTransaction = Lists.newArrayListWithCapacity(MAX_TRANSACTION_COUNT);
         Map<Integer, String> errors = Maps.newHashMap();
@@ -196,6 +197,7 @@ public final class IWanTopologyLoader {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
                     set.addAll(importedElements.getValue());
                 }
+                imported++;
                 currentTransaction.add(nextLine);
                 if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
                     tx = renewTransaction(tx);
@@ -224,7 +226,7 @@ public final class IWanTopologyLoader {
         tx.success();
         tx.close();
 
-        return new Neo4jLoadResult(importedElementByScope, errors);
+        return new Neo4jLoadResult(imported, errors, importedElementByScope);
     }
 
     private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> scopeKeytypes) {
