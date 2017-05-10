@@ -1,12 +1,16 @@
 package com.livingobjects.neo4j.model.iwan;
 
 import com.google.common.collect.ImmutableSet;
+import com.livingobjects.neo4j.loader.Scope;
 
 public final class IwanModelConstants {
     public static final String LINK_PROP_SPECIALIZER = "specializer";
 
     public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
     public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
+
+    public static final Scope GLOBAL_SCOPE = new Scope("global", SCOPE_GLOBAL_TAG);
+
     public static final char KEYTYPE_SEPARATOR = ':';
     public static final String LABEL_TYPE = "labelType";
     public static final ImmutableSet<String> IMPORTABLE_KEY_TYPES = ImmutableSet.of("cluster", "neType");

@@ -3,7 +3,14 @@ package com.livingobjects.neo4j.loader;
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
-import com.google.common.collect.*;
+import com.google.common.collect.ImmutableCollection;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
@@ -18,7 +25,15 @@ import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
-import org.neo4j.graphdb.*;
+import com.livingobjects.neo4j.model.result.TypedScope;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Label;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.PropertyContainer;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
+import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,8 +41,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -159,6 +181,7 @@ public final class IWanTopologyLoader {
 
         int lineIndex = 0;
         int imported = 0;
+        Map<TypedScope, Set<String>> importedElementByScope = Maps.newHashMap();
         List<String[]> currentTransaction = Lists.newArrayListWithCapacity(MAX_TRANSACTION_COUNT);
         Map<Integer, String> errors = Maps.newHashMap();
 
@@ -169,7 +192,11 @@ public final class IWanTopologyLoader {
 
         while ((nextLine = reader.readNext()) != null) {
             try {
-                importLine(nextLine, scopeKeytypes, strategy);
+                ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeytypes, strategy);
+                for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
+                    Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
+                    set.addAll(importedElements.getValue());
+                }
                 imported++;
                 currentTransaction.add(nextLine);
                 if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
@@ -199,7 +226,7 @@ public final class IWanTopologyLoader {
         tx.success();
         tx.close();
 
-        return new Neo4jLoadResult(imported, errors);
+        return new Neo4jLoadResult(imported, errors, importedElementByScope);
     }
 
     private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> scopeKeytypes) {
@@ -232,7 +259,7 @@ public final class IWanTopologyLoader {
         return tx;
     }
 
-    private void importLine(String[] line, ImmutableSet<String> scopeKeytypes, IwanMappingStrategy strategy) {
+    private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, IwanMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
 
             // Try to update elements which is not possible to create (no parent founds)
@@ -253,7 +280,7 @@ public final class IWanTopologyLoader {
 
             createConnectLink(scopeKeytypes, nodes);
 
-            createPlanetLink(nodes);
+            return createPlanetLink(nodes);
         }
     }
 
@@ -326,47 +353,52 @@ public final class IWanTopologyLoader {
         return null;
     }
 
-    private void createPlanetLink(Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private ImmutableMultimap<TypedScope, String> createPlanetLink(Map<String, Optional<UniqueEntity<Node>>> nodes) {
+        ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
             node.getValue().ifPresent(element -> {
                         String keyType = node.getKey();
                         if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) return;
 
                         String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
-                        String scope = scopeByKeyTypes.get(keyType);
-                        if (scope == null) {
+                        String scopeType = scopeByKeyTypes.get(keyType);
+                        if (scopeType == null) {
                             throw new IllegalArgumentException(String.format("Unable to import element. No scope found for '%s'", keyType));
                         } else {
-                            Optional<String> oScopeId;
-                            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(scope)) {
-                                oScopeId = Optional.of("global");
+                            Optional<Scope> optionalScopeNode;
+                            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(scopeType)) {
+                                optionalScopeNode = Optional.of(IwanModelConstants.GLOBAL_SCOPE);
                             } else {
-                                oScopeId = Optional.ofNullable(nodes.get(scope))
+                                optionalScopeNode = Optional.ofNullable(nodes.get(scopeType))
                                         .flatMap(o -> Optional.ofNullable(o.orElse(null)))
                                         .map(ue -> Optional.of(ue.entity))
                                         .orElseGet(() -> getScopeElement(element.entity))
-                                        .flatMap(sn -> Optional.ofNullable(sn.getProperty(IwanModelConstants.ID))
-                                                .map(Object::toString));
-
+                                        .map(scopeNode -> {
+                                            String id = scopeNode.getProperty(IwanModelConstants.ID).toString();
+                                            String tag = scopeNode.getProperty(IwanModelConstants.TAG).toString();
+                                            return new Scope(id, tag);
+                                        });
                             }
-                            oScopeId.ifPresent(scopeId -> {
-                                String planetName = planetTemplateName.replace("{:scopeId}", scopeId);
-                                UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
-                                AtomicBoolean present = new AtomicBoolean(false);
-                                element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
-                                    if (r.getEndNode().getId() == planet.entity.getId()) {
-                                        present.set(true);
-                                    } else {
-                                        r.delete();
-                                    }
-                                });
-                                if (!present.get())
-                                    element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+                            Scope scope = optionalScopeNode.orElseThrow(() -> new IllegalArgumentException(String.format("Unable to import element. No scope found for '%s'", keyType)));
+                            String planetName = planetTemplateName.replace("{:scopeId}", scope.id);
+                            UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
+                            AtomicBoolean present = new AtomicBoolean(false);
+                            element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
+                                if (r.getEndNode().getId() == planet.entity.getId()) {
+                                    present.set(true);
+                                } else {
+                                    r.delete();
+                                }
                             });
+                            if (!present.get()) {
+                                element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+                            }
+                            importedElementByScopeBuilder.put(new TypedScope(scope.tag, keyType), element.entity.getProperty(IwanModelConstants.TAG).toString());
                         }
                     }
             );
         }
+        return importedElementByScopeBuilder.build();
     }
 
     private String loadPlanetTemplateName(String keyType) {
