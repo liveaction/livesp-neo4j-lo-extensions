@@ -24,16 +24,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-final class IwanMappingStrategy {
+class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
 
     private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
 
-    private IwanMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
+    IwanMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
         this.columnIndexes = columnIndexes;
         this.mapping = mapping;
     }
@@ -60,6 +61,25 @@ final class IwanMappingStrategy {
         return new IwanMappingStrategy(columnIndexesBldr.build(), mapping);
     }
 
+    LineMappingStrategy reduceStrategyForLine(Set<String> scopesTypes, String[] line) {
+        ImmutableMap.Builder<String, Integer> newIndex = ImmutableMap.builder();
+        ImmutableMultimap.Builder<String, HeaderElement> newMapping = ImmutableMultimap.builder();
+        columnIndexes.forEach((k, v) -> {
+            String value = line[v];
+            if (value != null && !value.trim().isEmpty()) {
+                newIndex.put(k, v);
+                String[] split = k.split("\\.");
+                HeaderElement headerElement = mapping.get(split[0]).stream()
+                        .filter(he -> he.propertyName.equals(split[1]))
+                        .findFirst().orElseThrow(IllegalStateException::new);
+                newMapping.put(split[0], headerElement);
+            }
+        });
+        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line);
+
+        return new LineMappingStrategy(scope, newIndex.build(), newMapping.build());
+    }
+
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {
         return mapping.get(name);
     }
@@ -73,6 +93,18 @@ final class IwanMappingStrategy {
         return index;
     }
 
+    ImmutableSet<String> guessKeyTypesForLine(Collection<String> scopeTypes, String[] line) {
+        Set<String> scopeKeyTypes = scopeTypes.stream()
+                .filter(this::hasKeyType)
+                .filter(skt -> {
+                    int id = getColumnIndex(skt, "id");
+                    return line[id] != null && !line[id].isEmpty();
+                })
+                .collect(Collectors.toSet());
+
+        return ImmutableSet.copyOf(scopeKeyTypes);
+    }
+
     ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
         scopeKeyTypes.forEach(s ->
@@ -80,10 +112,10 @@ final class IwanMappingStrategy {
 
         if (collect.isEmpty()) {
             collect.putAll(addChildrenAttribute(IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children));
-            mapping.keySet().stream()
-                    .filter(k -> !collect.keySet().contains(k))
-                    .forEach(k -> collect.putAll(addChildrenAttribute(k, collect, children)));
         }
+        mapping.keySet().stream()
+                .filter(k -> !collect.keySet().contains(k))
+                .forEach(k -> collect.putAll(addChildrenAttribute(k, collect, children)));
 
         return ImmutableMap.copyOf(collect);
     }
@@ -100,7 +132,7 @@ final class IwanMappingStrategy {
                     public MultiElementHeader visitMulti(MultiElementHeader header) {
                         return header;
                     }
-                })).filter(h -> h != null)
+                })).filter(Objects::nonNull)
                 .collect(Collectors.toList());
         return ImmutableList.copyOf(collect);
     }
@@ -113,15 +145,11 @@ final class IwanMappingStrategy {
             String current, Map<String, Set<String>> collect, Map<String, ? extends List<Relationship>> children) {
 
         Collection<Relationship> relationships = children.get(current);
-        assert relationships != null : "Current type " + current + " does not exists !";
+        if (relationships == null) return ImmutableMap.of();
 
         if (!relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
-                Set<String> p = collect.get(current);
-                if (p == null) {
-                    p = Sets.newHashSet();
-                    collect.put(current, p);
-                }
+                Set<String> p = collect.computeIfAbsent(current, k -> Sets.newHashSet());
 
                 Node startNode = relationship.getStartNode();
                 String type = startNode.getProperty(IwanModelConstants._TYPE).toString();
@@ -130,11 +158,7 @@ final class IwanMappingStrategy {
                 if (mapping.keySet().contains(key)) {
                     p.add(key);
                     addChildrenAttribute(key, collect, children).forEach((k, v) -> {
-                        Set<String> values = collect.get(k);
-                        if (values == null) {
-                            values = Sets.newHashSet();
-                            collect.put(k, values);
-                        }
+                        Set<String> values = collect.computeIfAbsent(k, k1 -> Sets.newHashSet());
                         values.addAll(v);
                     });
                 }
