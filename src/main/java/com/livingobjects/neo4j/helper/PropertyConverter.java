@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 
 public final class PropertyConverter {
@@ -75,8 +76,22 @@ public final class PropertyConverter {
     private static Object readNumberField(boolean isArray, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
             if (isArray) {
-                Collection<? extends Number> numbers = JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
+                boolean jacksonCannotParse = false;
+                String[] split = field.replaceAll("[\\[|\\]]", "").split(",");
+
+                for (int i = 0; i < split.length; i++) {
+                    if (split[i].startsWith(".")) {
+                        jacksonCannotParse = true;
+                        break;
+                    }
+                }
+                
+                Collection<? extends Number> numbers = jacksonCannotParse ? 
+                    convertAsDouble(split) :
+                    JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
+                
                 Iterator<? extends Number> iterator = numbers.iterator();
+
                 if (iterator.hasNext()) {
                     Number next = iterator.next();
                     if (next instanceof Short) {
@@ -95,6 +110,10 @@ public final class PropertyConverter {
                 }
             } else {
                 try {
+                    if (field.startsWith(".")) {
+                        return Double.valueOf(field);
+                    }
+
                     return JSON_MAPPER.readValue(field, Number.class);
                 } catch (JsonMappingException e) {
                     return null;
@@ -103,6 +122,16 @@ public final class PropertyConverter {
         } else {
             return null;
         }
+    }
+
+    private static Collection<? extends Number> convertAsDouble(String[] doubleFieldArray) {
+        List<Number> doubles = new LinkedList<>();
+
+        for (int i = 0; i < doubleFieldArray.length; i++) {
+            doubles.add(Double.valueOf(doubleFieldArray[i]));
+        }
+
+        return doubles;
     }
 
 }
