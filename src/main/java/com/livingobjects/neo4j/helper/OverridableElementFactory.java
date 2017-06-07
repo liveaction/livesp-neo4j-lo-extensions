@@ -1,8 +1,8 @@
 package com.livingobjects.neo4j.helper;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -14,7 +14,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
@@ -24,37 +23,51 @@ public final class OverridableElementFactory {
     private final Label keyLabel;
     private final ImmutableSet<Label> extraLabel;
 
-    public OverridableElementFactory(
-            GraphDatabaseService graphdb, Label keyLabel, Label... extraLabels) {
+    private OverridableElementFactory(GraphDatabaseService graphdb, Label keyLabel, Label... extraLabels) {
         this.graphdb = graphdb;
         this.keyLabel = keyLabel;
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
     public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue) {
-        ImmutableList<String> scopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
-        Map<String, Node> expands = Maps.newHashMapWithExpectedSize(scopes.size());
+        ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
+        ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
+        ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
         graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
             String nodeScope = (String) node.getProperty(_SCOPE, GLOBAL_SCOPE.tag);
-            if (scopes.contains(nodeScope)) {
-                expands.put(nodeScope, node);
-            }
+            expandsBldr.put(nodeScope, node);
         });
+        ImmutableMap<String, Node> expands = expandsBldr.build();
 
-        Node extendedNode = Optional.ofNullable(expands.get(SP_SCOPE.tag))
-                .orElseGet(() -> expands.get(GLOBAL_SCOPE.tag));
-        boolean override = (extendedNode != null);
-
-        if (expands.isEmpty())
-            return UniqueEntity.created(initialize(graphdb.createNode(), keyProperty, keyValue, scope, override));
+        Node extendedNode = null;
+        for (String s : scopes) {
+            if (s.equals(scope.tag)) continue;
+            Node node = expands.get(s);
+            if (node != null) {
+                extendedNode = node;
+                break;
+            }
+        }
 
         UniqueEntity<Node> node = Optional.ofNullable(expands.get(scope.tag))
                 .map(UniqueEntity::existing)
-                .orElseGet(() -> UniqueEntity.created(initialize(graphdb.createNode(), keyProperty, keyValue, scope, override)));
+                .orElseGet(() -> UniqueEntity.created(initialize(graphdb.createNode(), keyProperty, keyValue, scope)));
 
-        return (override)
-                ? ensureExtendRelation(node, extendedNode)
-                : node;
+        // Remove extra label from previous Scopes
+        expands.forEach((sc, n) -> {
+            if (!scopes.contains(sc)) {
+                extraLabel.forEach(n::removeLabel);
+                if (node.wasCreated)
+                    n.createRelationshipTo(node.entity, RelationshipTypes.EXTEND);
+            }
+        });
+
+        if (extendedNode != null) {
+            return ensureExtendRelation(node, extendedNode);
+        } else {
+            extraLabel.forEach(node.entity::addLabel);
+            return node;
+        }
     }
 
     private UniqueEntity<Node> ensureExtendRelation(UniqueEntity<Node> node, Node extendedNode) {
@@ -73,11 +86,8 @@ public final class OverridableElementFactory {
         return node;
     }
 
-    private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope, boolean override) {
+    private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope) {
         created.addLabel(keyLabel);
-        if (!override)
-            extraLabel.forEach(created::addLabel);
-
         created.setProperty(keyProperty, keyValue);
         created.setProperty(_SCOPE, scope.tag);
         created.setProperty(IwanModelConstants.CREATED_AT, Instant.now().toEpochMilli());
@@ -87,5 +97,6 @@ public final class OverridableElementFactory {
     public static OverridableElementFactory networkElementFactory(GraphDatabaseService graphdb) {
         return new OverridableElementFactory(graphdb, Labels.ELEMENT, Labels.NETWORK_ELEMENT);
     }
+
 
 }

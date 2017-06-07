@@ -12,7 +12,7 @@ public final class IwanModelConstants {
     public static final String SCOPE_SP_TAG = "class=scope,scope=sp";
 
     public static final Scope GLOBAL_SCOPE = new Scope("global", SCOPE_GLOBAL_TAG);
-    public static final Scope SP_SCOPE = new Scope("sp", SCOPE_GLOBAL_TAG);
+    public static final Scope SP_SCOPE = new Scope("sp", SCOPE_SP_TAG);
 
     public static final char KEYTYPE_SEPARATOR = ':';
     public static final String LABEL_TYPE = "labelType";

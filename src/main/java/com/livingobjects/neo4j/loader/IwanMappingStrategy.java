@@ -28,6 +28,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+
 class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
 
@@ -64,20 +66,20 @@ class IwanMappingStrategy {
     LineMappingStrategy reduceStrategyForLine(Set<String> scopesTypes, String[] line) {
         ImmutableMap.Builder<String, Integer> newIndex = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> newMapping = ImmutableMultimap.builder();
-        columnIndexes.forEach((k, v) -> {
-            String value = line[v];
+        ImmutableSet.Builder<String> empties = ImmutableSet.builder();
+        mapping.values().forEach(he -> {
+            String value = line[he.index];
             if (value != null && !value.trim().isEmpty()) {
-                newIndex.put(k, v);
-                String[] split = k.split("\\.");
-                HeaderElement headerElement = mapping.get(split[0]).stream()
-                        .filter(he -> he.propertyName.equals(split[1]))
-                        .findFirst().orElseThrow(IllegalStateException::new);
-                newMapping.put(split[0], headerElement);
+                newIndex.put(he.columnIdentifier(), he.index);
+                newMapping.put(he.elementName, he);
+            } else if (TAG.equals(he.propertyName)) {
+                empties.add(he.elementName);
             }
         });
+
         Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line);
 
-        return new LineMappingStrategy(scope, newIndex.build(), newMapping.build());
+        return new LineMappingStrategy(scope, newIndex.build(), newMapping.build(), empties.build());
     }
 
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {
@@ -98,9 +100,9 @@ class IwanMappingStrategy {
                 .filter(this::hasKeyType)
                 .filter(skt -> {
                     int id = getColumnIndex(skt, "id");
-                    return line[id] != null && !line[id].isEmpty();
-                })
-                .collect(Collectors.toSet());
+                    return id >= 0 && line[id] != null && !line[id].isEmpty();
+
+                }).collect(Collectors.toSet());
 
         return ImmutableSet.copyOf(scopeKeyTypes);
     }
@@ -120,7 +122,7 @@ class IwanMappingStrategy {
         return ImmutableMap.copyOf(collect);
     }
 
-    public ImmutableList<MultiElementHeader> getMultiElementHeader() {
+    ImmutableList<MultiElementHeader> getMultiElementHeader() {
         List<MultiElementHeader> collect = mapping.values().stream()
                 .map(h -> h.visit(new Visitor<MultiElementHeader>() {
                     @Override
@@ -137,7 +139,7 @@ class IwanMappingStrategy {
         return ImmutableList.copyOf(collect);
     }
 
-    final boolean hasKeyType(String keytype) {
+    boolean hasKeyType(String keytype) {
         return mapping.keySet().contains(keytype);
     }
 
@@ -169,7 +171,7 @@ class IwanMappingStrategy {
         return collect;
     }
 
-    public ImmutableSet<String> getAllElementsType() {
+    ImmutableSet<String> getAllElementsType() {
         return mapping.keySet();
     }
 }
