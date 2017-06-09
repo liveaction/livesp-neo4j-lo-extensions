@@ -6,10 +6,13 @@ import com.livingobjects.neo4j.loader.Scope;
 public final class IwanModelConstants {
     public static final String LINK_PROP_SPECIALIZER = "specializer";
 
+    public static final String SCOPE_CLASS = "class:scope";
     public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
     public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
+    public static final String SCOPE_SP_TAG = "class=scope,scope=sp";
 
     public static final Scope GLOBAL_SCOPE = new Scope("global", SCOPE_GLOBAL_TAG);
+    public static final Scope SP_SCOPE = new Scope("sp", SCOPE_SP_TAG);
 
     public static final char KEYTYPE_SEPARATOR = ':';
     public static final String LABEL_TYPE = "labelType";
@@ -22,11 +25,11 @@ public final class IwanModelConstants {
     public static final String VERSION = "version";
     public static final String NAME = "name";
     public static final String PATH = "path";
-    public static final String CREATED_AT = "createdAt";
+    public static final String CREATED_AT = "_createdAt";
     public static final String CARDINALITY = "cardinality";
     public static final String TAG = "tag";
     public static final String SCHEMA = "schema";
-    public static final String UPDATED_AT = "updatedAt";
+    public static final String UPDATED_AT = "_updatedAt";
     public static final String _OVERRIDABLE = "_overridable";
     public static final String _SCOPE = "_scope";
 }
