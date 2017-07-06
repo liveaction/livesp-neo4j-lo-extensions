@@ -3,6 +3,7 @@ package com.livingobjects.neo4j.helper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -12,6 +13,8 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -19,6 +22,8 @@ import java.util.Optional;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 public final class OverridableElementFactory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OverridableElementFactory.class);
+
     private final GraphDatabaseService graphdb;
     private final Label keyLabel;
     private final ImmutableSet<Label> extraLabel;
@@ -34,7 +39,12 @@ public final class OverridableElementFactory {
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
         graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
-            String nodeScope = (String) node.getProperty(_SCOPE, GLOBAL_SCOPE.tag);
+            Iterable<Relationship> relationships = node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+            if (Iterables.size(relationships) != 1) {
+                LOGGER.error("Element node {} as too many Planet relations !", node.getProperty(TAG));
+            }
+            Relationship only = relationships.iterator().next();
+            String nodeScope = only.getEndNode().getProperty(_SCOPE).toString();
             expandsBldr.put(nodeScope, node);
         });
         ImmutableMap<String, Node> expands = expandsBldr.build();

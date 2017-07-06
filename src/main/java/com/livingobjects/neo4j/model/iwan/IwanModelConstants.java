@@ -32,5 +32,5 @@ public final class IwanModelConstants {
     public static final String SCHEMA = "schema";
     public static final String UPDATED_AT = "_updatedAt";
     public static final String _OVERRIDABLE = "_overridable";
-    public static final String _SCOPE = "_scope";
+    public static final String _SCOPE = "scope";
 }
