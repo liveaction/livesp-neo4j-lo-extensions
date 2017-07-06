@@ -16,8 +16,9 @@ public final class IwanModelConstants {
 
     public static final char KEYTYPE_SEPARATOR = ':';
     public static final String LABEL_TYPE = "labelType";
+    public static final String SCOPE = "scope";
     public static final ImmutableSet<String> IMPORTABLE_KEY_TYPES = ImmutableSet.of("cluster", "neType");
-    public static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", LABEL_TYPE, "scope");
+    public static final ImmutableSet<String> KEY_TYPES = ImmutableSet.of("cluster", "neType", LABEL_TYPE, SCOPE);
     public static final String CARDINALITY_MULTIPLE = "0..n";
     public static final String CARDINALITY_UNIQUE_PARENT = "1..1";
     public static final String _TYPE = "_type";

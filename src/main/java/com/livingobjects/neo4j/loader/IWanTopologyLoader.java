@@ -371,6 +371,8 @@ public final class IWanTopologyLoader {
                         String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
                         String planetName = planetTemplateName.replace("{:scopeId}", strategy.scope.id);
                         UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
+                        planet.wasCreated(p -> p.setProperty(SCOPE, strategy.scope.id));
+
                         AtomicBoolean present = new AtomicBoolean(false);
                         element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
                             if (r.getEndNode().getId() == planet.entity.getId()) {
