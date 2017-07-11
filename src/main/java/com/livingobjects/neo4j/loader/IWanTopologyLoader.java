@@ -473,13 +473,6 @@ public final class IWanTopologyLoader {
             if (tag.isEmpty()) return Optional.empty();
 
             boolean isScope = scopeTypes.contains(elementKeyType);
-            if (isScope) { // Avoid to create scope Element if Element.name is not present name is mandatory in Doorman)
-                int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
-                if (nameIndex < 0) return Optional.empty();
-                String name = line[nameIndex];
-                if (name.isEmpty()) return Optional.empty();
-            }
-
             UniqueEntity<Node> uniqueEntity = (isOverridable) ?
                     overridableElementFactory.getOrOverride(strategy.scope, IwanModelConstants.TAG, tag) :
                     networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
@@ -487,6 +480,14 @@ public final class IWanTopologyLoader {
 
             if (uniqueEntity.wasCreated) {
                 if (isScope) {
+                    int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
+                    if (nameIndex < 0) return Optional.empty();
+                    String name = line[nameIndex];
+                    if (name.isEmpty()) {
+                        uniqueEntity.entity.delete();
+                        return Optional.empty();
+                    }
+
                     elementNode.addLabel(Labels.SCOPE);
                     applySchema(strategy, line, elementKeyType, tag, elementNode);
                 }
