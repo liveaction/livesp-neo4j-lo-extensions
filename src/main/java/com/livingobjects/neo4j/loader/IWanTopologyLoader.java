@@ -469,9 +469,16 @@ public final class IWanTopologyLoader {
 
             int tagIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.TAG);
             if (tagIndex < 0) return Optional.empty();
-
             String tag = line[tagIndex];
             if (tag.isEmpty()) return Optional.empty();
+
+            boolean isScope = scopeTypes.contains(elementKeyType);
+            if (isScope) { // Avoid to create scope Element if Element.name is not present name is mandatory in Doorman)
+                int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
+                if (nameIndex < 0) return Optional.empty();
+                String name = line[nameIndex];
+                if (name.isEmpty()) return Optional.empty();
+            }
 
             UniqueEntity<Node> uniqueEntity = (isOverridable) ?
                     overridableElementFactory.getOrOverride(strategy.scope, IwanModelConstants.TAG, tag) :
@@ -479,7 +486,7 @@ public final class IWanTopologyLoader {
             Node elementNode = uniqueEntity.entity;
 
             if (uniqueEntity.wasCreated) {
-                if (scopeTypes.contains(elementKeyType)) {
+                if (isScope) {
                     elementNode.addLabel(Labels.SCOPE);
                     applySchema(strategy, line, elementKeyType, tag, elementNode);
                 }
