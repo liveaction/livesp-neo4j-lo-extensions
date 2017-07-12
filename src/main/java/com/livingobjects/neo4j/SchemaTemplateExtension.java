@@ -14,6 +14,7 @@ import org.codehaus.jackson.node.ObjectNode;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
@@ -33,7 +34,12 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -53,96 +59,103 @@ public class SchemaTemplateExtension {
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
-        Transaction tx = graphDb.beginTx();
-        Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
-        if (schemaNode == null) {
-            return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
-        }
-        List<Node> realmNodes = Lists.newArrayList();
+        try (Transaction tx = graphDb.beginTx()) {
+            Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+            if (schemaNode == null) {
+                return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
+            }
+            List<Node> realmNodes = Lists.newArrayList();
 
-        StreamingOutput stream = outputStream -> {
-            JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+            StreamingOutput stream = outputStream -> {
+                JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
 
-            jg.writeStartObject();
-            jg.writeStringField(ID, schemaId);
-            jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
-            jg.writeArrayFieldStart("planets");
-            jg.flush();
+                jg.writeStartObject();
+                jg.writeStringField(ID, schemaId);
+                jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
+                jg.writeArrayFieldStart("planets");
+                jg.flush();
 
-            schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
-                try {
-                    Node targetNode = rel.getEndNode();
-                    if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
-                        String name = targetNode.getProperty("name").toString();
-                        jg.writeStartObject();
-                        jg.writeStringField("type", "template");
-                        jg.writeStringField(NAME, name);
-                        jg.writeObjectField("attributes", browseAttributes(targetNode));
-                        jg.writeEndObject();
+                schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
+                    try {
+                        Node targetNode = rel.getEndNode();
+                        if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
+                            String name = targetNode.getProperty("name").toString();
+                            jg.writeStartObject();
+                            jg.writeStringField("type", "template");
+                            jg.writeStringField(NAME, name);
+                            jg.writeObjectField("attributes", browseAttributes(targetNode));
+                            jg.writeEndObject();
+                            jg.flush();
+
+                        } else if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                            realmNodes.add(targetNode);
+                        }
+                    } catch (IOException e) {
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
+                        }
+                    }
+                });
+                jg.writeEndArray();
+
+                Map<String, Node> countersDictionary = Maps.newHashMap();
+                Map<String, ObjectNode> memdexPaths = Maps.newHashMap();
+                realmNodes.forEach(realmNode -> {
+                    String name = realmNode.getProperty(NAME).toString();
+                    try {
+                        Relationship firstMemdexPath = realmNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING);
+                        if (firstMemdexPath != null) {
+                            Node segment = firstMemdexPath.getEndNode();
+                            Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
+                            if (segments == null) return;
+                            countersDictionary.putAll(segments.getValue());
+                            memdexPaths.put("realm:" + name, segments.getKey());
+                        } else {
+                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ingnoring it", name);
+                        }
+                    } catch (NotFoundException e) {
+                        throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
+                    }
+                });
+
+                jg.writeObjectFieldStart("counters");
+                jg.flush();
+                countersDictionary.forEach((key, value) -> {
+                    try {
+                        ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
+                        value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+                        jg.writeObjectField(key, counter);
+                    } catch (IOException e) {
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
+                        }
+                    }
+                });
+                jg.writeEndObject();
+
+                jg.writeObjectFieldStart("realms");
+                jg.flush();
+                memdexPaths.forEach((key, value) -> {
+                    try {
+                        jg.writeObjectField(key, value);
                         jg.flush();
-
-                    } else if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
-                        realmNodes.add(targetNode);
+                    } catch (IOException e) {
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
+                        }
                     }
-                } catch (IOException e) {
-                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("STACKTRACE", e);
-                    }
-                }
-            });
-            jg.writeEndArray();
+                });
 
-            Map<String, Node> countersDictionary = Maps.newHashMap();
-            Map<String, ObjectNode> memdexPaths = Maps.newHashMap();
-            realmNodes.forEach(realmNode -> {
-                String name = realmNode.getProperty(NAME).toString();
-                Node segment = realmNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).getEndNode();
-                Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
-                if (segments == null) return;
-                countersDictionary.putAll(segments.getValue());
-                memdexPaths.put("realm:" + name, segments.getKey());
-            });
-
-            jg.writeObjectFieldStart("counters");
-            jg.flush();
-            countersDictionary.forEach((key, value) -> {
-                try {
-                    ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
-                    value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
-                    jg.writeObjectField(key, counter);
-                } catch (IOException e) {
-                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("STACKTRACE", e);
-                    }
-                }
-            });
-            jg.writeEndObject();
-
-            jg.writeObjectFieldStart("realms");
-            jg.flush();
-            memdexPaths.forEach((key, value) -> {
-                try {
-                    jg.writeObjectField(key, value);
-                    jg.flush();
-                } catch (IOException e) {
-                    LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("STACKTRACE", e);
-                    }
-                }
-            });
-
-            tx.close();
-
-            jg.writeEndObject();
-            jg.writeEndObject();
-            jg.flush();
-            jg.close();
-        };
-        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
-
+                jg.writeEndObject();
+                jg.writeEndObject();
+                jg.flush();
+                jg.close();
+            };
+            return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @SuppressWarnings("Duplicates")
