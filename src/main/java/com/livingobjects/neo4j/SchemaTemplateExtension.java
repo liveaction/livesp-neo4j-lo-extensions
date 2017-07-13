@@ -61,13 +61,21 @@ public class SchemaTemplateExtension {
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
         try (Transaction tx = graphDb.beginTx()) {
             Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+
             if (schemaNode == null) {
                 return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
             }
-            List<Node> realmNodes = Lists.newArrayList();
+        }
 
-            StreamingOutput stream = outputStream -> {
-                JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+        StreamingOutput stream = outputStream -> {
+            List<Node> realmNodes = Lists.newArrayList();
+            try (JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+                 Transaction tx = graphDb.beginTx()) {
+                Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+
+                if (schemaNode == null) {
+                    throw new NoSuchElementException("Schema " + schemaId + " not found in database !");
+                }
 
                 jg.writeStartObject();
                 jg.writeStringField(ID, schemaId);
@@ -152,10 +160,9 @@ public class SchemaTemplateExtension {
                 jg.writeEndObject();
                 jg.writeEndObject();
                 jg.flush();
-                jg.close();
-            };
-            return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
-        }
+            }
+        };
+        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
     }
 
     @SuppressWarnings("Duplicates")
