@@ -359,36 +359,101 @@ public final class IWanTopologyLoader {
     }
 
     private ImmutableMultimap<TypedScope, String> createPlanetLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
-        if (strategy.scope == null)
-            throw new IllegalArgumentException("Unable to import element. No scope found for line");
-
         ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
-            node.getValue().ifPresent(element -> {
-                        String keyType = node.getKey();
-                        if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) return;
+            if (!node.getValue().isPresent()) continue;
+            UniqueEntity<Node> element = node.getValue().get();
+            String keyType = node.getKey();
 
-                        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
-                        String planetName = planetTemplateName.replace("{:scopeId}", strategy.scope.id);
-                        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
-                        planet.wasCreated(p -> p.setProperty(SCOPE, strategy.scope.id));
+            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) continue;
 
-                        AtomicBoolean present = new AtomicBoolean(false);
-                        element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
-                            if (r.getEndNode().getId() == planet.entity.getId()) {
-                                present.set(true);
-                            } else {
-                                r.delete();
-                            }
-                        });
-                        if (!present.get()) {
-                            element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
-                        }
-                        importedElementByScopeBuilder.put(new TypedScope(strategy.scope.tag, keyType), element.entity.getProperty(IwanModelConstants.TAG).toString());
-                    }
-            );
+            if (element.wasCreated) {
+                importedElementByScopeBuilder.put(
+                        reviewPlanetForCreatedElement(strategy, element),
+                        element.entity.getProperty(IwanModelConstants.TAG).toString());
+
+            } else {
+                importedElementByScopeBuilder.put(
+                        reviewPlanetForUpdatedElement(strategy, element),
+                        element.entity.getProperty(IwanModelConstants.TAG).toString());
+
+            }
         }
         return importedElementByScopeBuilder.build();
+    }
+
+    private TypedScope reviewPlanetForCreatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+        String keyType = element.entity.getProperty(_TYPE).toString();
+        boolean isOverridable = overridableType.contains(keyType);
+        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
+                .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
+                .orElse(false);
+        Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
+
+        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
+
+        if (strategy.scope == null && !isGlobal)
+            throw new IllegalArgumentException("Unable create planet link. No scope found for line");
+
+
+        String planetName = planetTemplateName.replace("{:scopeId}", solidScope.id);
+        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
+        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
+
+        AtomicBoolean present = new AtomicBoolean(false);
+        element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
+            if (r.getEndNode().getId() == planet.entity.getId()) {
+                present.set(true);
+            } else {
+                r.delete();
+            }
+        });
+        if (!present.get()) {
+            element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+        }
+
+        return new TypedScope(solidScope.tag, keyType);
+    }
+
+    private TypedScope reviewPlanetForUpdatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+        String keyType = element.entity.getProperty(_TYPE).toString();
+        boolean isOverridable = overridableType.contains(keyType);
+        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
+                .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
+                .orElse(false);
+        Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
+
+        String plScope = "";
+        for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
+            Node planetNode = r.getEndNode();
+            String currentScope = planetNode.getProperty(SCOPE, "").toString();
+            if (solidScope != null && !solidScope.tag.equals(currentScope)) {
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Element {} is on the wrong Planet {} ! Remove it !",
+                            element.entity.getProperty(TAG),
+                            currentScope
+                    );
+                }
+                r.delete();
+            } else {
+                plScope = currentScope;
+            }
+        }
+
+        return new TypedScope(plScope, keyType);
+    }
+
+    private static Scope consolidateScope(Scope scope, boolean isOverridable, boolean isGlobal) {
+        if (isOverridable) {
+            if (scope != null)
+                return scope;
+            else
+                return GLOBAL_SCOPE;
+        } else if (isGlobal) {
+            return GLOBAL_SCOPE;
+        } else {
+            return scope;
+        }
     }
 
     private String loadPlanetTemplateName(String keyType) {
@@ -424,8 +489,9 @@ public final class IWanTopologyLoader {
                 Node endNode = relationship.getEndNode();
                 String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(IwanModelConstants.NAME).toString();
-                if (isOverride && scopeTypes.contains(toKeytype))
-                    toKeytype = strategy.scope.attribute;
+                if (isOverride && scopeTypes.contains(toKeytype)) {
+                    toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
+                }
 
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
@@ -527,7 +593,8 @@ public final class IWanTopologyLoader {
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
         boolean isOverridable = overridableType.contains(elementName);
-        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(strategy.scope.tag)) {
+        Scope scope = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE);
+        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(scope.tag)) {
             return createElement(strategy, line, elementName);
         }
 

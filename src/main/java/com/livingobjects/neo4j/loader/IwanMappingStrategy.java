@@ -77,7 +77,7 @@ class IwanMappingStrategy {
             }
         });
 
-        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line);
+        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line).orElse(null);
 
         return new LineMappingStrategy(scope, newIndex.build(), newMapping.build(), empties.build());
     }

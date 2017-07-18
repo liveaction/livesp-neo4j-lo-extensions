@@ -16,6 +16,7 @@ import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -34,7 +35,8 @@ public final class OverridableElementFactory {
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
-    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue) {
+    public UniqueEntity<Node> getOrOverride(@Nullable Scope nullableScope, String keyProperty, Object keyValue) {
+        Scope scope = (nullableScope != null) ? nullableScope : GLOBAL_SCOPE;
         ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
