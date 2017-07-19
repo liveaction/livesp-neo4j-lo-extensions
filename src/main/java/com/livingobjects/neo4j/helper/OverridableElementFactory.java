@@ -8,6 +8,7 @@ import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
+import jline.internal.Nullable;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
@@ -16,7 +17,6 @@ import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -67,14 +67,13 @@ public final class OverridableElementFactory {
 
         // Remove extra label from previous Scopes
         expands.forEach((sc, n) -> {
-            if (!scopes.contains(sc)) {
+            if (!scopes.contains(sc))
                 extraLabel.forEach(n::removeLabel);
-                if (node.wasCreated)
-                    n.createRelationshipTo(node.entity, RelationshipTypes.EXTEND);
-            }
+
         });
 
         if (extendedNode != null) {
+            node.entity.setProperty(OVERRIDE, Boolean.TRUE);
             return ensureExtendRelation(node, extendedNode);
         } else {
             extraLabel.forEach(node.entity::addLabel);
