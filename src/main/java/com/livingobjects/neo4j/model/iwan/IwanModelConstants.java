@@ -26,11 +26,11 @@ public final class IwanModelConstants {
     public static final String VERSION = "version";
     public static final String NAME = "name";
     public static final String PATH = "path";
-    public static final String CREATED_AT = "_createdAt";
+    public static final String CREATED_AT = "createdAt";
     public static final String CARDINALITY = "cardinality";
     public static final String TAG = "tag";
     public static final String SCHEMA = "schema";
-    public static final String UPDATED_AT = "_updatedAt";
+    public static final String UPDATED_AT = "updatedAt";
     public static final String _OVERRIDABLE = "_overridable";
     public static final String OVERRIDE = "override";
     public static final String _SCOPE = "scope";
