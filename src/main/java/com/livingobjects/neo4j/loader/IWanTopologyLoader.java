@@ -55,7 +55,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
 
@@ -212,7 +219,7 @@ public final class IWanTopologyLoader {
                     LOGGER.debug(Arrays.toString(nextLine));
                 }
 
-            } catch (IllegalArgumentException e) {
+            } catch (IllegalArgumentException | IllegalStateException e) {
                 tx = properlyRenewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
@@ -267,7 +274,7 @@ public final class IWanTopologyLoader {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
             ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, childrenRelations);
 
-            // Try to update elements which is not possible to create (no parent founds)
+            // Try to update elements which are not possible to create (no parent founds)
             // updated elements must exist or NoSuchElement was throw
             ImmutableMap.Builder<String, Optional<UniqueEntity<Node>>> allNodesBldr = ImmutableMap.builder();
             strategy.getAllElementsType().stream()
@@ -423,18 +430,13 @@ public final class IWanTopologyLoader {
                 .orElse(false);
         Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        String plScope = "";
+        String plScope = null;
         for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
             Node planetNode = r.getEndNode();
             String currentScope = planetNode.getProperty(SCOPE, "").toString();
             if (solidScope != null && !solidScope.tag.equals(currentScope)) {
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("Element {} is on the wrong Planet {} ! Remove it !",
-                            element.entity.getProperty(TAG),
-                            currentScope
-                    );
-                }
-                r.delete();
+                Object tag = element.entity.getProperty(TAG);
+                throw new IllegalStateException(String.format("Scope conflict for element '%s'. Scopes : '%s' != '%s'", tag, currentScope, solidScope.tag));
             } else {
                 plScope = currentScope;
             }
