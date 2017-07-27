@@ -397,15 +397,11 @@ public final class IWanTopologyLoader {
                 .orElse(false);
         Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
 
         if (strategy.scope == null && !isGlobal)
             throw new IllegalArgumentException("Unable create planet link. No scope found for line");
 
-
-        String planetName = planetTemplateName.replace("{:scopeId}", solidScope.id);
-        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
-        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
+        UniqueEntity<Node> planet = createOrUpdatePlanet(solidScope, keyType);
 
         AtomicBoolean present = new AtomicBoolean(false);
         element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
@@ -420,6 +416,14 @@ public final class IWanTopologyLoader {
         }
 
         return new TypedScope(solidScope.tag, keyType);
+    }
+
+    private UniqueEntity<Node> createOrUpdatePlanet(Scope solidScope, String keyType) {
+        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
+        String planetName = planetTemplateName.replace("{:scopeId}", solidScope.id);
+        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
+        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
+        return planet;
     }
 
     private TypedScope reviewPlanetForUpdatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
@@ -439,6 +443,18 @@ public final class IWanTopologyLoader {
                 throw new IllegalStateException(String.format("Scope conflict for element '%s'. Scopes : '%s' != '%s'", tag, currentScope, solidScope.tag));
             } else {
                 plScope = currentScope;
+            }
+        }
+
+        if (plScope == null) {
+            Object tag = element.entity.getProperty(TAG);
+            if (solidScope != null) {
+                UniqueEntity<Node> planet = createOrUpdatePlanet(solidScope, keyType);
+                element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+                plScope = solidScope.tag;
+                LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
+            } else {
+                throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
             }
         }
 
