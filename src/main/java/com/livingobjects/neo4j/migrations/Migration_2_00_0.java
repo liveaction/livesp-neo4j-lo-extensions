@@ -9,7 +9,12 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.DynamicLabel;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.neo4j.helpers.collection.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,22 +37,39 @@ public final class Migration_2_00_0 {
     private static final int MAX_TX_STATEMENT = 10;
     private static final Executor executor = Executors.newSingleThreadExecutor();
 
+    private final Informations infoLog = new Informations();
+    private final GraphDatabaseService graphDb;
+
+    private Migration_2_00_0(GraphDatabaseService graphDb) {
+        this.graphDb = graphDb;
+    }
+
+    public static Migration_2_00_0 prepareMigration(GraphDatabaseService graphDb) {
+        return new Migration_2_00_0(graphDb);
+    }
+
     public static void cleanUpgrade(final GraphDatabaseService graphDb) {
+        Migration_2_00_0 migration_2_00_0 = new Migration_2_00_0(graphDb);
+        migration_2_00_0.cleanUpgrade();
+    }
+
+    public void cleanUpgrade() {
         Stopwatch timer = Stopwatch.createStarted();
-        LOGGER.info("Migrate to 2.00.0 ...");
+        infoLog.log("Migrate to 2.00.0 ...");
 
-        clearOldTemplates(graphDb);
-
-        clearApplicationRelations(graphDb);
-
-        clearUselessPlanet(graphDb);
-
-        relinkApplication(graphDb);
+        clearOldTemplates();
+        clearApplicationRelations();
+        clearUselessPlanet();
+        relinkApplication();
 
         LOGGER.info("... migration to 2.00.0 finished in {}mn", timer.elapsed(TimeUnit.MINUTES));
     }
 
-    private static void clearOldTemplates(final GraphDatabaseService graphDb) {
+    public Informations getProgression() {
+        return infoLog;
+    }
+
+    private void clearOldTemplates() {
         try (Transaction tx = graphDb.beginTx()) {
             Iterator<Node> templateIt = graphDb.findNodes(DynamicLabel.label("Template"));
             while (templateIt.hasNext()) {
@@ -55,10 +77,10 @@ public final class Migration_2_00_0 {
             }
             tx.success();
         }
-        LOGGER.info("... old template cleared !");
+        infoLog.log("... old template cleared !");
     }
 
-    private static void clearApplicationRelations(final GraphDatabaseService graphDb) {
+    private void clearApplicationRelations() {
         Stopwatch timer = Stopwatch.createStarted();
         Iterable<Node> nodes;
         try (Transaction tx = graphDb.beginTx()) {
@@ -89,7 +111,7 @@ public final class Migration_2_00_0 {
         }
     }
 
-    private static void clearUselessPlanet(final GraphDatabaseService graphDb) {
+    private void clearUselessPlanet() {
         ImmutableList<Pattern> removes = ImmutableList.of(
                 Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/site/right"),
                 Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/dscp"),
@@ -196,7 +218,7 @@ public final class Migration_2_00_0 {
         }
     }
 
-    private static void applyDeletion(GraphDatabaseService graphDb, List<Node> toDelete) throws InterruptedException {
+    private void applyDeletion(GraphDatabaseService graphDb, List<Node> toDelete) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         executor.execute(() -> {
             try (Transaction ntx = graphDb.beginTx()) {
@@ -209,7 +231,7 @@ public final class Migration_2_00_0 {
         latch.await();
     }
 
-    private static void relinkApplication(final GraphDatabaseService graphDb) {
+    private void relinkApplication() {
         try (Transaction tx = graphDb.beginTx()) {
             Node globalApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/global/application/cisco");
             Node spApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/sp/application/cisco");
