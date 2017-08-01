@@ -13,6 +13,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.OverridableElementFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.model.exception.ImportException;
@@ -29,7 +30,6 @@ import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.livingobjects.neo4j.model.result.TypedScope;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
@@ -44,7 +44,6 @@ import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -55,14 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
 
@@ -71,12 +63,11 @@ public final class IWanTopologyLoader {
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
-    private final UniqueElementFactory planetFactory;
+    private final TemplatedPlanetFactory planetFactory;
     private final UniqueElementFactory networkElementFactory;
     private final OverridableElementFactory overridableElementFactory;
 
     private final Node theGlobalNode;
-    private final ImmutableMap<String, Node> attributeNodes;
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
@@ -84,14 +75,11 @@ public final class IWanTopologyLoader {
     private final ImmutableSet<String> scopeTypes;
     private final ImmutableMap<String, String> scopeByKeyTypes;
 
-    private final Map<String, String> planetNameTemplateCache = Maps.newConcurrentMap();
-
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
 
-            planetFactory = UniqueElementFactory.planetFactory(graphDb);
             networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
             overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
@@ -101,7 +89,6 @@ public final class IWanTopologyLoader {
             }
 
             ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
-            ImmutableMap.Builder<String, Node> attributesBldr = ImmutableMap.builder();
             ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
@@ -112,7 +99,6 @@ public final class IWanTopologyLoader {
                 String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
                 String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(IwanModelConstants.NAME).toString();
                 boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
-                attributesBldr.put(key, n);
                 if (isOverride) overrideBldr.add(key);
 
                 if (IwanModelConstants.KEY_TYPES.contains(keytype)) {
@@ -144,11 +130,12 @@ public final class IWanTopologyLoader {
                 }
             });
 
-            this.attributeNodes = attributesBldr.build();
             this.overridableType = overrideBldr.build();
             this.childrenRelations = childrenRelationsBldr.build();
             this.parentRelations = parentRelationsBldr.build();
             this.crossAttributesRelations = crossAttributesRelationsBldr.build();
+
+            this.planetFactory = new TemplatedPlanetFactory(graphDb);
 
             ImmutableMap<Node, String> scopes = scopesBldr.build();
             for (Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
@@ -352,19 +339,6 @@ public final class IWanTopologyLoader {
                 oNode.ifPresent(node -> linkToParents(strategy, keyType, node, nodes)));
     }
 
-    private Node getNextStartNode(Iterator<Relationship> relationshipIterator, Label label) {
-        while (relationshipIterator.hasNext()) {
-            Relationship next = relationshipIterator.next();
-            Node endNode = next.getStartNode();
-            for (Label currentLabel : endNode.getLabels()) {
-                if (currentLabel.equals(label)) {
-                    return endNode;
-                }
-            }
-        }
-        return null;
-    }
-
     private ImmutableMultimap<TypedScope, String> createPlanetLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
@@ -401,7 +375,7 @@ public final class IWanTopologyLoader {
         if (strategy.scope == null && !isGlobal)
             throw new IllegalArgumentException("Unable create planet link. No scope found for line");
 
-        UniqueEntity<Node> planet = createOrUpdatePlanet(solidScope, keyType);
+        UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
 
         AtomicBoolean present = new AtomicBoolean(false);
         element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
@@ -418,14 +392,6 @@ public final class IWanTopologyLoader {
         return new TypedScope(solidScope.tag, keyType);
     }
 
-    private UniqueEntity<Node> createOrUpdatePlanet(Scope solidScope, String keyType) {
-        String planetTemplateName = planetNameTemplateCache.computeIfAbsent(keyType, this::loadPlanetTemplateName);
-        String planetName = planetTemplateName.replace("{:scopeId}", solidScope.id);
-        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(IwanModelConstants.NAME, planetName);
-        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
-        return planet;
-    }
-
     private TypedScope reviewPlanetForUpdatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
         String keyType = element.entity.getProperty(_TYPE).toString();
         boolean isOverridable = overridableType.contains(keyType);
@@ -439,6 +405,7 @@ public final class IWanTopologyLoader {
             Node planetNode = r.getEndNode();
             String currentScope = planetNode.getProperty(SCOPE, "").toString();
             if (solidScope != null && !solidScope.tag.equals(currentScope)) {
+
                 Object tag = element.entity.getProperty(TAG);
                 throw new IllegalStateException(String.format("Scope conflict for element '%s'. Scopes : '%s' != '%s'", tag, currentScope, solidScope.tag));
             } else {
@@ -449,7 +416,7 @@ public final class IWanTopologyLoader {
         if (plScope == null) {
             Object tag = element.entity.getProperty(TAG);
             if (solidScope != null) {
-                UniqueEntity<Node> planet = createOrUpdatePlanet(solidScope, keyType);
+                UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
                 element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
                 plScope = solidScope.tag;
                 LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
@@ -471,26 +438,6 @@ public final class IWanTopologyLoader {
             return GLOBAL_SCOPE;
         } else {
             return scope;
-        }
-    }
-
-    private String loadPlanetTemplateName(String keyType) {
-        Node attributeNode = attributeNodes.get(keyType);
-        Iterator<Relationship> iterator = attributeNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).iterator();
-        Node planetTemplate = getNextStartNode(iterator, Labels.PLANET_TEMPLATE);
-
-        if (planetTemplate != null) {
-            if (getNextStartNode(iterator, Labels.PLANET_TEMPLATE) != null) {
-                throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. Found more than one PlanetTemplate.", keyType));
-            }
-            Object template = planetTemplate.getProperty("name", null);
-            if (template != null) {
-                return template.toString();
-            } else {
-                throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate.name property found.", keyType));
-            }
-        } else {
-            throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate found.", keyType));
         }
     }
 
