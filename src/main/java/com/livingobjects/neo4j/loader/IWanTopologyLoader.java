@@ -66,6 +66,7 @@ public final class IWanTopologyLoader {
     private final TemplatedPlanetFactory planetFactory;
     private final UniqueElementFactory networkElementFactory;
     private final OverridableElementFactory overridableElementFactory;
+    private final ElementScopeSlider elementScopeSlider;
 
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
@@ -136,6 +137,7 @@ public final class IWanTopologyLoader {
             this.crossAttributesRelations = crossAttributesRelationsBldr.build();
 
             this.planetFactory = new TemplatedPlanetFactory(graphDb);
+            this.elementScopeSlider = new ElementScopeSlider(planetFactory);
 
             ImmutableMap<Node, String> scopes = scopesBldr.build();
             for (Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
@@ -405,9 +407,8 @@ public final class IWanTopologyLoader {
             Node planetNode = r.getEndNode();
             String currentScope = planetNode.getProperty(SCOPE, "").toString();
             if (solidScope != null && !solidScope.tag.equals(currentScope)) {
-
-                Object tag = element.entity.getProperty(TAG);
-                throw new IllegalStateException(String.format("Scope conflict for element '%s'. Scopes : '%s' != '%s'", tag, currentScope, solidScope.tag));
+                elementScopeSlider.slide(element.entity, solidScope);
+                plScope = solidScope.tag;
             } else {
                 plScope = currentScope;
             }
@@ -417,9 +418,11 @@ public final class IWanTopologyLoader {
             Object tag = element.entity.getProperty(TAG);
             if (solidScope != null) {
                 UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
-                element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+                UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
                 plScope = solidScope.tag;
-                LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
+                if (relation.wasCreated) {
+                    LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
+                }
             } else {
                 throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
             }
