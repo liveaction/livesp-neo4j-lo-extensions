@@ -34,12 +34,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -192,7 +187,7 @@ public class SchemaTemplateExtension {
 
         Relationship extendRel = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING);
         if (extendRel == null) {
-            LOGGER.warn("The segment {} doesn't extand any PlanetTemplate !", segment);
+            LOGGER.warn("The segment {} doesn't extends any PlanetTemplate !", segment);
             return null;
         }
         Node planetTemplateNode = extendRel.getEndNode();
@@ -217,6 +212,7 @@ public class SchemaTemplateExtension {
         ArrayNode children = memdexPath.putArray("children");
         segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(path -> {
             Entry<ObjectNode, Map<String, Node>> entry = browseSegments(path.getEndNode());
+            if (entry == null) return;
             children.add(entry.getKey());
             countersDictionary.putAll(entry.getValue());
         });
