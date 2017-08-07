@@ -16,7 +16,6 @@ import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
-import com.livingobjects.neo4j.model.exception.ImportException;
 import com.livingobjects.neo4j.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.model.exception.InvalidScopeException;
 import com.livingobjects.neo4j.model.header.HeaderElement;
@@ -48,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,6 +67,7 @@ public final class IWanTopologyLoader {
     private final UniqueElementFactory networkElementFactory;
     private final OverridableElementFactory overridableElementFactory;
     private final ElementScopeSlider elementScopeSlider;
+    private final TransactionManager txManager;
 
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
@@ -79,15 +80,14 @@ public final class IWanTopologyLoader {
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
         this.graphDb = graphDb;
+        this.txManager = new TransactionManager(graphDb);
         try (Transaction ignore = graphDb.beginTx()) {
 
             networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
             overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
             this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
-            if (this.theGlobalNode == null) {
-                throw new IllegalStateException("Global Scope node not found in database !");
-            }
+            Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
 
             ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
             ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
@@ -108,26 +108,15 @@ public final class IWanTopologyLoader {
                     }
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                     ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                    ImmutableSet.Builder<String> crossRels = ImmutableSet.builder();
                     n.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
                     n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
-                    n.getRelationships(Direction.OUTGOING, RelationshipTypes.CROSS_ATTRIBUTE).forEach(r -> {
-                        Node endNode = r.getEndNode();
-                        if (endNode.hasLabel(Labels.ATTRIBUTE)) {
-                            Object typeProperty = endNode.getProperty(IwanModelConstants._TYPE);
-                            Object nameProperty = endNode.getProperty(IwanModelConstants.NAME);
-                            if (typeProperty != null && nameProperty != null) {
-                                String endKeytype = typeProperty.toString() + IwanModelConstants.KEYTYPE_SEPARATOR + nameProperty.toString();
-                                crossRels.add(endKeytype);
-                            }
-                        }
-                    });
+                    ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
                     if (!IwanModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                         scopesBldr.put(n, key);
                     }
                     childrenRelationsBldr.put(key, crels.build());
                     parentRelationsBldr.put(key, prels.build());
-                    crossAttributesRelationsBldr.put(key, crossRels.build());
+                    crossAttributesRelationsBldr.put(key, crossAttributes);
                 }
             });
 
@@ -155,18 +144,9 @@ public final class IWanTopologyLoader {
     }
 
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
-        return getParent(attributeNode)
+        return IWanLoaderHelper.getParent(attributeNode)
                 .map(node -> getScopeContext(scopes, node))
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
-    }
-
-    private Optional<Node> getParent(Node attributeNode) {
-        for (Relationship relationship : attributeNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT)) {
-            if (IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(relationship.getProperty(IwanModelConstants.CARDINALITY, IwanModelConstants.CARDINALITY_UNIQUE_PARENT))) {
-                return Optional.of(relationship.getEndNode());
-            }
-        }
-        return Optional.empty();
     }
 
     public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
@@ -185,9 +165,9 @@ public final class IWanTopologyLoader {
 
         Transaction tx = graphDb.beginTx();
         while ((nextLine = reader.readNext()) != null) {
-            LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), nextLine);
-            ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, nextLine);
             try {
+                LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), nextLine);
+                ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, nextLine);
                 ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, lineStrategy);
                 for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
@@ -196,20 +176,15 @@ public final class IWanTopologyLoader {
                 imported++;
                 currentTransaction.add(nextLine);
                 if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
-                    tx = renewTransaction(tx);
+                    tx = txManager.renewTransaction(tx);
                     currentTransaction.clear();
                 }
-            } catch (ImportException | NoSuchElementException e) {
-                tx = properlyRenewTransaction(strategy, currentTransaction, tx);
-                errors.put(lineIndex, e.getMessage());
-                LOGGER.warn(e.getLocalizedMessage());
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("STACKTRACE", e);
-                    LOGGER.debug(Arrays.toString(nextLine));
-                }
-
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                tx = properlyRenewTransaction(strategy, currentTransaction, tx);
+            } catch (Exception e) {
+                tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
+                    LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
+                    ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
+                    importLine(ct, scopeKeyTypes, lineStrategy);
+                });
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
                 if (LOGGER.isDebugEnabled()) {
@@ -223,40 +198,6 @@ public final class IWanTopologyLoader {
         tx.close();
 
         return new Neo4jLoadResult(imported, errors, importedElementByScope);
-    }
-
-    private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
-        tx = renewTransaction(tx, true);
-        tx = reloadValidTransactionLines(tx, currentTransaction, strategy);
-        currentTransaction.clear();
-        return tx;
-    }
-
-    private Transaction renewTransaction(Transaction tx) {
-        return renewTransaction(tx, false);
-    }
-
-    private Transaction renewTransaction(Transaction tx, boolean asFailure) {
-        if (asFailure) {
-            tx.failure();
-        } else {
-            tx.success();
-        }
-        tx.close();
-        return graphDb.beginTx();
-    }
-
-    private Transaction reloadValidTransactionLines(
-            Transaction tx, List<String[]> lines, IwanMappingStrategy strategy) {
-        if (!lines.isEmpty()) {
-            lines.forEach(ct -> {
-                LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
-                ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
-                importLine(ct, scopeKeyTypes, lineStrategy);
-            });
-            return renewTransaction(tx);
-        }
-        return tx;
     }
 
     private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, LineMappingStrategy strategy) {
@@ -371,7 +312,7 @@ public final class IWanTopologyLoader {
         boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
-        Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
+        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
 
         if (strategy.scope == null && !isGlobal)
@@ -400,7 +341,7 @@ public final class IWanTopologyLoader {
         boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
-        Scope solidScope = consolidateScope(strategy.scope, isOverridable, isGlobal);
+        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
         String plScope = null;
         for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
@@ -429,19 +370,6 @@ public final class IWanTopologyLoader {
         }
 
         return new TypedScope(plScope, keyType);
-    }
-
-    private static Scope consolidateScope(Scope scope, boolean isOverridable, boolean isGlobal) {
-        if (isOverridable) {
-            if (scope != null)
-                return scope;
-            else
-                return GLOBAL_SCOPE;
-        } else if (isGlobal) {
-            return GLOBAL_SCOPE;
-        } else {
-            return scope;
-        }
     }
 
     private int linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
