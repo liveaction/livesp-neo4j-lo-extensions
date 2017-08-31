@@ -1,9 +1,13 @@
 package com.livingobjects.neo4j.helper;
 
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.Labels;
+import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.ResourceIterator;
 
 import java.time.Instant;
@@ -41,6 +45,20 @@ public final class UniqueElementFactory {
         return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
     }
 
+    public UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
+        UniqueEntity<Relationship> relation = null;
+        for (Relationship r : from.getRelationships(Direction.OUTGOING, type)) {
+            if (r.getEndNode().equals(to)) { // put other conditions here, if needed
+                relation = UniqueEntity.existing(r);
+                break;
+            }
+        }
+        if (relation == null) {
+            relation = UniqueEntity.created(from.createRelationshipTo(to, type));
+        }
+        return relation;
+    }
+
     private Node filterNode(String key1, Object value1, String key2, Object value2) {
         ResourceIterator<Node> nodes = graphdb.findNodes(keyLabel, key1, value1);
         while (nodes.hasNext()) {
@@ -64,8 +82,12 @@ public final class UniqueElementFactory {
         return created;
     }
 
+    public static UniqueElementFactory planetFactory(GraphDatabaseService graphdb) {
+        return new UniqueElementFactory(graphdb, Labels.PLANET, Optional.empty());
+    }
+
     public static UniqueElementFactory networkElementFactory(GraphDatabaseService graphdb) {
-        return new UniqueElementFactory(graphdb, IwanModelConstants.LABEL_NETWORK_ELEMENT, Optional.of(IwanModelConstants.LABEL_ELEMENT));
+        return new UniqueElementFactory(graphdb, Labels.NETWORK_ELEMENT, Optional.of(Labels.ELEMENT));
     }
 
 }

@@ -7,15 +7,15 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableMultimap.Builder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.OverridableElementFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
-import com.livingobjects.neo4j.model.exception.ImportException;
 import com.livingobjects.neo4j.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.model.exception.InvalidScopeException;
 import com.livingobjects.neo4j.model.header.HeaderElement;
@@ -23,7 +23,10 @@ import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.Labels;
+import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
+import com.livingobjects.neo4j.model.result.TypedScope;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -39,15 +42,19 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
 
@@ -56,66 +63,90 @@ public final class IWanTopologyLoader {
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
+    private final TemplatedPlanetFactory planetFactory;
     private final UniqueElementFactory networkElementFactory;
+    private final OverridableElementFactory overridableElementFactory;
+    private final ElementScopeSlider elementScopeSlider;
+    private final TransactionManager txManager;
 
-    private final ImmutableMap<String, Node> attributeNodes;
+    private final Node theGlobalNode;
+    private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
     private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
-    private final ImmutableList<String> scopes;
-    private ImmutableMap<String, Set<String>> lineage;
-
-    private final Map<String, ImmutableMultimap<String, Node>> planetsByClient = Maps.newHashMap();
-    private final Set<Long> planetLinksCreatedForNodes = Sets.newHashSet();
+    private final ImmutableSet<String> scopeTypes;
+    private final ImmutableMap<String, String> scopeByKeyTypes;
 
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
         this.graphDb = graphDb;
+        this.txManager = new TransactionManager(graphDb);
         try (Transaction ignore = graphDb.beginTx()) {
 
-            this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
+            networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
+            overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
-            ImmutableMap.Builder<String, Node> attributesBldr = ImmutableMap.builder();
+            this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
+            Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
+
+            ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
+            ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
             ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
-            ImmutableList.Builder<String> scopesBldr = ImmutableList.builder();
-            graphDb.findNodes(IwanModelConstants.LABEL_ATTRIBUTE).forEachRemaining(n -> {
+            ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
+            ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
+            graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
                 String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
                 String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(IwanModelConstants.NAME).toString();
-                attributesBldr.put(key, n);
+                boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
+                if (isOverride) overrideBldr.add(key);
+
                 if (IwanModelConstants.KEY_TYPES.contains(keytype)) {
+                    if (IwanModelConstants.IMPORTABLE_KEY_TYPES.contains(keytype)) {
+                        importableKeyTypesBldr.put(key, n);
+                    }
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                     ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                    ImmutableSet.Builder<String> crossRels = ImmutableSet.builder();
-                    n.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_PARENT).forEach(crels::add);
-                    n.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_PARENT).forEach(prels::add);
-                    n.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_CROSS_ATTRIBUTE).forEach(r -> {
-                        Node endNode = r.getEndNode();
-                        if (endNode.hasLabel(IwanModelConstants.LABEL_ATTRIBUTE)) {
-                            Object typeProperty = endNode.getProperty(IwanModelConstants._TYPE);
-                            Object nameProperty = endNode.getProperty(IwanModelConstants.NAME);
-                            if (typeProperty != null && nameProperty != null) {
-                                String endKeytype = typeProperty.toString() + IwanModelConstants.KEYTYPE_SEPARATOR + nameProperty.toString();
-                                crossRels.add(endKeytype);
-                            }
-                        }
-                    });
-                    if (prels.build().isEmpty()) {
-                        scopesBldr.add(key);
+                    n.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
+                    n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
+                    ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
+                    if (!IwanModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
+                        scopesBldr.put(n, key);
                     }
                     childrenRelationsBldr.put(key, crels.build());
                     parentRelationsBldr.put(key, prels.build());
-                    crossAttributesRelationsBldr.put(key, crossRels.build());
+                    crossAttributesRelationsBldr.put(key, crossAttributes);
                 }
             });
 
-            this.attributeNodes = attributesBldr.build();
+            this.overridableType = overrideBldr.build();
             this.childrenRelations = childrenRelationsBldr.build();
             this.parentRelations = parentRelationsBldr.build();
             this.crossAttributesRelations = crossAttributesRelationsBldr.build();
-            this.scopes = scopesBldr.build();
+
+            this.planetFactory = new TemplatedPlanetFactory(graphDb);
+            this.elementScopeSlider = new ElementScopeSlider(planetFactory);
+
+            ImmutableMap<Node, String> scopes = scopesBldr.build();
+            for (Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
+                String keyType = attributeNodeEntry.getKey();
+                Node attributeNode = attributeNodeEntry.getValue();
+                getScopeContext(scopes, attributeNode)
+                        .ifPresent(scope -> scopeByKeyTypesBldr.put(keyType, scope));
+            }
+            this.scopeByKeyTypes = scopeByKeyTypesBldr.build();
+
+            this.scopeTypes = ImmutableSet.<String>builder()
+                    .addAll(scopes.values())
+                    .build();
         }
+    }
+
+    private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
+        return IWanLoaderHelper.getParent(attributeNode)
+                .map(node -> getScopeContext(scopes, node))
+                .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
 
     public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
@@ -128,114 +159,75 @@ public final class IWanTopologyLoader {
 
         int lineIndex = 0;
         int imported = 0;
+        Map<TypedScope, Set<String>> importedElementByScope = Maps.newHashMap();
         List<String[]> currentTransaction = Lists.newArrayListWithCapacity(MAX_TRANSACTION_COUNT);
         Map<Integer, String> errors = Maps.newHashMap();
 
         Transaction tx = graphDb.beginTx();
-        lineage = strategy.guessElementCreationStrategy(scopes, childrenRelations);
-        ImmutableSet<String> startKeytypes = ImmutableSet.copyOf(
-                scopes.stream().filter(strategy::hasKeyType).collect(Collectors.toSet()));
-
         while ((nextLine = reader.readNext()) != null) {
             try {
-                importLine(nextLine, startKeytypes, strategy);
+                LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), nextLine);
+                ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, nextLine);
+                ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, lineStrategy);
+                for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
+                    Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
+                    set.addAll(importedElements.getValue());
+                }
                 imported++;
                 currentTransaction.add(nextLine);
                 if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
-                    tx = renewTransaction(tx);
+                    tx = txManager.renewTransaction(tx);
                     currentTransaction.clear();
                 }
-            } catch (ImportException | NoSuchElementException e) {
-                tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
-                errors.put(lineIndex, e.getMessage());
-                LOGGER.warn(e.getLocalizedMessage());
-                LOGGER.debug("STACKTRACE", e);
-                LOGGER.debug(Arrays.toString(nextLine));
-            } catch (IllegalArgumentException e) {
-                tx = properlyRenewTransaction(strategy, currentTransaction, tx, startKeytypes);
+            } catch (Exception e) {
+                tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
+                    LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
+                    ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
+                    importLine(ct, scopeKeyTypes, lineStrategy);
+                });
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
-                LOGGER.error("STACKTRACE", e);
-                LOGGER.debug(Arrays.toString(nextLine));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("STACKTRACE", e);
+                    LOGGER.debug(Arrays.toString(nextLine));
+                }
             }
             lineIndex++;
         }
         tx.success();
         tx.close();
 
-        return new Neo4jLoadResult(imported, errors);
+        return new Neo4jLoadResult(imported, errors, importedElementByScope);
     }
 
-    private Transaction properlyRenewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx, ImmutableSet<String> startKeytypes) {
-        tx = renewTransaction(tx, true);
-        tx = reloadValidTransactionLines(tx, currentTransaction, startKeytypes, strategy);
-        currentTransaction.clear();
-        return tx;
-    }
-
-    private Transaction renewTransaction(Transaction tx) {
-        return renewTransaction(tx, false);
-    }
-
-    private Transaction renewTransaction(Transaction tx, boolean asFailure) {
-        if (asFailure) {
-            tx.failure();
-        } else {
-            tx.success();
-        }
-        tx.close();
-        return graphDb.beginTx();
-    }
-
-    private Transaction reloadValidTransactionLines(
-            Transaction tx, List<String[]> lines, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
-        if (!lines.isEmpty()) {
-            lines.forEach(ct -> importLine(ct, startKeytypes, strategy));
-            return renewTransaction(tx);
-        }
-        return tx;
-    }
-
-    private void importLine(String[] line, ImmutableSet<String> startKeytypes, IwanMappingStrategy strategy) {
+    private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, LineMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
+            ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, childrenRelations);
 
-            // Try to update elements which is not possible to create (no parent founds)
+            // Try to update elements which are not possible to create (no parent founds)
             // updated elements must exist or NoSuchElement was throw
             ImmutableMap.Builder<String, Optional<UniqueEntity<Node>>> allNodesBldr = ImmutableMap.builder();
             strategy.getAllElementsType().stream()
                     .filter(key -> !lineage.keySet().contains(key))
+                    .filter(key -> !SCOPE_CLASS.equals(key))
                     .forEach(key -> allNodesBldr.put(key, updateElement(strategy, line, key)));
 
             // Create elements
             Map<String, Optional<UniqueEntity<Node>>> nodes = lineage.keySet().stream()
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+            nodes.put(SCOPE_GLOBAL_ATTRIBUTE, Optional.of(UniqueEntity.existing(theGlobalNode)));
 
-            ImmutableMap<String, Optional<UniqueEntity<Node>>> allNodes = allNodesBldr.putAll(nodes).build();
+            ImmutableMap<String, Optional<UniqueEntity<Node>>> allNodes =
+                    allNodesBldr
+                            .putAll(nodes)
+                            .build();
 
             createCrossAttributeLinks(line, strategy, allNodes);
 
-            createConnectLink(startKeytypes, nodes);
+            createConnectLink(strategy, nodes);
 
-            createPlanetLink(startKeytypes, nodes);
-
-            ImmutableMultimap<String, Node> planets;
-            if (startKeytypes.isEmpty()) {
-                planets = getGlobalPlanets();
-                for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
-                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(nodeEntity -> {
-                        if (nodeEntity.wasCreated) {
-                            Node node = nodeEntity.entity;
-                            long id = node.getId();
-                            if (!planetLinksCreatedForNodes.contains(id)) {
-                                createOutgoingUniqueLinks(node, parents, IwanModelConstants.LINK_ATTRIBUTE);
-                                planetLinksCreatedForNodes.add(id);
-                            }
-                        }
-                    });
-                }
-            }
+            return createPlanetLink(strategy, nodes);
         }
     }
 
@@ -260,7 +252,8 @@ public final class IWanTopologyLoader {
         for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
             ImmutableSet<String> crossAttributesLinks = crossAttributesRelations.get(meHeader.elementName);
             if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
-                throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" + meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
+                throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" +
+                        meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
             }
         }
     }
@@ -274,7 +267,7 @@ public final class IWanTopologyLoader {
                 for (String endKeyType : rel.getValue()) {
                     Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
                     optEndNode.ifPresent(toNode -> {
-                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, IwanModelConstants.LINK_CROSS_ATTRIBUTE);
+                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
                         String key = keyType + ELEMENT_SEPARATOR + endKeyType;
                         multiElementLinks.put(key, link);
                     });
@@ -284,54 +277,129 @@ public final class IWanTopologyLoader {
         return multiElementLinks;
     }
 
-    private void createConnectLink(ImmutableSet<String> startKeytypes, Map<String, Optional<UniqueEntity<Node>>> nodes) {
-        for (String keytype : nodes.keySet()) {
-            nodes.get(keytype).ifPresent(node -> {
-                int relCount = linkToParents(keytype, node, nodes);
-                if (!startKeytypes.isEmpty() && !scopes.contains(keytype) && relCount <= 0) {
-                    throw new IllegalStateException("No parent element found for type " + keytype);
-                }
-            });
-        }
+    private void createConnectLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+        nodes.forEach((keyType, oNode) ->
+                oNode.ifPresent(node -> linkToParents(strategy, keyType, node, nodes)));
     }
 
-    private void createPlanetLink(ImmutableSet<String> startKeytypes, Map<String, Optional<UniqueEntity<Node>>> nodes) {
-        ImmutableMultimap<String, Node> planets;
-        for (String keytype : startKeytypes) {
-            UniqueEntity<Node> scopeNode = nodes.get(keytype).orElseThrow(() -> new InvalidScopeException("No scope tag provided."));
-            Object scopeNodeIdProperty = scopeNode.entity.getProperty("id");
-            if (scopeNodeIdProperty != null) {
-                String id = scopeNodeIdProperty.toString();
-                String name = keytype.substring(keytype.indexOf(IwanModelConstants.KEYTYPE_SEPARATOR) + 1);
-                planets = getPlanetsForClient(name + IwanModelConstants.KEYTYPE_SEPARATOR + id);
+    private ImmutableMultimap<TypedScope, String> createPlanetLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+        ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
+        for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
+            if (!node.getValue().isPresent()) continue;
+            UniqueEntity<Node> element = node.getValue().get();
+            String keyType = node.getKey();
 
-                for (Entry<String, Optional<UniqueEntity<Node>>> entry : nodes.entrySet()) {
-                    ImmutableCollection<Node> parents = planets.get(entry.getKey());
-                    entry.getValue().ifPresent(node -> createOutgoingUniqueLinks(node.entity, parents, IwanModelConstants.LINK_ATTRIBUTE));
-                }
+            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) continue;
+
+            if (element.wasCreated) {
+                importedElementByScopeBuilder.put(
+                        reviewPlanetForCreatedElement(strategy, element),
+                        element.entity.getProperty(IwanModelConstants.TAG).toString());
+
             } else {
-                throw new InvalidScopeException("No scope id provided.");
+                importedElementByScopeBuilder.put(
+                        reviewPlanetForUpdatedElement(strategy, element),
+                        element.entity.getProperty(IwanModelConstants.TAG).toString());
+
             }
         }
+        return importedElementByScopeBuilder.build();
     }
 
-    private int linkToParents(String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private TypedScope reviewPlanetForCreatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+        String keyType = element.entity.getProperty(_TYPE).toString();
+        boolean isOverridable = overridableType.contains(keyType);
+        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
+                .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
+                .orElse(false);
+        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
+
+
+        if (strategy.scope == null && !isGlobal)
+            throw new IllegalArgumentException("Unable create planet link. No scope found for line");
+
+        UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
+
+        AtomicBoolean present = new AtomicBoolean(false);
+        element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
+            if (r.getEndNode().getId() == planet.entity.getId()) {
+                present.set(true);
+            } else {
+                r.delete();
+            }
+        });
+        if (!present.get()) {
+            element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
+        }
+
+        return new TypedScope(solidScope.tag, keyType);
+    }
+
+    private TypedScope reviewPlanetForUpdatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+        String keyType = element.entity.getProperty(_TYPE).toString();
+        boolean isOverridable = overridableType.contains(keyType);
+        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
+                .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
+                .orElse(false);
+        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
+
+        String plScope = null;
+        for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
+            Node planetNode = r.getEndNode();
+            String currentScope = planetNode.getProperty(SCOPE, "").toString();
+            if (solidScope != null && !solidScope.tag.equals(currentScope)) {
+                elementScopeSlider.slide(element.entity, solidScope);
+                plScope = solidScope.tag;
+            } else {
+                plScope = currentScope;
+            }
+        }
+
+        if (plScope == null) {
+            Object tag = element.entity.getProperty(TAG);
+            if (solidScope != null) {
+                UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
+                UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
+                plScope = solidScope.tag;
+                if (relation.wasCreated) {
+                    LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
+                }
+            } else {
+                throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
+            }
+        }
+
+        return new TypedScope(plScope, keyType);
+    }
+
+    private int linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
             ImmutableList<Relationship> relationships = parentRelations.get(keyType);
             if (relationships == null || relationships.isEmpty()) {
                 return -1;
             }
+            boolean isOverride = overridableType.contains(keyType);
 
             int relCount = 0;
             for (Relationship relationship : relationships) {
-                String toKeytype = relationship.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
-                        relationship.getEndNode().getProperty(IwanModelConstants.NAME).toString();
+                Node endNode = relationship.getEndNode();
+                String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
+                        endNode.getProperty(IwanModelConstants.NAME).toString();
+                if (isOverride && scopeTypes.contains(toKeytype)) {
+                    toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
+                }
+
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
-                    continue;
+                    String cardinality = relationship.getProperty(IwanModelConstants.CARDINALITY, IwanModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
+                    if (keyTypeNode.wasCreated && IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
+                        throw new IllegalArgumentException(String.format("Unable to import '%s' missing parent '%s'.", keyType, toKeytype));
+                    } else {
+                        continue;
+                    }
                 }
                 ++relCount;
-                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, IwanModelConstants.LINK_CONNECT);
+                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT);
             }
 
             return relCount;
@@ -347,76 +415,85 @@ public final class IWanTopologyLoader {
         return node.createRelationshipTo(parent, linkType);
     }
 
-    private void createOutgoingUniqueLinks(Node node, ImmutableCollection<Node> parents, RelationshipType linkType) {
-        if (!parents.isEmpty()) {
-            Set<Node> relationshipsToCreate = Sets.newHashSet(parents);
-            for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
-                Node endNode = next.getEndNode();
-                relationshipsToCreate.remove(endNode);
-            }
-            relationshipsToCreate.forEach(parent -> node.createRelationshipTo(parent, linkType));
-        }
-    }
-
-    private Optional<UniqueEntity<Node>> createElement(IwanMappingStrategy strategy, String[] line, String elementName) {
+    private Optional<UniqueEntity<Node>> createElement(LineMappingStrategy strategy, String[] line, String elementKeyType) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
-            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementName)) {
-                return Optional.of(UniqueEntity.existing(graphDb.findNode(IwanModelConstants.LABEL_SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
+            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementKeyType)) {
+                return Optional.of(UniqueEntity.existing(graphDb.findNode(Labels.SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
             }
 
-            Node elementAttNode = attributeNodes.get(elementName);
-            if (elementAttNode == null) {
-                throw new IllegalStateException("Unknown element type: '" + elementName + "'");
-            }
-            boolean isOverridable = Boolean.parseBoolean(elementAttNode.getProperty(IwanModelConstants._OVERRIDABLE, Boolean.FALSE).toString());
+            boolean isOverridable = overridableType.contains(elementKeyType);
 
-            Set<String> todelete = parentRelations.get(elementName).stream()
+            Set<String> todelete = parentRelations.get(elementKeyType).stream()
                     .filter(r -> !IwanModelConstants.CARDINALITY_MULTIPLE.equals(r.getProperty(IwanModelConstants.CARDINALITY, "")))
                     .map(r -> r.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(IwanModelConstants.NAME).toString())
                     .filter(strategy::hasKeyType)
                     .collect(Collectors.toSet());
 
-            ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
-            HeaderElement tagHeader = elementHeaders.stream()
-                    .filter(h -> IwanModelConstants.TAG.equals(h.propertyName))
-                    .findAny()
-                    .orElseThrow(() -> new IllegalArgumentException(IwanModelConstants.TAG + " not found for element " + elementName));
+            int tagIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.TAG);
+            if (tagIndex < 0) return Optional.empty();
+            String tag = line[tagIndex];
+            if (tag.isEmpty()) return Optional.empty();
 
-            String tag = line[tagHeader.index];
+            boolean isScope = scopeTypes.contains(elementKeyType);
+            UniqueEntity<Node> uniqueEntity = (isOverridable) ?
+                    overridableElementFactory.getOrOverride(strategy.scope, IwanModelConstants.TAG, tag) :
+                    networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
+            Node elementNode = uniqueEntity.entity;
 
-            if (!tag.isEmpty()) {
-                UniqueEntity<Node> uniqueEntity = networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
-                Node elementNode = uniqueEntity.entity;
-
-                if (uniqueEntity.wasCreated) {
-                    if (scopes.contains(elementName)) {
-                        elementNode.addLabel(IwanModelConstants.LABEL_SCOPE);
+            if (uniqueEntity.wasCreated) {
+                if (isScope) {
+                    int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
+                    if (nameIndex < 0) return Optional.empty();
+                    String name = line[nameIndex];
+                    if (name.isEmpty()) {
+                        uniqueEntity.entity.delete();
+                        return Optional.empty();
                     }
-                    elementNode.setProperty(IwanModelConstants._TYPE, elementName);
-                    if (isOverridable) {
-                        elementNode.setProperty(IwanModelConstants._SCOPE, IwanModelConstants.SCOPE_GLOBAL_TAG);
-                    }
-                } else {
-                    elementNode.setProperty(IwanModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
 
-                    elementNode.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_CONNECT).forEach(r -> {
-                        String type = r.getEndNode().getProperty(IwanModelConstants._TYPE, IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
-                        if (todelete.contains(type)) {
-                            r.delete();
-                        }
-                    });
+                    elementNode.addLabel(Labels.SCOPE);
+                    applySchema(strategy, line, elementKeyType, tag, elementNode);
                 }
+                elementNode.setProperty(IwanModelConstants._TYPE, elementKeyType);
 
-                persistElementProperties(line, elementHeaders, elementNode);
-
-                return Optional.of(uniqueEntity);
             } else {
-                return Optional.empty();
+                elementNode.setProperty(IwanModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
+
+                elementNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT).forEach(r -> {
+                    String type = r.getEndNode().getProperty(IwanModelConstants._TYPE, IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
+                    if (todelete.contains(type)) {
+                        r.delete();
+                    }
+                });
             }
+            ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementKeyType);
+            persistElementProperties(line, elementHeaders, elementNode);
+
+            return Optional.of(uniqueEntity);
         }
     }
 
-    private Optional<UniqueEntity<Node>> updateElement(IwanMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
+    private void applySchema(IwanMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
+        try {
+            int schemaIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.SCHEMA);
+            String schema = line[schemaIndex];
+            Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
+            if (schemaNode != null) {
+                schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
+            } else {
+                throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
+            }
+        } catch (NoSuchElementException e) {
+            throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
+        }
+    }
+
+    private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
+        boolean isOverridable = overridableType.contains(elementName);
+        Scope scope = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE);
+        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(scope.tag)) {
+            return createElement(strategy, line, elementName);
+        }
+
         ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
         HeaderElement tagHeader = elementHeaders.stream()
                 .filter(h -> IwanModelConstants.TAG.equals(h.propertyName))
@@ -429,7 +506,7 @@ public final class IWanTopologyLoader {
             throw new NoSuchElementException("Element " + elementName + " not found in database for update");
         }
 
-        Node node = graphDb.findNode(IwanModelConstants.LABEL_NETWORK_ELEMENT, IwanModelConstants.TAG, tag);
+        Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, IwanModelConstants.TAG, tag);
         if (node != null) {
             persistElementProperties(line, elementHeaders, node);
             return Optional.of(UniqueEntity.existing(node));
@@ -455,7 +532,7 @@ public final class IWanTopologyLoader {
                 }));
     }
 
-    private static <T extends PropertyContainer> T persistElementProperty(HeaderElement header, String[] line, T elementNode) {
+    private static <T extends PropertyContainer> void persistElementProperty(HeaderElement header, String[] line, T elementNode) {
         String field = line[header.index];
         Object value = PropertyConverter.convert(field, header.type, header.isArray);
         if (value != null) {
@@ -463,73 +540,6 @@ public final class IWanTopologyLoader {
         } else {
             elementNode.removeProperty(header.propertyName);
         }
-        return elementNode;
-    }
-
-    private ImmutableMultimap<String, Node> getPlanetsForClient(String clientAttribute) throws InvalidScopeException {
-        ImmutableMultimap<String, Node> planets = planetsByClient.get(clientAttribute);
-        if (planets == null) {
-            try (Context ignore = metrics.timer("IWanTopologyLoader-getPlanetsForClient").time()) {
-                Node attClientNode = attributeNodes.get(clientAttribute);
-                if (attClientNode != null) {
-                    Builder<String, Node> bldr = ImmutableMultimap.builder();
-                    attClientNode.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_ATTRIBUTE)
-                            .forEach(pr -> collectPlanetConsumer(pr, bldr));
-                    planets = bldr.build();
-                    planetsByClient.put(clientAttribute, planets);
-                } else {
-                    throw new InvalidScopeException("The scope node " + clientAttribute + " does not exist in database.");
-                }
-            }
-        }
-
-        return planets;
-    }
-
-    private ImmutableMultimap<String, Node> getGlobalPlanets() {
-        ImmutableMultimap<String, Node> planets = planetsByClient.get(Character.toString(IwanModelConstants.KEYTYPE_SEPARATOR));
-        if (planets == null) {
-            try (Context ignore = metrics.timer("IWanTopologyLoader-getGlobalPlanets").time()) {
-                Node scopeGlobal = attributeNodes.get(IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE);
-                Builder<String, Node> bldr = ImmutableMultimap.builder();
-                scopeGlobal.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_PARENT).forEach(r -> {
-                    Node keyAttributeNode = r.getStartNode();
-                    if (!IwanModelConstants.KEY_TYPES.contains(keyAttributeNode.getProperty(IwanModelConstants._TYPE).toString())) {
-                        return;
-                    }
-
-                    keyAttributeNode.getRelationships(Direction.INCOMING, IwanModelConstants.LINK_ATTRIBUTE)
-                            .forEach(pr -> collectPlanetConsumer(pr, bldr));
-                });
-
-                planets = bldr.build();
-                planetsByClient.put(Character.toString(IwanModelConstants.KEYTYPE_SEPARATOR), planets);
-            }
-        }
-
-        return planets;
-    }
-
-    private void collectPlanetConsumer(Relationship pr, Builder<String, Node> bldr) {
-        Node planet = pr.getStartNode();
-        if (!planet.hasLabel(IwanModelConstants.LABEL_PLANET)) {
-            return;
-        }
-
-        planet.getRelationships(Direction.OUTGOING, IwanModelConstants.LINK_ATTRIBUTE)
-                .forEach(l -> getRelationshipConsumer(l, bldr));
-    }
-
-    private Builder<String, Node> getRelationshipConsumer(Relationship l, Builder<String, Node> bldr) {
-        Node planet = l.getStartNode();
-        Node attribute = l.getEndNode();
-        if (attribute.hasLabel(IwanModelConstants.LABEL_ATTRIBUTE)) {
-            String type = attribute.getProperty(IwanModelConstants._TYPE).toString();
-            if (IwanModelConstants.KEY_TYPES.contains(type)) {
-                bldr.put(type + IwanModelConstants.KEYTYPE_SEPARATOR + attribute.getProperty(IwanModelConstants.NAME), planet);
-            }
-        }
-        return bldr;
     }
 
 }
