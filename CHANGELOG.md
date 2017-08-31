@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6 _(2017-08-31)_
+* feat(loader) : provisioning element moving
+* feat(loader) : import overridable elements
+* feat(loader) : new scope is created and linked to the right schema if not already exists
+* feat(loader) : Add scope to planet when create it 
+* feat(loader) : instanciate planets using schema if not exists during csv import
+* feat(loader): returns imported field in result
+* feat(schema): Export new schema with dictionaries
+
+* refactor(loader): link to global planets no more needed
+
+* fix(loader): avoid lines with scope conflicts to be imported
+* fix(migration): Fix migration 2.00.0 to create group and category links
+
 ## 1.5.1 _(2017-02-14)_
 * fix(SchemaTemplateLoader): tx was never closed when no schema is updated
 
