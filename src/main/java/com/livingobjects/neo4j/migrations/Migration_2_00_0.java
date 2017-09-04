@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.migrations;
 
 import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -37,7 +38,7 @@ public final class Migration_2_00_0 {
     private static final int MAX_TX_STATEMENT = 10;
     private static final Executor executor = Executors.newSingleThreadExecutor();
 
-    private final Informations infoLog = new Informations();
+    private final MigrationProgress process = new MigrationProgress();
     private final GraphDatabaseService graphDb;
 
     private Migration_2_00_0(GraphDatabaseService graphDb) {
@@ -54,19 +55,25 @@ public final class Migration_2_00_0 {
     }
 
     public void cleanUpgrade() {
-        Stopwatch timer = Stopwatch.createStarted();
-        infoLog.log("Migrate to 2.00.0 ...");
+        try {
+            Stopwatch timer = Stopwatch.createStarted();
+            process.log("Migrate to 2.00.0 ...");
 
-        clearOldTemplates();
-        clearApplicationRelations();
-        clearUselessPlanet();
-        relinkApplication();
+            clearOldTemplates();
+            clearApplicationRelations();
+            clearUselessPlanet();
+            relinkApplication();
 
-        LOGGER.info("... migration to 2.00.0 finished in {}mn", timer.elapsed(TimeUnit.MINUTES));
+            process.success();
+            process.log("... migration to 2.00.0 finished in " + timer.elapsed(TimeUnit.MINUTES) + "mn");
+        } catch (Exception e) {
+            process.failed();
+            process.log(Throwables.getStackTraceAsString(e));
+        }
     }
 
-    public Informations getProgression() {
-        return infoLog;
+    public MigrationProgress getProgression() {
+        return process;
     }
 
     private void clearOldTemplates() {
@@ -77,7 +84,7 @@ public final class Migration_2_00_0 {
             }
             tx.success();
         }
-        infoLog.log("... old template cleared !");
+        process.log("... old template cleared !");
     }
 
     private void clearApplicationRelations() {
@@ -98,7 +105,7 @@ public final class Migration_2_00_0 {
                     count = 0;
                 }
             }
-            LOGGER.info("... all application relations cleared in {} mn !", timer.elapsed(TimeUnit.MINUTES));
+            process.log("... all application relations cleared in " + timer.elapsed(TimeUnit.MINUTES) + " mn !");
         } catch (Exception e) {
             LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
             if (LOGGER.isDebugEnabled()) {
@@ -205,7 +212,7 @@ public final class Migration_2_00_0 {
                     }
                 }
             }
-            LOGGER.info("... all useless Planet cleared !");
+            process.log("... all useless Planet cleared !");
 
         } catch (Exception e) {
             LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -256,7 +263,7 @@ public final class Migration_2_00_0 {
             });
             tx.success();
         }
-        LOGGER.info("... {} linked with Planet {} !", "neType:application", "iwan/global/application/cisco");
+        process.log("... neType:application linked with Planet iwan/global/application/cisco !");
 
         ImmutableMap.of(
                 "neType:dscp", "iwan/global/dscp/cisco",
@@ -274,7 +281,7 @@ public final class Migration_2_00_0 {
                         dscpNode.createRelationshipTo(globalDscp, RelationshipTypes.ATTRIBUTE));
                 tx.success();
             }
-            LOGGER.info("... {} linked with Planet {} !", key, value);
+            process.log("... " + key + " linked with Planet " + value + " !");
         });
     }
 

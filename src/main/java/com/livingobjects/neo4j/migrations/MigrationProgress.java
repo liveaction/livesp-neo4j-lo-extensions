@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.migrations;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Queues;
+import org.eclipse.jetty.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,10 +10,10 @@ import java.util.List;
 import java.util.Queue;
 import java.util.stream.Collectors;
 
-public final class Informations {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Informations.class);
+public final class MigrationProgress {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MigrationProgress.class);
     private boolean terminated = false;
-    private int status = -1;
+    private int status = HttpStatus.PARTIAL_CONTENT_206;
 
     private Queue<String> logs = Queues.newConcurrentLinkedQueue();
 
@@ -28,12 +29,12 @@ public final class Informations {
 
     public void success() {
         terminated = true;
-        status = 0;
+        status = HttpStatus.OK_200;
     }
 
     public void failed() {
         terminated = true;
-        status = -1;
+        status = HttpStatus.INTERNAL_SERVER_ERROR_500;
     }
 
     public boolean isTerminated() {
