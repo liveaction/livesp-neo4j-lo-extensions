@@ -57,8 +57,9 @@ public final class Migration_2_00_0 {
     public void cleanUpgrade() {
         try {
             Stopwatch timer = Stopwatch.createStarted();
-            process.log("Migrate to 2.00.0 ...");
+            process.log("Clean 2.00.0 migration ...");
 
+            checkVersionExists();
             clearOldTemplates();
             clearApplicationRelations();
             clearUselessPlanet();
@@ -69,6 +70,21 @@ public final class Migration_2_00_0 {
         } catch (Exception e) {
             process.failed();
             process.log(Throwables.getStackTraceAsString(e));
+        }
+    }
+
+    private void checkVersionExists() {
+        try (Transaction ignore = graphDb.beginTx()) {
+            Node version = graphDb.findNode(Labels.VERSION, "name", "2.00.0");
+            if (version == null) {
+                process.log("Version 2.00.0 not found ! Start the latest version of Cosmos before !");
+                throw new IllegalStateException("Version 2.00.0 not found !");
+            }
+
+            if (!"INSTALLED".equals(version.getProperty("status"))) {
+                process.log("Version 2.00.0 is not INSTALLED correctly ! Repair manually before start !");
+                throw new IllegalStateException("Version 2.00.0 is not INSTALLED correctly !");
+            }
         }
     }
 
