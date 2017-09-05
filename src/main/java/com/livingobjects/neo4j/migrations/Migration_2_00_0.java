@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.migrations;
 
 import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -9,7 +10,12 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.DynamicLabel;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.neo4j.helpers.collection.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,22 +38,61 @@ public final class Migration_2_00_0 {
     private static final int MAX_TX_STATEMENT = 10;
     private static final Executor executor = Executors.newSingleThreadExecutor();
 
-    public static void cleanUpgrade(final GraphDatabaseService graphDb) {
-        Stopwatch timer = Stopwatch.createStarted();
-        LOGGER.info("Migrate to 2.00.0 ...");
+    private final MigrationProgress process = new MigrationProgress();
+    private final GraphDatabaseService graphDb;
 
-        clearOldTemplates(graphDb);
-
-        clearApplicationRelations(graphDb);
-
-        clearUselessPlanet(graphDb);
-
-        relinkApplication(graphDb);
-
-        LOGGER.info("... migration to 2.00.0 finished in {}mn", timer.elapsed(TimeUnit.MINUTES));
+    private Migration_2_00_0(GraphDatabaseService graphDb) {
+        this.graphDb = graphDb;
     }
 
-    private static void clearOldTemplates(final GraphDatabaseService graphDb) {
+    public static Migration_2_00_0 prepareMigration(GraphDatabaseService graphDb) {
+        return new Migration_2_00_0(graphDb);
+    }
+
+    public static void cleanUpgrade(final GraphDatabaseService graphDb) {
+        Migration_2_00_0 migration_2_00_0 = new Migration_2_00_0(graphDb);
+        migration_2_00_0.cleanUpgrade();
+    }
+
+    public void cleanUpgrade() {
+        try {
+            Stopwatch timer = Stopwatch.createStarted();
+            process.log("Clean 2.00.0 migration ...");
+
+            checkVersionExists();
+            clearOldTemplates();
+            clearApplicationRelations();
+            clearUselessPlanet();
+            relinkApplication();
+
+            process.success();
+            process.log("... migration to 2.00.0 finished in " + timer.elapsed(TimeUnit.MINUTES) + "mn");
+        } catch (Exception e) {
+            process.failed();
+            process.log(Throwables.getStackTraceAsString(e));
+        }
+    }
+
+    private void checkVersionExists() {
+        try (Transaction ignore = graphDb.beginTx()) {
+            Node version = graphDb.findNode(Labels.VERSION, "name", "2.00.0");
+            if (version == null) {
+                process.log("Version 2.00.0 not found ! Start the latest version of Cosmos before !");
+                throw new IllegalStateException("Version 2.00.0 not found !");
+            }
+
+            if (!"INSTALLED".equals(version.getProperty("status"))) {
+                process.log("Version 2.00.0 is not INSTALLED correctly ! Repair manually before start !");
+                throw new IllegalStateException("Version 2.00.0 is not INSTALLED correctly !");
+            }
+        }
+    }
+
+    public MigrationProgress getProgression() {
+        return process;
+    }
+
+    private void clearOldTemplates() {
         try (Transaction tx = graphDb.beginTx()) {
             Iterator<Node> templateIt = graphDb.findNodes(DynamicLabel.label("Template"));
             while (templateIt.hasNext()) {
@@ -55,10 +100,10 @@ public final class Migration_2_00_0 {
             }
             tx.success();
         }
-        LOGGER.info("... old template cleared !");
+        process.log("... old template cleared !");
     }
 
-    private static void clearApplicationRelations(final GraphDatabaseService graphDb) {
+    private void clearApplicationRelations() {
         Stopwatch timer = Stopwatch.createStarted();
         Iterable<Node> nodes;
         try (Transaction tx = graphDb.beginTx()) {
@@ -76,7 +121,7 @@ public final class Migration_2_00_0 {
                     count = 0;
                 }
             }
-            LOGGER.info("... all application relations cleared in {} mn !", timer.elapsed(TimeUnit.MINUTES));
+            process.log("... all application relations cleared in " + timer.elapsed(TimeUnit.MINUTES) + " mn !");
         } catch (Exception e) {
             LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
             if (LOGGER.isDebugEnabled()) {
@@ -89,7 +134,7 @@ public final class Migration_2_00_0 {
         }
     }
 
-    private static void clearUselessPlanet(final GraphDatabaseService graphDb) {
+    private void clearUselessPlanet() {
         ImmutableList<Pattern> removes = ImmutableList.of(
                 Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/site/right"),
                 Pattern.compile("iwan/[a-zA-Z0-9]*/netflow/path/dscp"),
@@ -183,7 +228,7 @@ public final class Migration_2_00_0 {
                     }
                 }
             }
-            LOGGER.info("... all useless Planet cleared !");
+            process.log("... all useless Planet cleared !");
 
         } catch (Exception e) {
             LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -196,7 +241,7 @@ public final class Migration_2_00_0 {
         }
     }
 
-    private static void applyDeletion(GraphDatabaseService graphDb, List<Node> toDelete) throws InterruptedException {
+    private void applyDeletion(GraphDatabaseService graphDb, List<Node> toDelete) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         executor.execute(() -> {
             try (Transaction ntx = graphDb.beginTx()) {
@@ -209,7 +254,7 @@ public final class Migration_2_00_0 {
         latch.await();
     }
 
-    private static void relinkApplication(final GraphDatabaseService graphDb) {
+    private void relinkApplication() {
         try (Transaction tx = graphDb.beginTx()) {
             Node globalApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/global/application/cisco");
             Node spApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/sp/application/cisco");
@@ -234,7 +279,7 @@ public final class Migration_2_00_0 {
             });
             tx.success();
         }
-        LOGGER.info("... {} linked with Planet {} !", "neType:application", "iwan/global/application/cisco");
+        process.log("... neType:application linked with Planet iwan/global/application/cisco !");
 
         ImmutableMap.of(
                 "neType:dscp", "iwan/global/dscp/cisco",
@@ -252,7 +297,7 @@ public final class Migration_2_00_0 {
                         dscpNode.createRelationshipTo(globalDscp, RelationshipTypes.ATTRIBUTE));
                 tx.success();
             }
-            LOGGER.info("... {} linked with Planet {} !", key, value);
+            process.log("... " + key + " linked with Planet " + value + " !");
         });
     }
 
