@@ -16,8 +16,10 @@ import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
+import com.livingobjects.neo4j.model.exception.ImportException;
 import com.livingobjects.neo4j.model.exception.InvalidSchemaException;
 import com.livingobjects.neo4j.model.exception.InvalidScopeException;
+import com.livingobjects.neo4j.model.exception.MissingElementException;
 import com.livingobjects.neo4j.model.header.HeaderElement;
 import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
@@ -54,7 +56,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
 
@@ -179,12 +188,13 @@ public final class IWanTopologyLoader {
                     tx = txManager.renewTransaction(tx);
                     currentTransaction.clear();
                 }
+            } catch (ImportException e) {
+                tx = renewTransaction(strategy, currentTransaction, tx);
+                errors.put(lineIndex, e.getMessage());
+                LOGGER.debug(e.getLocalizedMessage());
+                LOGGER.debug(Arrays.toString(nextLine));
             } catch (Exception e) {
-                tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
-                    LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
-                    ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
-                    importLine(ct, scopeKeyTypes, lineStrategy);
-                });
+                tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
                 if (LOGGER.isDebugEnabled()) {
@@ -198,6 +208,15 @@ public final class IWanTopologyLoader {
         tx.close();
 
         return new Neo4jLoadResult(imported, errors, importedElementByScope);
+    }
+
+    private Transaction renewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
+        tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
+            LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
+            ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
+            importLine(ct, scopeKeyTypes, lineStrategy);
+        });
+        return tx;
     }
 
     private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, LineMappingStrategy strategy) {
@@ -393,7 +412,8 @@ public final class IWanTopologyLoader {
                 if (parent == null || !parent.isPresent()) {
                     String cardinality = relationship.getProperty(IwanModelConstants.CARDINALITY, IwanModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
                     if (keyTypeNode.wasCreated && IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
-                        throw new IllegalArgumentException(String.format("Unable to import '%s' missing parent '%s'.", keyType, toKeytype));
+                        Object tagProperty = keyTypeNode.entity.getProperty(TAG);
+                        throw new MissingElementException(String.format("Unable to update '%s' because the element does not exist : '%s'. Line is ignored.", keyType, tagProperty));
                     } else {
                         continue;
                     }
