@@ -56,14 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 public final class IWanTopologyLoader {
 
@@ -337,7 +330,7 @@ public final class IWanTopologyLoader {
         if (strategy.scope == null && !isGlobal)
             throw new IllegalArgumentException("Unable create planet link. No scope found for line");
 
-        UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
+        UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
 
         AtomicBoolean present = new AtomicBoolean(false);
         element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
@@ -377,7 +370,7 @@ public final class IWanTopologyLoader {
         if (plScope == null) {
             Object tag = element.entity.getProperty(TAG);
             if (solidScope != null) {
-                UniqueEntity<Node> planet = planetFactory.createOrUpdatePlanet(solidScope, keyType);
+                UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
                 UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
                 plScope = solidScope.tag;
                 if (relation.wasCreated) {

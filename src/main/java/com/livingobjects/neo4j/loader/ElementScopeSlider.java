@@ -47,8 +47,7 @@ final class ElementScopeSlider {
             }
         }
 
-        String type = element.getProperty(_TYPE).toString();
-        UniqueEntity<Node> planet = templatedPlanetFactory.createOrUpdatePlanet(toScope, type);
+        UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element);
         if (LOGGER.isTraceEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
