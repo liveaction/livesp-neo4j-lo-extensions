@@ -128,6 +128,8 @@ public class SchemaTemplateExtension {
                     try {
                         ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
                         value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+                        String context = key.split("@")[1];
+                        counter.put("context", context);
                         jg.writeObjectField(key, counter);
                     } catch (IOException e) {
                         LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -200,9 +202,9 @@ public class SchemaTemplateExtension {
         ArrayNode counters = memdexPath.putArray("counters");
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            if (!counterNode.hasProperty("name") || !counterNode.hasProperty("context")) return;
+            if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
-            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
+            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + link.getProperty("context");
             counters.add(counterRef);
             countersDictionary.putIfAbsent(counterRef, counterNode);
         });
