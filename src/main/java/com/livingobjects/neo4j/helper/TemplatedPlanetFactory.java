@@ -53,7 +53,11 @@ public class TemplatedPlanetFactory {
             Set<String> specificContext = findMoreSpecificContext(element).entrySet().stream()
                     .map(en -> en.getKey() + ':' + en.getValue())
                     .collect(Collectors.toSet());
-            planetTemplateName = planetByContext.bestMatchingContext(specificContext);
+            try {
+                planetTemplateName = planetByContext.bestMatchingContext(specificContext);
+            } catch (InsufficientContextException ignored) {
+                throw new IllegalStateException(String.format("Unable to create '%s'. Need more attributes to choose between %s. Line is ignored.", keyType, planetByContext.distinctAttributes()));
+            }
         }
 
         String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
@@ -99,35 +103,4 @@ public class TemplatedPlanetFactory {
         return result.build();
     }
 
-    private static final class PlanetByContext {
-        private final ImmutableSet<Entry<String, ImmutableSet<String>>> planets;
-
-        PlanetByContext(Collection<Entry<String, ImmutableSet<String>>> planets) {
-            this.planets = ImmutableSet.copyOf(planets);
-        }
-
-        String bestMatchingContext(Set<String> elementContext) {
-            if (planets.size() == 1) {
-                return Iterables.getOnlyElement(planets).getKey();
-            }
-            String planetTemplateName = null;
-            int bestRank = 0;
-            for (Entry<String, ImmutableSet<String>> planet : planets) {
-                int rank = Sets.intersection(planet.getValue(), elementContext).size();
-                if (rank >= bestRank) {
-                    bestRank = rank;
-                    planetTemplateName = planet.getKey();
-                }
-            }
-
-            if (planetTemplateName == null) {
-                throw new IllegalStateException("No PlanetTemplate eligible for this context !");
-            }
-            if (bestRank == 0 && planets.size() > 1) {
-                throw new InsufficientContextException("Multiple PlanetTemplate eligible but no sufficient context to choose certainty !");
-            }
-
-            return planetTemplateName;
-        }
-    }
 }
