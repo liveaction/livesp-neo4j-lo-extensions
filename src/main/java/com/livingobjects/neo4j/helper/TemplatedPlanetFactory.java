@@ -3,9 +3,7 @@ package com.livingobjects.neo4j.helper;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.exception.InsufficientContextException;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -15,13 +13,16 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
-import java.util.Collection;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
     private static final String PLACEHOLDER = "{:scopeId}";
@@ -92,7 +93,10 @@ public class TemplatedPlanetFactory {
                 if (KEY_TYPES.contains(type)) keyType = context;
                 contexts.add(context);
             }
-            assert keyType != null;
+            if (keyType == null) {
+                String planetName = pltNode.getProperty(NAME).toString();
+                throw new IllegalStateException("Schema cannot be loaded : the planet '" + planetName + "' does not have a valid keyAttribute");
+            }
             tplCacheBuilder.put(keyType, Maps.immutableEntry(pltNode.getProperty(NAME).toString(), contexts.build()));
         });
 
