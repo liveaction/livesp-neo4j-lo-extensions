@@ -72,7 +72,7 @@ public final class LoadCSVExtension {
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 LOGGER.error("load-csv extension : unable to execute query", e);
                 if (e.getCause() != null) {
                     return errorResponse(e.getCause());
