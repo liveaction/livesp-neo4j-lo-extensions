@@ -115,7 +115,7 @@ public class SchemaTemplateExtension {
                             countersDictionary.putAll(segments.getValue());
                             memdexPaths.put("realm:" + name, segments.getKey());
                         } else {
-                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ingnoring it", name);
+                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
                         }
                     } catch (NotFoundException e) {
                         throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
@@ -187,14 +187,17 @@ public class SchemaTemplateExtension {
         ObjectNode memdexPath = new ObjectNode(JsonNodeFactory.instance);
         Map<String, Node> countersDictionary = Maps.newHashMap();
 
-        Relationship extendRel = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING);
-        if (extendRel == null) {
+        ArrayNode planetsNode = new ArrayNode(JsonNodeFactory.instance);
+        memdexPath.put("planets", planetsNode);
+        segment.getRelationships(RelationshipTypes.EXTEND, Direction.OUTGOING).forEach(extendRel -> {
+            Node planetTemplateNode = extendRel.getEndNode();
+            String name = planetTemplateNode.getProperty(NAME).toString();
+            planetsNode.add("template:" + name);
+        });
+        if (planetsNode.size() == 0) {
             LOGGER.warn("The segment {} doesn't extends any PlanetTemplate !", segment);
             return null;
         }
-        Node planetTemplateNode = extendRel.getEndNode();
-        String name = planetTemplateNode.getProperty(NAME).toString();
-        memdexPath.put("planet", "template:" + name);
 
         String segmentName = segment.getProperty("path").toString();
         memdexPath.put("segment", segmentName);
