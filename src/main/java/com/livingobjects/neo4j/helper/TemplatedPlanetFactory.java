@@ -2,8 +2,8 @@ package com.livingobjects.neo4j.helper;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.exception.InsufficientContextException;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -14,7 +14,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,22 +41,24 @@ public class TemplatedPlanetFactory {
         if (planetByContext == null) {
             throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate found.", keyType));
         }
-        ImmutableSet<String> elementContext = ImmutableSet.copyOf(element.getAllProperties().entrySet().stream()
+        ImmutableSet<String> elementContext = ImmutableSet.copyOf(Sets.union(element.getAllProperties().entrySet().stream()
+                .filter(e -> !e.getKey().startsWith("_"))
                 .map(e -> e.getKey() + ':' + e.getValue())
-                .collect(Collectors.toSet()));
+                .collect(Collectors.toSet()), ImmutableSet.of(keyType)));
 
         String planetTemplateName;
         try {
             planetTemplateName = planetByContext.bestMatchingContext(elementContext);
 
         } catch (InsufficientContextException e) {
-            Set<String> specificContext = findMoreSpecificContext(element).entrySet().stream()
+            Set<String> specificContext = Sets.union(findMoreSpecificContext(element).entrySet().stream()
+                    .filter(en -> !en.getKey().startsWith("_"))
                     .map(en -> en.getKey() + ':' + en.getValue())
-                    .collect(Collectors.toSet());
+                    .collect(Collectors.toSet()), ImmutableSet.of(keyType));
             try {
                 planetTemplateName = planetByContext.bestMatchingContext(specificContext);
             } catch (InsufficientContextException ignored) {
-                throw new IllegalStateException(String.format("Unable to create '%s'. Need more attributes to choose between %s. Line is ignored.", keyType, planetByContext.distinctAttributes()));
+                throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
             }
         }
 
@@ -81,7 +82,7 @@ public class TemplatedPlanetFactory {
     }
 
     private ImmutableMap<String, PlanetByContext> loadPlanetTemplateName(GraphDatabaseService graphDb) {
-        ImmutableSetMultimap.Builder<String, Entry<String, ImmutableSet<String>>> tplCacheBuilder = ImmutableSetMultimap.builder();
+        Map<String, Map<String, ImmutableSet<String>>> tplCacheBuilder = Maps.newHashMap();
         graphDb.findNodes(Labels.PLANET_TEMPLATE).forEachRemaining(pltNode -> {
             String keyType = null;
             ImmutableSet.Builder<String> contexts = ImmutableSet.builder();
@@ -97,11 +98,12 @@ public class TemplatedPlanetFactory {
                 String planetName = pltNode.getProperty(NAME).toString();
                 throw new IllegalStateException("Schema cannot be loaded : the planet '" + planetName + "' does not have a valid keyAttribute");
             }
-            tplCacheBuilder.put(keyType, Maps.immutableEntry(pltNode.getProperty(NAME).toString(), contexts.build()));
+            Map<String, ImmutableSet<String>> attributesByPlanet = tplCacheBuilder.computeIfAbsent(keyType, k -> Maps.newHashMap());
+            attributesByPlanet.put(pltNode.getProperty(NAME).toString(), contexts.build());
         });
 
         ImmutableMap.Builder<String, PlanetByContext> result = ImmutableMap.builder();
-        tplCacheBuilder.build().asMap().forEach((keyType, planets) ->
+        tplCacheBuilder.forEach((keyType, planets) ->
                 result.put(keyType, new PlanetByContext(planets)));
 
         return result.build();

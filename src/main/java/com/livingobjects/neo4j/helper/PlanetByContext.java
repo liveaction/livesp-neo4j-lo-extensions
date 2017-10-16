@@ -1,65 +1,125 @@
 package com.livingobjects.neo4j.helper;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.exception.InsufficientContextException;
 
-import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.SortedSet;
+import java.util.SortedMap;
 import java.util.stream.Collectors;
 
 final class PlanetByContext {
 
-    private final ImmutableSet<Map.Entry<String, ImmutableSet<String>>> planets;
+    private final ImmutableMap<String, ImmutableMap<String, ImmutableSet<AttributeMatch>>> planets;
 
-    PlanetByContext(Collection<Map.Entry<String, ImmutableSet<String>>> planets) {
-        this.planets = ImmutableSet.copyOf(planets);
+    PlanetByContext(Map<String, ImmutableSet<String>> planetAttributes) {
+
+        ImmutableMap.Builder<String, ImmutableMap<String, ImmutableSet<AttributeMatch>>> planetAttributeMatchesBuilder = ImmutableMap.builder();
+        for (Map.Entry<String, ImmutableSet<String>> planetAttributesEntry : planetAttributes.entrySet()) {
+            String planet = planetAttributesEntry.getKey();
+            Map<String, Set<AttributeMatch>> attributeMatchesByName = Maps.newHashMap();
+            for (String attributeDefinition : planetAttributesEntry.getValue()) {
+                AttributeMatch attributeMatch = AttributeMatch.parse(attributeDefinition);
+                Set<AttributeMatch> attributeMatches = attributeMatchesByName.computeIfAbsent(attributeMatch.name, k -> Sets.newHashSet());
+                attributeMatches.add(attributeMatch);
+            }
+            ImmutableMap.Builder<String, ImmutableSet<AttributeMatch>> mapBuilder = ImmutableMap.builder();
+            for (Map.Entry<String, Set<AttributeMatch>> entry : attributeMatchesByName.entrySet()) {
+                mapBuilder.put(entry.getKey(), ImmutableSet.copyOf(entry.getValue()));
+            }
+            planetAttributeMatchesBuilder.put(planet, mapBuilder.build());
+        }
+        this.planets = planetAttributeMatchesBuilder.build();
     }
 
     String bestMatchingContext(Set<String> elementContext) {
 
-        SortedSet<Comparable> comparables = Sets.newTreeSet();
+        SortedMap<MatchScore, Set<String>> matchingPlanetsByScore = Maps.newTreeMap();
 
-
-        String planetTemplateName = null;
-        int highestIntersectionCount = 0;
-        int lowestDifferenceCount = Integer.MAX_VALUE;
-        for (Map.Entry<String, ImmutableSet<String>> planet : planets) {
-            int intersection = Sets.intersection(planet.getValue(), elementContext).size();
-            int difference = Sets.difference(planet.getValue(), elementContext).size();
-            if (intersection > highestIntersectionCount || difference < lowestDifferenceCount) {
-                highestIntersectionCount = intersection;
-                lowestDifferenceCount = difference;
-                planetTemplateName = planet.getKey();
-            }
+        for (Map.Entry<String, ImmutableMap<String, ImmutableSet<AttributeMatch>>> entry : planets.entrySet()) {
+            String planet = entry.getKey();
+            ImmutableMap<String, ImmutableSet<AttributeMatch>> planetAttributes = entry.getValue();
+            MatchScore score = computeScore(planetAttributes, elementContext);
+            Set<String> matches = matchingPlanetsByScore.computeIfAbsent(score, k -> Sets.newHashSet());
+            matches.add(planet);
         }
 
-        if (planetTemplateName == null) {
-            throw new IllegalStateException("No PlanetTemplate eligible for this context !");
-        }
-        if (highestIntersectionCount == 0 && planets.size() > 1) {
-            //throw new InsufficientContextException("Multiple PlanetTemplate eligible but no sufficient context to choose certainty !");
-            throw new InsufficientContextException("No planet found");
-        }
-
-        return planetTemplateName;
+        return getBestMacthesIfNoConflicts(matchingPlanetsByScore);
     }
 
-    ImmutableSet<String> distinctAttributes() {
-        if (planets.size() > 1) {
+    private MatchScore computeScore(ImmutableMap<String, ImmutableSet<AttributeMatch>> planetAttributes, Set<String> elementContext) {
+        int matchingAttributes = 0;
+        int matchingAttributeTypes = 0;
+        for (String contextAttribute : elementContext) {
+            AttributeMatch.Value attributeMatchValue = AttributeMatch.value(contextAttribute);
+            ImmutableSet<AttributeMatch> matches = planetAttributes.get(attributeMatchValue.name);
+            if (matches != null) {
+                boolean matchValue = false;
+                boolean matchType = false;
+                for (AttributeMatch match : matches) {
+                    if (match.matchValue(attributeMatchValue.value)) {
+                        if (match.matchAll(attributeMatchValue.value)) {
+                            matchType = true;
+                        } else {
+                            matchValue = true;
+                            break;
+                        }
+                    }
+                }
+                if (matchValue) {
+                    matchingAttributes++;
+                } else {
+                    if (matchType) matchingAttributeTypes++;
+                }
+            }
+        }
+        int notFoundAttributes = planetAttributes.keySet().size() - (matchingAttributes + matchingAttributeTypes);
+        return new MatchScore(matchingAttributes, matchingAttributeTypes, notFoundAttributes);
+    }
+
+    private String getBestMacthesIfNoConflicts(SortedMap<MatchScore, Set<String>> matchingPlanetsByScore) {
+        String bestMatch = null;
+        for (Map.Entry<MatchScore, Set<String>> matchEntry : matchingPlanetsByScore.entrySet()) {
+            if (matchEntry.getKey().matches()) {
+                if (matchEntry.getValue().size() == 1) {
+                    bestMatch = Iterables.getOnlyElement(matchEntry.getValue());
+                    break;
+                } else {
+                    throw new InsufficientContextException("Multiple PlanetTemplate eligible but no sufficient context to choose certainty !", distinctAttributes(matchEntry.getValue()));
+                }
+            }
+        }
+        if (bestMatch == null) {
+            throw new InsufficientContextException("No PlanetTemplate eligible for this context !", ImmutableSet.copyOf(planets.values().stream()
+                    .flatMap(stringImmutableSetImmutableMap -> stringImmutableSetImmutableMap.values().stream()
+                            .flatMap(v -> v.stream().map(AttributeMatch::toString)))
+                    .collect(Collectors.toList())));
+        }
+        return bestMatch;
+    }
+
+    ImmutableSet<String> distinctAttributes(Set<String> conflictingPlanets) {
+        if (conflictingPlanets.size() > 1) {
             Map<String, Integer> attributesByCount = Maps.newHashMap();
-            for (Map.Entry<String, ImmutableSet<String>> planet : planets) {
-                for (String attribute : planet.getValue()) {
-                    Integer hits = attributesByCount.getOrDefault(attribute, 0);
-                    attributesByCount.put(attribute, hits + 1);
+            for (String conflictingPlanet : conflictingPlanets) {
+                ImmutableMap<String, ImmutableSet<AttributeMatch>> attributes = planets.get(conflictingPlanet);
+                if (attributes == null) {
+                    throw new IllegalArgumentException("Planet not found in this context '" + conflictingPlanet + "'");
+                }
+                for (ImmutableSet<AttributeMatch> attributeMatches : attributes.values()) {
+                    for (AttributeMatch attributeMatch : attributeMatches) {
+                        String attribute = attributeMatch.toString();
+                        Integer hits = attributesByCount.getOrDefault(attribute, 0);
+                        attributesByCount.put(attribute, hits + 1);
+                    }
                 }
             }
             return ImmutableSet.copyOf(attributesByCount.entrySet().stream()
-                    .filter(e -> e.getValue() < planets.size())
+                    .filter(e -> e.getValue() < conflictingPlanets.size())
                     .map(Map.Entry::getKey)
                     .collect(Collectors.toSet()));
         } else {
@@ -67,49 +127,95 @@ final class PlanetByContext {
         }
     }
 
-    static class MatchScore implements Comparable<MatchScore> {
+    private static abstract class AttributeMatch {
 
-        private final int matchingAttributes;
-        private final int matchingAttributeTypes;
-        private final int conflictingAttributes;
-        private final int notFoundAttributes;
+        public final String name;
 
-        public MatchScore(int matchingAttributes, int matchingAttributeTypes, int conflictingAttributes, int notFoundAttributes) {
-            this.matchingAttributes = matchingAttributes;
-            this.matchingAttributeTypes = matchingAttributeTypes;
-            this.conflictingAttributes = conflictingAttributes;
-            this.notFoundAttributes = notFoundAttributes;
-        }
+        abstract boolean matchAll(String testValue);
 
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            MatchScore that = (MatchScore) o;
-            return matchingAttributes == that.matchingAttributes &&
-                    matchingAttributeTypes == that.matchingAttributeTypes &&
-                    conflictingAttributes == that.conflictingAttributes &&
-                    notFoundAttributes == that.notFoundAttributes;
-        }
+        abstract boolean matchValue(String testValue);
 
-        @Override
-        public int hashCode() {
-            return Objects.hash(matchingAttributes, matchingAttributeTypes, conflictingAttributes, notFoundAttributes);
-        }
-
-        @Override
-        public int compareTo(MatchScore o) {
-            int compare = matchingAttributes - o.matchingAttributes;
-            if (compare == 0) {
-                compare = matchingAttributeTypes - o.matchingAttributeTypes;
-                if (compare == 0) {
-                    compare = o.conflictingAttributes - conflictingAttributes;
-                    if (compare == 0) {
-                        compare = o.notFoundAttributes - notFoundAttributes;
-                    }
-                }
+        public static AttributeMatch parse(String attributeDefinition) {
+            if (attributeDefinition.endsWith(":*")) {
+                return type(attributeDefinition);
+            } else {
+                return value(attributeDefinition);
             }
-            return compare;
+        }
+
+        public static AttributeMatch.Type type(String attributeDefinition) {
+            if (!attributeDefinition.endsWith(":*")) {
+                throw new IllegalArgumentException("Wrong attribute definition because end with :* : '" + attributeDefinition + "'");
+            }
+            String[] split = attributeDefinition.split(":", 2);
+            if (split.length != 2) {
+                throw new IllegalArgumentException("Wrong attribute '" + attributeDefinition + "'");
+            }
+            if ("*".equals(split[1])) {
+                return new Type(split[0]);
+            } else {
+                throw new IllegalArgumentException("Wrong attribute definition must end with ':*' : '" + attributeDefinition + "'");
+            }
+        }
+
+        public static AttributeMatch.Value value(String attributeDefinition) {
+            if (attributeDefinition.endsWith(":*")) {
+                throw new IllegalArgumentException("Wrong attribute definition because end with ':*' : '" + attributeDefinition + "'");
+            }
+            String[] split = attributeDefinition.split(":", 2);
+            if (split.length != 2) {
+                throw new IllegalArgumentException("Wrong attribute '" + attributeDefinition + "'");
+            }
+            return new Value(split[0], split[1]);
+        }
+
+        private AttributeMatch(String name) {
+            this.name = name;
+        }
+
+        static class Type extends AttributeMatch {
+            Type(String name) {
+                super(name);
+            }
+
+            @Override
+            public String toString() {
+                return name + ":*";
+            }
+
+            @Override
+            boolean matchAll(String testValue) {
+                return true;
+            }
+
+            @Override
+            boolean matchValue(String testValue) {
+                return true;
+            }
+        }
+
+        static class Value extends AttributeMatch {
+            public final String value;
+
+            Value(String name, String value) {
+                super(name);
+                this.value = value;
+            }
+
+            @Override
+            public String toString() {
+                return name + ":" + value;
+            }
+
+            @Override
+            boolean matchAll(String testValue) {
+                return false;
+            }
+
+            @Override
+            boolean matchValue(String testValue) {
+                return value.equals(testValue);
+            }
         }
 
     }
