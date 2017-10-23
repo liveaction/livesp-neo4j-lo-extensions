@@ -34,7 +34,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -111,7 +117,10 @@ public class SchemaTemplateExtension {
                         if (firstMemdexPath != null) {
                             Node segment = firstMemdexPath.getEndNode();
                             Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
-                            if (segments == null) return;
+                            if (segments == null) {
+                                LOGGER.warn("The segment '{}' doesn't extend any PlanetTemplate. Realm '{}' is ignored", segment.getProperty(PATH), name);
+                                return;
+                            }
                             countersDictionary.putAll(segments.getValue());
                             memdexPaths.put("realm:" + name, segments.getKey());
                         } else {
@@ -157,6 +166,8 @@ public class SchemaTemplateExtension {
                 jg.writeEndObject();
                 jg.writeEndObject();
                 jg.flush();
+            } catch (Throwable e) {
+                LOGGER.error("Unable to load schema '{}'", schemaId, e);
             }
         };
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
@@ -195,7 +206,6 @@ public class SchemaTemplateExtension {
             planetsNode.add("template:" + name);
         });
         if (planetsNode.size() == 0) {
-            LOGGER.warn("The segment {} doesn't extends any PlanetTemplate !", segment);
             return null;
         }
 
