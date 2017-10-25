@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7 _(2017-10-25)_
+* fix(schema): avoid to loss exceptions on schema loading
+* feat(tools): add ./deploy_to_local_neo4j.sh
+* feat(schema): Allow multiple planet on same Segment
+* feat(loader): Improve PlanetByContext to deal with vendor:* attributes
+* fix(loader): add clear exception instead of assert when a planet in schema does not have a key attribute
+* feat(loader): Update error message when missing attribute on multiple planet templates
+* feat(schema): Fix after moving context on links
+* feat(loader): Allow multi-planet keytype
+* fix(loader): change missing parent message to unable to update
+* feat(migrate): Improve the migration script
+* feat(migration): Check the current version before start migration
+* feat(migration): Add shell script et finish migration callback
+
+
 ## 1.6 _(2017-08-31)_
 * feat(loader) : provisioning element moving
 * feat(loader) : import overridable elements
