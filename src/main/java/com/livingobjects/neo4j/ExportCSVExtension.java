@@ -48,7 +48,7 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 @Path("/export")
 public final class ExportCSVExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExportCSVExtension.class);
     private static final Logger PACKAGE_LOGGER = LoggerFactory.getLogger("com.livingobjects.neo4j");
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");

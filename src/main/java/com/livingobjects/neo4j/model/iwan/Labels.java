@@ -12,5 +12,6 @@ public final class Labels {
     public static final Label SCHEMA = DynamicLabel.label("Schema");
     public static final Label REALM_TEMPLATE = DynamicLabel.label("RealmTemplate");
     public static final Label PLANET_TEMPLATE = DynamicLabel.label("PlanetTemplate");
-    public static final Label SEGMENT = DynamicLabel.label("SEGMENT");
+    public static final Label SEGMENT = DynamicLabel.label("Segment");
+    public static final Label VERSION = DynamicLabel.label("Version");
 }
