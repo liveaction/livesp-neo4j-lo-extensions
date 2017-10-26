@@ -34,7 +34,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -111,11 +117,14 @@ public class SchemaTemplateExtension {
                         if (firstMemdexPath != null) {
                             Node segment = firstMemdexPath.getEndNode();
                             Entry<ObjectNode, Map<String, Node>> segments = browseSegments(segment);
-                            if (segments == null) return;
+                            if (segments == null) {
+                                LOGGER.warn("The segment '{}' doesn't extend any PlanetTemplate. Realm '{}' is ignored", segment.getProperty(PATH), name);
+                                return;
+                            }
                             countersDictionary.putAll(segments.getValue());
                             memdexPaths.put("realm:" + name, segments.getKey());
                         } else {
-                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ingnoring it", name);
+                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
                         }
                     } catch (NotFoundException e) {
                         throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
@@ -128,6 +137,8 @@ public class SchemaTemplateExtension {
                     try {
                         ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
                         value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
+                        String context = key.split("@")[1];
+                        counter.put("context", context);
                         jg.writeObjectField(key, counter);
                     } catch (IOException e) {
                         LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
@@ -155,6 +166,8 @@ public class SchemaTemplateExtension {
                 jg.writeEndObject();
                 jg.writeEndObject();
                 jg.flush();
+            } catch (Throwable e) {
+                LOGGER.error("Unable to load schema '{}'", schemaId, e);
             }
         };
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
@@ -185,14 +198,16 @@ public class SchemaTemplateExtension {
         ObjectNode memdexPath = new ObjectNode(JsonNodeFactory.instance);
         Map<String, Node> countersDictionary = Maps.newHashMap();
 
-        Relationship extendRel = segment.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING);
-        if (extendRel == null) {
-            LOGGER.warn("The segment {} doesn't extends any PlanetTemplate !", segment);
+        ArrayNode planetsNode = new ArrayNode(JsonNodeFactory.instance);
+        memdexPath.put("planets", planetsNode);
+        segment.getRelationships(RelationshipTypes.EXTEND, Direction.OUTGOING).forEach(extendRel -> {
+            Node planetTemplateNode = extendRel.getEndNode();
+            String name = planetTemplateNode.getProperty(NAME).toString();
+            planetsNode.add("template:" + name);
+        });
+        if (planetsNode.size() == 0) {
             return null;
         }
-        Node planetTemplateNode = extendRel.getEndNode();
-        String name = planetTemplateNode.getProperty(NAME).toString();
-        memdexPath.put("planet", "template:" + name);
 
         String segmentName = segment.getProperty("path").toString();
         memdexPath.put("segment", segmentName);
@@ -200,9 +215,9 @@ public class SchemaTemplateExtension {
         ArrayNode counters = memdexPath.putArray("counters");
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            if (!counterNode.hasProperty("name") || !counterNode.hasProperty("context")) return;
+            if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
-            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + counterNode.getProperty("context");
+            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + link.getProperty("context");
             counters.add(counterRef);
             countersDictionary.putIfAbsent(counterRef, counterNode);
         });
