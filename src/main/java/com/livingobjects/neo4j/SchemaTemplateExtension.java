@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -54,6 +55,18 @@ public class SchemaTemplateExtension {
 
     public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
+    }
+
+    @POST
+    @Produces({"application/json", "text/plain"})
+    public Response loadSchema() {
+        StreamingOutput stream = outputStream -> {
+            try (JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+                 Transaction tx = graphDb.beginTx()) {
+                jg.writeBoolean(true);
+            }
+        };
+        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
     }
 
     @GET
