@@ -5,8 +5,10 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
+import com.livingobjects.neo4j.model.schema.Schema;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
+import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.node.ArrayNode;
 import org.codehaus.jackson.node.JsonNodeFactory;
@@ -20,7 +22,9 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -54,6 +58,32 @@ public class SchemaTemplateExtension {
 
     public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
+    }
+
+    @POST
+    @Produces({"application/json", "text/plain"})
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response loadSchema(String jsonBody) throws IOException {
+        try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
+            Schema schema = jsonParser.readValueAs(Schema.class);
+            StreamingOutput stream = outputStream -> {
+                try (JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+                     Transaction tx = graphDb.beginTx()) {
+                    Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schema.id);
+                    if (schemaNode == null) {
+                        LOGGER.debug("Create schema {}", schema.id);
+                        schemaNode = graphDb.createNode();
+
+                    }
+                    jg.writeBoolean(false);
+                } catch (Throwable e) {
+                    LOGGER.error("Unable to load schema");
+                }
+            };
+            return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+        } catch (IOException e) {
+            return errorResponse(e);
+        }
     }
 
     @GET
