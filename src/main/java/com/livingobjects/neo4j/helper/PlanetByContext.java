@@ -136,26 +136,7 @@ final class PlanetByContext {
         abstract boolean matchValue(String testValue);
 
         public static AttributeMatch parse(String attributeDefinition) {
-            if (attributeDefinition.endsWith(":*")) {
-                return type(attributeDefinition);
-            } else {
                 return value(attributeDefinition);
-            }
-        }
-
-        public static AttributeMatch.Type type(String attributeDefinition) {
-            if (!attributeDefinition.endsWith(":*")) {
-                throw new IllegalArgumentException("Wrong attribute definition because end with :* : '" + attributeDefinition + "'");
-            }
-            String[] split = attributeDefinition.split(":", 2);
-            if (split.length != 2) {
-                throw new IllegalArgumentException("Wrong attribute '" + attributeDefinition + "'");
-            }
-            if ("*".equals(split[1])) {
-                return new Type(split[0]);
-            } else {
-                throw new IllegalArgumentException("Wrong attribute definition must end with ':*' : '" + attributeDefinition + "'");
-            }
         }
 
         public static AttributeMatch.Value value(String attributeDefinition) {
@@ -171,27 +152,6 @@ final class PlanetByContext {
 
         private AttributeMatch(String name) {
             this.name = name;
-        }
-
-        static class Type extends AttributeMatch {
-            Type(String name) {
-                super(name);
-            }
-
-            @Override
-            public String toString() {
-                return name + ":*";
-            }
-
-            @Override
-            boolean matchAll(String testValue) {
-                return true;
-            }
-
-            @Override
-            boolean matchValue(String testValue) {
-                return true;
-            }
         }
 
         static class Value extends AttributeMatch {

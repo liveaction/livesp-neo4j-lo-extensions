@@ -14,7 +14,6 @@ public class PlanetByContextTest {
     public void should_not_match_if_no_attributes_match() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
@@ -26,7 +25,7 @@ public class PlanetByContextTest {
             fail("Should fail");
         } catch (Exception e) {
             assertThat(e).isInstanceOf(InsufficientContextException.class).hasMessage("No PlanetTemplate eligible for this context !");
-            assertThat(((InsufficientContextException) e).missingAttributesToChoose).containsExactly("domain:iwan", "neType:cpe", "vendor:*", "vendor:cisco", "vendor:huawei");
+            assertThat(((InsufficientContextException) e).missingAttributesToChoose).containsExactly("domain:iwan", "neType:cpe", "vendor:cisco", "vendor:huawei");
         }
     }
 
@@ -51,7 +50,6 @@ public class PlanetByContextTest {
     public void should_not_match_if_no_attribute_values_match() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
@@ -64,7 +62,6 @@ public class PlanetByContextTest {
             fail("Should fail");
         } catch (Exception e) {
             assertThat(e).isInstanceOf(InsufficientContextException.class).hasMessage("No PlanetTemplate eligible for this context !");
-            assertThat(((InsufficientContextException) e).missingAttributesToChoose).containsExactly("domain:iwan", "neType:cpe", "vendor:*", "vendor:cisco", "vendor:huawei");
         }
     }
 
@@ -73,7 +70,6 @@ public class PlanetByContextTest {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpevip", ImmutableSet.of("domain:viptela", "neType:cpe"),
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
@@ -95,7 +91,6 @@ public class PlanetByContextTest {
     public void should_match_attribute_and_less_difference() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
@@ -109,9 +104,8 @@ public class PlanetByContextTest {
     @Test
     public void should_match_attribute_and_less_difference_no_matters_the_order() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
-                "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
+                "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
         assertThat(planetByContext.bestMatchingContext(ImmutableSet.of(
@@ -124,7 +118,6 @@ public class PlanetByContextTest {
     @Test
     public void should_match_attribute_type_VS_no_attribute() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
@@ -134,7 +127,7 @@ public class PlanetByContextTest {
                 "vendor:one_access",
                 "bandwidth:1000",
                 "loopback:172.17.10.22:5000"
-        ))).isEqualTo("iwan/{:scopeId}/cpe/*");
+        ))).isEqualTo("iwan/{:scopeId}/cpe");
     }
 
     @Test
@@ -156,7 +149,6 @@ public class PlanetByContextTest {
     public void should_match_attribute_value_VS_attribute_type() throws Exception {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*"),
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei")
         ));
@@ -173,13 +165,13 @@ public class PlanetByContextTest {
         PlanetByContext planetByContext = new PlanetByContext(ImmutableMap.of(
                 "iwan/{:scopeId}/cpe/cisco", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:cisco"),
                 "iwan/{:scopeId}/cpe/huawei", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:huawei"),
-                "iwan/{:scopeId}/cpe/*", ImmutableSet.of("domain:iwan", "neType:cpe", "vendor:*")
+                "iwan/{:scopeId}/cpe", ImmutableSet.of("domain:iwan", "neType:cpe")
         ));
         assertThat(planetByContext.bestMatchingContext(ImmutableSet.of(
                 "domain:iwan",
                 "neType:cpe",
                 "vendor:unmapped_vendor"
-        ))).isEqualTo("iwan/{:scopeId}/cpe/*");
+        ))).isEqualTo("iwan/{:scopeId}/cpe");
     }
 
     @Test
