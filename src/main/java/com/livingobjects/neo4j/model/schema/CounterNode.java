@@ -7,7 +7,7 @@ import javax.annotation.Nullable;
 
 public final class CounterNode {
 
-    public final String _type;
+    public final String type;
     public final String unit;
     public final String defaultValue;
     public final String defaultAggregation;
@@ -17,7 +17,7 @@ public final class CounterNode {
     public final String _updatedAt;
     public final String _createdAt;
 
-    public CounterNode(@JsonProperty("_type") String _type,
+    public CounterNode(@JsonProperty("type") String type,
                        @JsonProperty("unit") String unit,
                        @JsonProperty("defaultValue") String defaultValue,
                        @JsonProperty("defaultAggregation") String defaultAggregation,
@@ -30,7 +30,7 @@ public final class CounterNode {
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;
         this.valueType = valueType;
-        this._type = _type;
+        this.type = type;
         this.name = name;
         this.context = context;
         this._updatedAt = _updatedAt;
@@ -44,7 +44,7 @@ public final class CounterNode {
 
         CounterNode that = (CounterNode) o;
 
-        if (_type != null ? !_type.equals(that._type) : that._type != null) return false;
+        if (type != null ? !type.equals(that.type) : that.type != null) return false;
         if (unit != null ? !unit.equals(that.unit) : that.unit != null) return false;
         if (defaultValue != null ? !defaultValue.equals(that.defaultValue) : that.defaultValue != null) return false;
         if (defaultAggregation != null ? !defaultAggregation.equals(that.defaultAggregation) : that.defaultAggregation != null)
@@ -58,7 +58,7 @@ public final class CounterNode {
 
     @Override
     public int hashCode() {
-        int result = _type != null ? _type.hashCode() : 0;
+        int result = type != null ? type.hashCode() : 0;
         result = 31 * result + (unit != null ? unit.hashCode() : 0);
         result = 31 * result + (defaultValue != null ? defaultValue.hashCode() : 0);
         result = 31 * result + (defaultAggregation != null ? defaultAggregation.hashCode() : 0);
@@ -73,7 +73,7 @@ public final class CounterNode {
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("_type", _type)
+                .add("type", type)
                 .add("unit", unit)
                 .add("defaultValue", defaultValue)
                 .add("defaultAggregation", defaultAggregation)

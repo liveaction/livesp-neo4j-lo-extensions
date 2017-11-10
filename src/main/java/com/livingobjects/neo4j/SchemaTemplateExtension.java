@@ -111,7 +111,7 @@ public class SchemaTemplateExtension {
                 jg.writeStartObject();
                 jg.writeStringField(ID, schemaId);
                 jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
-                jg.writeArrayFieldStart("planets");
+                jg.writeObjectFieldStart("planets");
                 jg.flush();
 
                 schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
@@ -119,6 +119,7 @@ public class SchemaTemplateExtension {
                         Node targetNode = rel.getEndNode();
                         if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
                             String name = targetNode.getProperty("name").toString();
+                            jg.writeFieldName(name);
                             jg.writeStartObject();
                             jg.writeStringField("type", "template");
                             jg.writeStringField(NAME, name);
@@ -136,7 +137,7 @@ public class SchemaTemplateExtension {
                         }
                     }
                 });
-                jg.writeEndArray();
+                jg.writeEndObject();
 
                 Map<String, Node> countersDictionary = Maps.newHashMap();
                 Map<String, ObjectNode> memdexPaths = Maps.newHashMap();
@@ -167,7 +168,8 @@ public class SchemaTemplateExtension {
                     try {
                         ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
                         value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
-                        String context = key.split("@")[1];
+                        String context = key.split("@context:")[1];
+                        counter.put("type", "counter");
                         counter.put("context", context);
                         jg.writeObjectField(key, counter);
                     } catch (IOException e) {
@@ -247,7 +249,7 @@ public class SchemaTemplateExtension {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
-            String counterRef = "kpi:" + counterNode.getProperty("name") + '@' + link.getProperty("context");
+            String counterRef = "kpi:" + counterNode.getProperty("name") + "@context:" + link.getProperty("context");
             counters.add(counterRef);
             countersDictionary.putIfAbsent(counterRef, counterNode);
         });

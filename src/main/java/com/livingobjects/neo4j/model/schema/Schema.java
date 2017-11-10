@@ -2,10 +2,8 @@ package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-import java.util.Collection;
 import java.util.Map;
 
 public final class Schema {
@@ -14,21 +12,21 @@ public final class Schema {
 
     public final String version;
 
-    public final Map<String, MemdexPathNode> realms;
+    public final ImmutableMap<String, MemdexPathNode> realms;
 
-    public final ImmutableSet<PlanetNode> planets;
+    public final ImmutableMap<String, PlanetNode> planets;
 
     public final ImmutableMap<String, CounterNode> counters;
 
     public Schema(@JsonProperty("id") String id,
                   @JsonProperty("version") String version,
                   @JsonProperty("realms") Map<String, MemdexPathNode> realms,
-                  @JsonProperty("planets") Collection<PlanetNode> planets,
+                  @JsonProperty("planets") Map<String, PlanetNode> planets,
                   @JsonProperty("counters") Map<String, CounterNode> counters) {
         this.id = id;
         this.version = version;
-        this.realms = realms;
-        this.planets = ImmutableSet.copyOf(planets);
+        this.realms = ImmutableMap.copyOf(realms);
+        this.planets = ImmutableMap.copyOf(planets);
         this.counters = ImmutableMap.copyOf(counters);
     }
 
