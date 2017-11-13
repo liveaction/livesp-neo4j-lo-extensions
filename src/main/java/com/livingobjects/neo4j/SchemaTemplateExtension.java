@@ -6,6 +6,7 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.schema.Schema;
+import com.livingobjects.neo4j.schema.SchemaLoader;
 import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.JsonParser;
@@ -38,13 +39,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -56,8 +51,11 @@ public class SchemaTemplateExtension {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
+    private final SchemaLoader schemaLoader;
+
     public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
+        schemaLoader = new SchemaLoader(graphDb);
     }
 
     @POST
@@ -66,22 +64,10 @@ public class SchemaTemplateExtension {
     public Response loadSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
             Schema schema = jsonParser.readValueAs(Schema.class);
-            StreamingOutput stream = outputStream -> {
-                try (JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
-                     Transaction tx = graphDb.beginTx()) {
-                    Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schema.id);
-                    if (schemaNode == null) {
-                        LOGGER.debug("Create schema {}", schema.id);
-                        schemaNode = graphDb.createNode();
-
-                    }
-                    jg.writeBoolean(false);
-                } catch (Throwable e) {
-                    LOGGER.error("Unable to load schema");
-                }
-            };
-            return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
-        } catch (IOException e) {
+            boolean updated = schemaLoader.load(schema);
+            return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            LOGGER.error("Unable to load schema", e);
             return errorResponse(e);
         }
     }

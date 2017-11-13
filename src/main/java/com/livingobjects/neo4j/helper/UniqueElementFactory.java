@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 public final class UniqueElementFactory {
+
     private final GraphDatabaseService graphdb;
     private final Label keyLabel;
     private final Optional<Label> extraLabel;
@@ -26,23 +27,33 @@ public final class UniqueElementFactory {
         this.extraLabel = extraLabel;
     }
 
+    public Label keyLabel() {
+        return keyLabel;
+    }
+
+    public Node getWithOutcome(String keyProperty, Object keyValue) {
+        return getWithOutcome(keyProperty, keyValue, null, null);
+    }
+
+    public Node getWithOutcome(MatchProperties matchProperties) {
+        return getWithOutcome(matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2);
+    }
+
+    public Node getWithOutcome(String key1, Object value1, String key2, Object value2) {
+        UniqueEntity<Node> entity = getOrCreateWithOutcome(false, key1, value1, key2, value2);
+        return entity == null ? null : entity.entity;
+    }
+
     public UniqueEntity<Node> getOrCreateWithOutcome(String keyProperty, Object keyValue) {
-        return getOrCreateWithOutcome(keyProperty, keyValue, null, null);
+        return getOrCreateWithOutcome(true, keyProperty, keyValue, null, null);
     }
 
     public UniqueEntity<Node> getOrCreateWithOutcome(String key1, Object value1, String key2, Object value2) {
-        Node node;
-        if (key2 == null) {
-            node = graphdb.findNode(keyLabel, key1, value1);
-        } else {
-            node = filterNode(key1, value1, key2, value2);
-        }
-        if (node != null) {
-            return UniqueEntity.existing(node);
-        }
+        return getOrCreateWithOutcome(true, key1, value1, key2, value2);
+    }
 
-        node = graphdb.createNode();
-        return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
+    public UniqueEntity<Node> getOrCreateWithOutcome(MatchProperties matchProperties) {
+        return getOrCreateWithOutcome(true, matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2);
     }
 
     public UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
@@ -57,6 +68,25 @@ public final class UniqueElementFactory {
             relation = UniqueEntity.created(from.createRelationshipTo(to, type));
         }
         return relation;
+    }
+
+    private UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2) {
+        Node node;
+        if (key2 == null) {
+            node = graphdb.findNode(keyLabel, key1, value1);
+        } else {
+            node = filterNode(key1, value1, key2, value2);
+        }
+        if (node != null) {
+            return UniqueEntity.existing(node);
+        }
+
+        if (createIfNotExist) {
+            node = graphdb.createNode();
+            return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
+        } else {
+            return null;
+        }
     }
 
     private Node filterNode(String key1, Object value1, String key2, Object value2) {
