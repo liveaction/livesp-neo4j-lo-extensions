@@ -3,8 +3,6 @@ package com.livingobjects.neo4j.model.schema;
 import com.google.common.base.MoreObjects;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-import javax.annotation.Nullable;
-
 public final class CounterNode {
 
     public final String type;
@@ -14,8 +12,6 @@ public final class CounterNode {
     public final String valueType;
     public final String name;
     public final String context;
-    public final String _updatedAt;
-    public final String _createdAt;
 
     public CounterNode(@JsonProperty("type") String type,
                        @JsonProperty("unit") String unit,
@@ -23,18 +19,14 @@ public final class CounterNode {
                        @JsonProperty("defaultAggregation") String defaultAggregation,
                        @JsonProperty("valueType") String valueType,
                        @JsonProperty("name") String name,
-                       @JsonProperty("context") String context,
-                       @JsonProperty("_updatedAt") @Nullable String _updatedAt,
-                       @JsonProperty("_createdAt") @Nullable String _createdAt) {
+                       @JsonProperty("context") String context) {
+        this.type = type;
         this.unit = unit;
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;
         this.valueType = valueType;
-        this.type = type;
         this.name = name;
         this.context = context;
-        this._updatedAt = _updatedAt;
-        this._createdAt = _createdAt;
     }
 
     @Override
@@ -51,9 +43,7 @@ public final class CounterNode {
             return false;
         if (valueType != null ? !valueType.equals(that.valueType) : that.valueType != null) return false;
         if (name != null ? !name.equals(that.name) : that.name != null) return false;
-        if (context != null ? !context.equals(that.context) : that.context != null) return false;
-        if (_updatedAt != null ? !_updatedAt.equals(that._updatedAt) : that._updatedAt != null) return false;
-        return _createdAt != null ? _createdAt.equals(that._createdAt) : that._createdAt == null;
+        return context != null ? context.equals(that.context) : that.context == null;
     }
 
     @Override
@@ -65,8 +55,6 @@ public final class CounterNode {
         result = 31 * result + (valueType != null ? valueType.hashCode() : 0);
         result = 31 * result + (name != null ? name.hashCode() : 0);
         result = 31 * result + (context != null ? context.hashCode() : 0);
-        result = 31 * result + (_updatedAt != null ? _updatedAt.hashCode() : 0);
-        result = 31 * result + (_createdAt != null ? _createdAt.hashCode() : 0);
         return result;
     }
 
@@ -80,8 +68,6 @@ public final class CounterNode {
                 .add("valueType", valueType)
                 .add("name", name)
                 .add("context", context)
-                .add("_updatedAt", _updatedAt)
-                .add("_createdAt", _createdAt)
                 .toString();
     }
 }

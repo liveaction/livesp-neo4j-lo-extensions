@@ -221,7 +221,7 @@ public class SchemaTemplateExtension {
         segment.getRelationships(RelationshipTypes.EXTEND, Direction.OUTGOING).forEach(extendRel -> {
             Node planetTemplateNode = extendRel.getEndNode();
             String name = planetTemplateNode.getProperty(NAME).toString();
-            planetsNode.add("template:" + name);
+            planetsNode.add(name);
         });
         if (planetsNode.size() == 0) {
             return null;
