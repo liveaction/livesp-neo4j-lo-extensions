@@ -27,8 +27,16 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
 
 public final class SchemaLoader {
 
@@ -62,8 +70,12 @@ public final class SchemaLoader {
 
             ImmutableSet<Node> realmTemplates = createRealmTemplates(schema, planets, schema.counters);
 
-            ImmutableSet<Node> nodesToLink = ImmutableSet.<Node>builder().addAll(planets.values()).addAll(realmTemplates).build();
-            updateRelationships(Direction.OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink, node -> deleteTree(node, Direction.OUTGOING, MEMDEXPATH));
+            ImmutableSet<Node> nodesToLink = ImmutableSet.<Node>builder()
+                    .addAll(planets.values())
+                    .addAll(realmTemplates)
+                    .build();
+            updateRelationships(Direction.OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
+                    node -> deleteTree(true, node, Direction.OUTGOING, MEMDEXPATH));
 
             tx.success();
             return schemaNode.wasCreated;
@@ -81,7 +93,7 @@ public final class SchemaLoader {
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
 
             if (!realmTemplateEntity.wasCreated) {
-                deleteTree(realmTemplateEntity.entity, Direction.OUTGOING, MEMDEXPATH);
+                deleteTree(false, realmTemplateEntity.entity, Direction.OUTGOING, MEMDEXPATH);
             }
 
             Node memdexPathNode = createMemdexTree(realmNodeEntry.getValue(), planets, counters);
@@ -155,11 +167,15 @@ public final class SchemaLoader {
         return memdexPathNode;
     }
 
-    private void deleteTree(Node root, Direction direction, RelationshipType relationshipType) {
+    private void deleteTree(boolean deleteRoot, Node root, Direction direction, RelationshipType relationshipType) {
         Iterable<Relationship> relationships = root.getRelationships(direction, relationshipType);
         for (Relationship relationship : relationships) {
-            deleteTree(relationship.getEndNode(), direction, relationshipType);
-            relationship.delete();
+            Node otherNode = relationship.getOtherNode(root);
+            deleteTree(true, otherNode, direction, relationshipType);
+        }
+        if (deleteRoot) {
+            root.getRelationships().forEach(Relationship::delete);
+            root.delete();
         }
     }
 

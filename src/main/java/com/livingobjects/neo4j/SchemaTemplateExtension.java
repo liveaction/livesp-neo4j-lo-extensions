@@ -38,8 +38,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -153,10 +160,14 @@ public class SchemaTemplateExtension {
                 countersDictionary.forEach((key, value) -> {
                     try {
                         ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
-                        value.getAllProperties().forEach((k, v) -> counter.put(k, v.toString()));
                         String context = key.split("@context:")[1];
                         counter.put("type", "counter");
                         counter.put("context", context);
+                        counter.put("unit", value.getProperty("unit").toString());
+                        counter.put("defaultValue", Optional.ofNullable(value.getProperty("defaultValue", null)).map(Object::toString).orElse(null));
+                        counter.put("defaultAggregation", value.getProperty("defaultAggregation").toString());
+                        counter.put("valueType", value.getProperty("valueType").toString());
+                        counter.put("name", value.getProperty("name").toString());
                         jg.writeObjectField(key, counter);
                     } catch (IOException e) {
                         LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
