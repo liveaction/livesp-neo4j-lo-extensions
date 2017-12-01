@@ -20,7 +20,6 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -219,15 +218,17 @@ public final class SchemaLoader {
                                      RelationshipType relationshipType,
                                      Iterable<Node> relationshipsEndNodes,
                                      Consumer<Node> discardedNodeHandler) {
-        HashSet<Node> toLinks = Sets.newHashSet(relationshipsEndNodes);
+        Set<Node> toLinks = Sets.newHashSet(relationshipsEndNodes);
+        Set<Node> discardedNodes = Sets.newHashSet();
         Iterable<Relationship> relationships = startNode.getRelationships(direction, relationshipType);
-        for (Relationship relationship : relationships) {
+        for (Relationship relationship : ImmutableSet.copyOf(relationships)) {
             Node otherNode = relationship.getOtherNode(startNode);
             if (!toLinks.remove(otherNode)) {
                 relationship.delete();
-                discardedNodeHandler.accept(otherNode);
+                discardedNodes.add(otherNode);
             }
         }
+        discardedNodes.forEach(discardedNodeHandler);
         for (Node relationshipsEndNode : toLinks) {
             if (direction == Direction.OUTGOING) {
                 startNode.createRelationshipTo(relationshipsEndNode, relationshipType);
