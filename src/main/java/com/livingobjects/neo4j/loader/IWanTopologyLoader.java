@@ -3,6 +3,7 @@ package com.livingobjects.neo4j.loader;
 import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -56,7 +57,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public final class IWanTopologyLoader {
 
@@ -488,13 +496,16 @@ public final class IWanTopologyLoader {
     private void applySchema(IwanMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
         try {
             int schemaIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.SCHEMA);
-            String schema = line[schemaIndex];
-            Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
-            if (schemaNode != null) {
-                schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
-            } else {
-                throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
-            }
+            Splitter.on(',').omitEmptyStrings().trimResults()
+                    .split(line[schemaIndex])
+                    .forEach(schema -> {
+                        Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
+                        if (schemaNode != null) {
+                            schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
+                        } else {
+                            throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
+                        }
+                    });
         } catch (NoSuchElementException e) {
             throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
         }

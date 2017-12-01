@@ -56,7 +56,7 @@ public final class LoadCSVExtension {
 
     @POST
     @Consumes("multipart/mixed")
-    public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
+    public Response loadCSV(MultiPart multiPart) throws IOException {
         Stopwatch sWatch = Stopwatch.createStarted();
         long importedElementsCounter = 0;
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
