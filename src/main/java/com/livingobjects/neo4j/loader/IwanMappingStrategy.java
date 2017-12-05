@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -87,12 +88,16 @@ class IwanMappingStrategy {
     }
 
     int getColumnIndex(String keyType, String property) {
+        return tryColumnIndex(keyType, property)
+                .orElseThrow(() -> {
+                    String column = keyType + '.' + property;
+                    return new NoSuchElementException(String.format("Required column '%s' not found.", column));
+                });
+    }
+
+    Optional<Integer> tryColumnIndex(String keyType, String property) {
         String column = keyType + '.' + property;
-        Integer index = columnIndexes.get(column);
-        if (index == null) {
-            throw new NoSuchElementException(String.format("Required column '%s' not found.", column));
-        }
-        return index;
+        return Optional.ofNullable(columnIndexes.get(column));
     }
 
     ImmutableSet<String> guessKeyTypesForLine(Collection<String> scopeTypes, String[] line) {

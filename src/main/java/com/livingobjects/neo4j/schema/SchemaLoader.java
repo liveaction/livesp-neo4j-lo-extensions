@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.MatchProperties;
+import com.livingobjects.neo4j.helper.RelationshipUtils;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -23,7 +24,6 @@ import org.neo4j.graphdb.Transaction;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
@@ -73,7 +73,7 @@ public final class SchemaLoader {
                     .addAll(planets.values())
                     .addAll(realmTemplates)
                     .build();
-            updateRelationships(Direction.OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
+            RelationshipUtils.updateRelationships(Direction.OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
                     node -> deleteTree(true, node, Direction.OUTGOING, MEMDEXPATH));
 
             tx.success();
@@ -182,7 +182,7 @@ public final class SchemaLoader {
         Map<String, Node> planetNodesByName = Maps.newHashMap();
         for (Map.Entry<String, PlanetNode> planetNodeEntry : schema.planets.entrySet()) {
             UniqueEntity<Node> entity = planetTemplateFactory.getOrCreateWithOutcome(NAME, planetNodeEntry.getKey());
-            updateRelationships(Direction.OUTGOING, entity.entity, RelationshipTypes.ATTRIBUTE, attributeNodeFactory,
+            RelationshipUtils.updateRelationships(Direction.OUTGOING, entity.entity, RelationshipTypes.ATTRIBUTE, attributeNodeFactory,
                     planetNodeEntry.getValue().attributes.stream()
                             .map(a -> {
                                 String[] split = a.split(":");
@@ -197,45 +197,6 @@ public final class SchemaLoader {
             planetNodesByName.put(planetNodeEntry.getKey(), entity.entity);
         }
         return ImmutableMap.copyOf(planetNodesByName);
-    }
-
-    private void updateRelationships(Direction direction,
-                                     Node startNode,
-                                     RelationshipType relationshipType,
-                                     UniqueElementFactory uniqueNodeFactory,
-                                     Iterable<MatchProperties> nodesToMatch,
-                                     Consumer<Node> discardedNodeHandler) {
-        Set<Node> relationshipsEndNodes = Sets.newLinkedHashSet();
-        for (MatchProperties matchProperties : nodesToMatch) {
-            UniqueEntity<Node> node = uniqueNodeFactory.getOrCreateWithOutcome(matchProperties);
-            relationshipsEndNodes.add(node.entity);
-        }
-        updateRelationships(direction, startNode, relationshipType, relationshipsEndNodes, discardedNodeHandler);
-    }
-
-    private void updateRelationships(Direction direction,
-                                     Node startNode,
-                                     RelationshipType relationshipType,
-                                     Iterable<Node> relationshipsEndNodes,
-                                     Consumer<Node> discardedNodeHandler) {
-        Set<Node> toLinks = Sets.newHashSet(relationshipsEndNodes);
-        Set<Node> discardedNodes = Sets.newHashSet();
-        Iterable<Relationship> relationships = startNode.getRelationships(direction, relationshipType);
-        for (Relationship relationship : ImmutableSet.copyOf(relationships)) {
-            Node otherNode = relationship.getOtherNode(startNode);
-            if (!toLinks.remove(otherNode)) {
-                relationship.delete();
-                discardedNodes.add(otherNode);
-            }
-        }
-        discardedNodes.forEach(discardedNodeHandler);
-        for (Node relationshipsEndNode : toLinks) {
-            if (direction == Direction.OUTGOING) {
-                startNode.createRelationshipTo(relationshipsEndNode, relationshipType);
-            } else {
-                relationshipsEndNode.createRelationshipTo(startNode, relationshipType);
-            }
-        }
     }
 
 }

@@ -9,11 +9,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.OverridableElementFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.livingobjects.neo4j.helper.RelationshipUtils;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
@@ -461,6 +463,7 @@ public final class IWanTopologyLoader {
                     networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
             Node elementNode = uniqueEntity.entity;
 
+            Iterable<String> schemasToApply = getSchemasToApply(strategy, line, elementKeyType);
             if (uniqueEntity.wasCreated) {
                 if (isScope) {
                     int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
@@ -472,11 +475,19 @@ public final class IWanTopologyLoader {
                     }
 
                     elementNode.addLabel(Labels.SCOPE);
-                    applySchema(strategy, line, elementKeyType, tag, elementNode);
+                    if (Iterables.isEmpty(schemasToApply)) {
+                        throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
+                    }
+                    applySchemas(elementKeyType, elementNode, schemasToApply);
                 }
                 elementNode.setProperty(IwanModelConstants._TYPE, elementKeyType);
 
             } else {
+                if (isScope) {
+                    if (!Iterables.isEmpty(schemasToApply)) {
+                        applySchema(strategy, line, elementKeyType, tag, elementNode);
+                    }
+                }
                 elementNode.setProperty(IwanModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
 
                 elementNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT).forEach(r -> {
@@ -495,20 +506,30 @@ public final class IWanTopologyLoader {
 
     private void applySchema(IwanMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
         try {
-            int schemaIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.SCHEMA);
-            Splitter.on(',').omitEmptyStrings().trimResults()
-                    .split(line[schemaIndex])
-                    .forEach(schema -> {
-                        Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
-                        if (schemaNode != null) {
-                            schemaNode.createRelationshipTo(elementNode, RelationshipTypes.APPLIED_TO);
-                        } else {
-                            throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
-                        }
-                    });
+            Iterable<String> schemas = getSchemasToApply(strategy, line, elementKeyType);
+            applySchemas(elementKeyType, elementNode, schemas);
         } catch (NoSuchElementException e) {
             throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
         }
+    }
+
+    private Iterable<String> getSchemasToApply(IwanMappingStrategy strategy, String[] line, String elementKeyType) {
+        return strategy.tryColumnIndex(elementKeyType, IwanModelConstants.SCHEMA)
+                .map(schemaIndex -> Splitter.on(',').omitEmptyStrings().trimResults().split(line[schemaIndex]))
+                .orElse(ImmutableSet.of());
+    }
+
+    private void applySchemas(String elementKeyType, Node elementNode, Iterable<String> schemas) {
+        Set<Node> schemaNodes = Sets.newHashSet();
+        schemas.forEach(schema -> {
+            Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
+            if (schemaNode != null) {
+                schemaNodes.add(schemaNode);
+            } else {
+                throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
+            }
+        });
+        RelationshipUtils.updateRelationships(Direction.INCOMING, elementNode, RelationshipTypes.APPLIED_TO, schemaNodes);
     }
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
