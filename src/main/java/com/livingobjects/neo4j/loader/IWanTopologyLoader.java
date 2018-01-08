@@ -67,6 +67,8 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
+import static org.neo4j.graphdb.Direction.INCOMING;
 
 public final class IWanTopologyLoader {
 
@@ -120,7 +122,7 @@ public final class IWanTopologyLoader {
                     }
                     ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                     ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                    n.getRelationships(Direction.INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
+                    n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
                     n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
                     ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
                     if (!IwanModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
@@ -529,7 +531,7 @@ public final class IWanTopologyLoader {
                 throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
             }
         });
-        RelationshipUtils.updateRelationships(Direction.INCOMING, elementNode, RelationshipTypes.APPLIED_TO, schemaNodes);
+        RelationshipUtils.addRelationships(INCOMING, elementNode, APPLIED_TO, schemaNodes);
     }
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {

@@ -36,6 +36,7 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class SchemaLoader {
 
@@ -73,8 +74,8 @@ public final class SchemaLoader {
                     .addAll(planets.values())
                     .addAll(realmTemplates)
                     .build();
-            RelationshipUtils.updateRelationships(Direction.OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
-                    node -> deleteTree(true, node, Direction.OUTGOING, MEMDEXPATH));
+            RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
+                    node -> deleteTree(true, node, OUTGOING, MEMDEXPATH));
 
             tx.success();
             return schemaNode.wasCreated;
@@ -92,7 +93,7 @@ public final class SchemaLoader {
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
 
             if (!realmTemplateEntity.wasCreated) {
-                deleteTree(false, realmTemplateEntity.entity, Direction.OUTGOING, MEMDEXPATH);
+                deleteTree(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
             }
 
             Node memdexPathNode = createMemdexTree(realmNodeEntry.getValue(), planets, counters);
@@ -182,18 +183,17 @@ public final class SchemaLoader {
         Map<String, Node> planetNodesByName = Maps.newHashMap();
         for (Map.Entry<String, PlanetNode> planetNodeEntry : schema.planets.entrySet()) {
             UniqueEntity<Node> entity = planetTemplateFactory.getOrCreateWithOutcome(NAME, planetNodeEntry.getKey());
-            RelationshipUtils.updateRelationships(Direction.OUTGOING, entity.entity, RelationshipTypes.ATTRIBUTE, attributeNodeFactory,
-                    planetNodeEntry.getValue().attributes.stream()
-                            .map(a -> {
-                                String[] split = a.split(":");
-                                if (split.length != 2) {
-                                    throw new IllegalArgumentException("Malformed attribute " + a);
-                                }
-                                return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
-                            })
-                            .collect(Collectors.toSet()),
-                    node -> {
-                    });
+            Set<MatchProperties> matchProperties = planetNodeEntry.getValue().attributes
+                    .stream()
+                    .map(a -> {
+                        String[] split = a.split(":");
+                        if (split.length != 2) {
+                            throw new IllegalArgumentException("Malformed attribute " + a);
+                        }
+                        return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
+                    })
+                    .collect(Collectors.toSet());
+            RelationshipUtils.updateRelationships(OUTGOING, entity.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
             planetNodesByName.put(planetNodeEntry.getKey(), entity.entity);
         }
         return ImmutableMap.copyOf(planetNodesByName);
