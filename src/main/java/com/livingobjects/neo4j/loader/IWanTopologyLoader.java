@@ -367,33 +367,25 @@ public final class IWanTopologyLoader {
                 .orElse(false);
         Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        String plScope = null;
         for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
             Node planetNode = r.getEndNode();
             String currentScope = planetNode.getProperty(SCOPE, "").toString();
             if (solidScope != null && !solidScope.tag.equals(currentScope)) {
                 elementScopeSlider.slide(element.entity, solidScope);
-                plScope = solidScope.tag;
-            } else {
-                plScope = currentScope;
             }
         }
 
-        if (plScope == null) {
-            Object tag = element.entity.getProperty(TAG);
-            if (solidScope != null) {
-                UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
-                UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
-                plScope = solidScope.tag;
-                if (relation.wasCreated) {
-                    LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, plScope);
-                }
-            } else {
-                throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
+        Object tag = element.entity.getProperty(TAG);
+        if (solidScope != null) {
+            UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
+            UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
+            if (relation.wasCreated) {
+                LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, solidScope.tag);
             }
+            return new TypedScope(solidScope.tag, keyType);
+        } else {
+            throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
         }
-
-        return new TypedScope(plScope, keyType);
     }
 
     private int linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
