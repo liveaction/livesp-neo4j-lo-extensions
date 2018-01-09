@@ -4,6 +4,7 @@ import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -48,6 +49,7 @@ import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -60,6 +62,7 @@ import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
@@ -112,7 +115,7 @@ public final class IWanTopologyLoader {
             ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
             graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
                 String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
-                String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(IwanModelConstants.NAME).toString();
+                String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
                 boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
                 if (isOverride) overrideBldr.add(key);
 
@@ -365,26 +368,42 @@ public final class IWanTopologyLoader {
         boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
-        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
+        Scope scopeFromImport = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        for (Relationship r : element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
-            Node planetNode = r.getEndNode();
-            String currentScope = planetNode.getProperty(SCOPE, "").toString();
-            if (solidScope != null && !solidScope.tag.equals(currentScope)) {
-                elementScopeSlider.slide(element.entity, solidScope);
-            }
-        }
+        String existingScopeTag = getElementScopeInDatabase(element).orElse(null);
 
-        Object tag = element.entity.getProperty(TAG);
-        if (solidScope != null) {
-            UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
-            UniqueEntity<Relationship> relation = networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
-            if (relation.wasCreated) {
-                LOGGER.info("Existing element {} without planet : fixing it. Add link to planet {}", tag, solidScope.tag);
+        if (scopeFromImport != null) {
+            if (existingScopeTag != null && !scopeFromImport.tag.equals(existingScopeTag)) {
+                // If the imported element scope is different than the existing one
+                // slide the element to the new scope
+                elementScopeSlider.slide(element.entity, scopeFromImport);
             }
-            return new TypedScope(solidScope.tag, keyType);
+            UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scopeFromImport, element.entity);
+            networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
+            return new TypedScope(scopeFromImport.tag, keyType);
         } else {
-            throw new IllegalStateException(String.format("The element '%s' exists in database without scope (no planet link). Unable to found scope in line.", tag));
+            if (existingScopeTag == null) {
+                Object tag = element.entity.getProperty(TAG);
+                throw new IllegalStateException(String.format("Inconsistent element '%s' in db : it is not linked to a planet which is required. Fix this.", tag));
+            }
+            return new TypedScope(existingScopeTag, keyType);
+        }
+    }
+
+    private Optional<String> getElementScopeInDatabase(UniqueEntity<Node> element) {
+        Iterator<Relationship> iterator = element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).iterator();
+        if (iterator.hasNext()) {
+            Relationship attributeRelationship = iterator.next();
+            Node planetNode = attributeRelationship.getEndNode();
+            String scopeTag = planetNode.getProperty(SCOPE, "").toString();
+            if (Strings.isNullOrEmpty(scopeTag)) {
+                Object tag = element.entity.getProperty(TAG);
+                Object planetName = planetNode.getProperty(NAME);
+                throw new IllegalStateException(String.format("Inconsistent element '%s' in db : its planet '%s' does not have a scope property which is required. Fix this.", tag, planetName));
+            }
+            return Optional.of(scopeTag);
+        } else {
+            return Optional.empty();
         }
     }
 
@@ -400,7 +419,7 @@ public final class IWanTopologyLoader {
             for (Relationship relationship : relationships) {
                 Node endNode = relationship.getEndNode();
                 String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
-                        endNode.getProperty(IwanModelConstants.NAME).toString();
+                        endNode.getProperty(NAME).toString();
                 if (isOverride && scopeTypes.contains(toKeytype)) {
                     toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
                 }
@@ -442,7 +461,7 @@ public final class IWanTopologyLoader {
 
             Set<String> todelete = parentRelations.get(elementKeyType).stream()
                     .filter(r -> !IwanModelConstants.CARDINALITY_MULTIPLE.equals(r.getProperty(IwanModelConstants.CARDINALITY, "")))
-                    .map(r -> r.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(IwanModelConstants.NAME).toString())
+                    .map(r -> r.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
                     .filter(strategy::hasKeyType)
                     .collect(Collectors.toSet());
 
@@ -460,7 +479,7 @@ public final class IWanTopologyLoader {
             Iterable<String> schemasToApply = getSchemasToApply(strategy, line, elementKeyType);
             if (uniqueEntity.wasCreated) {
                 if (isScope) {
-                    int nameIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.NAME);
+                    int nameIndex = strategy.getColumnIndex(elementKeyType, NAME);
                     if (nameIndex < 0) return Optional.empty();
                     String name = line[nameIndex];
                     if (name.isEmpty()) {
