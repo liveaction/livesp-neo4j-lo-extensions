@@ -542,7 +542,7 @@ public final class IWanTopologyLoader {
                 throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
             }
         });
-        RelationshipUtils.addRelationships(INCOMING, elementNode, APPLIED_TO, schemaNodes);
+        RelationshipUtils.updateRelationships(INCOMING, elementNode, APPLIED_TO, schemaNodes);
     }
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {

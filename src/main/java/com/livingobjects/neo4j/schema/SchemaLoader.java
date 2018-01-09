@@ -30,12 +30,16 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_SP_TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class SchemaLoader {
@@ -65,6 +69,11 @@ public final class SchemaLoader {
         try (Transaction tx = graphDb.beginTx()) {
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schema.id);
             schemaNode.entity.setProperty(VERSION, schema.version);
+
+            Node spScope = graphDb.findNode(Labels.SCOPE, TAG, SCOPE_SP_TAG);
+            if (spScope != null) {
+                RelationshipUtils.updateRelationships(INCOMING, schemaNode.entity, APPLIED_TO, ImmutableSet.of(spScope));
+            }
 
             ImmutableMap<String, Node> planets = createPlanets(schema);
 
@@ -193,7 +202,7 @@ public final class SchemaLoader {
                         return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
                     })
                     .collect(Collectors.toSet());
-            RelationshipUtils.updateRelationships(OUTGOING, entity.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
+            RelationshipUtils.replaceRelationships(OUTGOING, entity.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
             planetNodesByName.put(planetNodeEntry.getKey(), entity.entity);
         }
         return ImmutableMap.copyOf(planetNodesByName);
