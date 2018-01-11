@@ -72,7 +72,7 @@ public final class SchemaLoader {
 
             Node spScope = graphDb.findNode(Labels.SCOPE, TAG, SCOPE_SP_TAG);
             if (spScope != null) {
-                RelationshipUtils.updateRelationships(INCOMING, schemaNode.entity, APPLIED_TO, ImmutableSet.of(spScope));
+                RelationshipUtils.updateRelationships(OUTGOING, schemaNode.entity, APPLIED_TO, ImmutableSet.of(spScope));
             }
 
             ImmutableMap<String, Node> planets = createPlanets(schema);
