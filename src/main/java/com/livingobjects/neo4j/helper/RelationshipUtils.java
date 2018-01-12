@@ -56,6 +56,18 @@ public class RelationshipUtils {
     /**
      * Update the given relationships between the given nodes.
      * Other relationships of the same type that already exists are removed.
+     */
+    public static void replaceRelationships(Direction direction,
+                                            Node startNode,
+                                            RelationshipType relationshipType,
+                                            Iterable<Node> relationshipsEndNodes) {
+        replaceRelationships(direction, startNode, relationshipType, relationshipsEndNodes, node -> {
+        });
+    }
+
+    /**
+     * Update the given relationships between the given nodes.
+     * Other relationships of the same type that already exists are removed.
      * Can prodive a handler to handle nodes that have been detached during process.
      */
     public static void replaceRelationships(Direction direction,
@@ -97,18 +109,19 @@ public class RelationshipUtils {
                                                     boolean removeOtherRelationships,
                                                     Consumer<Node> detachedNodeHandler) {
         Set<Node> toLinks = Sets.newHashSet(relationshipsEndNodes);
-        if (removeOtherRelationships) {
-            Set<Node> detachedNodes = Sets.newHashSet();
-            Iterable<Relationship> relationships = startNode.getRelationships(direction, relationshipType);
-            for (Relationship relationship : ImmutableSet.copyOf(relationships)) {
-                Node otherNode = relationship.getOtherNode(startNode);
-                if (!toLinks.remove(otherNode)) {
+
+        Set<Node> detachedNodes = Sets.newHashSet();
+        Iterable<Relationship> relationships = startNode.getRelationships(direction, relationshipType);
+        for (Relationship relationship : ImmutableSet.copyOf(relationships)) {
+            Node otherNode = relationship.getOtherNode(startNode);
+            if (!toLinks.remove(otherNode)) {
+                if (removeOtherRelationships) {
                     relationship.delete();
                     detachedNodes.add(otherNode);
                 }
             }
-            detachedNodes.forEach(detachedNodeHandler);
         }
+        detachedNodes.forEach(detachedNodeHandler);
         for (Node relationshipsEndNode : toLinks) {
             if (direction == Direction.OUTGOING) {
                 startNode.createRelationshipTo(relationshipsEndNode, relationshipType);

@@ -57,9 +57,9 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
@@ -71,7 +71,9 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
+import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class IWanTopologyLoader {
 
@@ -318,51 +320,15 @@ public final class IWanTopologyLoader {
 
             if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) continue;
 
-            if (element.wasCreated) {
-                importedElementByScopeBuilder.put(
-                        reviewPlanetForCreatedElement(strategy, element),
-                        element.entity.getProperty(IwanModelConstants.TAG).toString());
-
-            } else {
-                importedElementByScopeBuilder.put(
-                        reviewPlanetForUpdatedElement(strategy, element),
-                        element.entity.getProperty(IwanModelConstants.TAG).toString());
-
-            }
+            importedElementByScopeBuilder.put(
+                    reviewPlanetElement(strategy, element),
+                    element.entity.getProperty(IwanModelConstants.TAG).toString()
+            );
         }
         return importedElementByScopeBuilder.build();
     }
 
-    private TypedScope reviewPlanetForCreatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
-        String keyType = element.entity.getProperty(_TYPE).toString();
-        boolean isOverridable = overridableType.contains(keyType);
-        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
-                .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
-                .orElse(false);
-        Scope solidScope = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
-
-
-        if (strategy.scope == null && !isGlobal)
-            throw new IllegalArgumentException("Unable create planet link. No scope found for line");
-
-        UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(solidScope, element.entity);
-
-        AtomicBoolean present = new AtomicBoolean(false);
-        element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(r -> {
-            if (r.getEndNode().getId() == planet.entity.getId()) {
-                present.set(true);
-            } else {
-                r.delete();
-            }
-        });
-        if (!present.get()) {
-            element.entity.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
-        }
-
-        return new TypedScope(solidScope.tag, keyType);
-    }
-
-    private TypedScope reviewPlanetForUpdatedElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+    private TypedScope reviewPlanetElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
         String keyType = element.entity.getProperty(_TYPE).toString();
         boolean isOverridable = overridableType.contains(keyType);
         boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
@@ -379,7 +345,7 @@ public final class IWanTopologyLoader {
                 elementScopeSlider.slide(element.entity, scopeFromImport);
             }
             UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scopeFromImport, element.entity);
-            networkElementFactory.getOrCreateRelation(element.entity, planet.entity, RelationshipTypes.ATTRIBUTE);
+            replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));
             return new TypedScope(scopeFromImport.tag, keyType);
         } else {
             if (existingScopeTag == null) {
