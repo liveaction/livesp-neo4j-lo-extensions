@@ -56,7 +56,7 @@ public final class UniqueElementFactory {
         return getOrCreateWithOutcome(true, matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2);
     }
 
-    public UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
+    public synchronized  UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
         UniqueEntity<Relationship> relation = null;
         for (Relationship r : from.getRelationships(Direction.OUTGOING, type)) {
             if (r.getEndNode().equals(to)) { // put other conditions here, if needed
@@ -70,7 +70,7 @@ public final class UniqueElementFactory {
         return relation;
     }
 
-    private UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2) {
+    private synchronized UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2) {
         Node node;
         if (key2 == null) {
             node = graphdb.findNode(keyLabel, key1, value1);

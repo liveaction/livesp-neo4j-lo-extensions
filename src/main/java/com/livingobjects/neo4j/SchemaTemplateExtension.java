@@ -6,8 +6,8 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
+import com.livingobjects.neo4j.model.schema.PartialSchema;
 import com.livingobjects.neo4j.model.schema.Schema;
-import com.livingobjects.neo4j.model.schema.SchemaRealmPath;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
 import org.codehaus.jackson.JsonEncoding;
@@ -58,11 +58,8 @@ public class SchemaTemplateExtension {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    private final SchemaLoader schemaLoader;
-
     public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        schemaLoader = new SchemaLoader(graphDb);
     }
 
     @POST
@@ -70,6 +67,7 @@ public class SchemaTemplateExtension {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response loadSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
+            SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             Schema schema = jsonParser.readValueAs(Schema.class);
             boolean updated = schemaLoader.load(schema);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
@@ -80,13 +78,14 @@ public class SchemaTemplateExtension {
     }
 
     @POST
-    @Path("/{schemaId}/realm")
+    @Path("/{schemaId}/realm/{realmTemplate}")
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response updateSchema(@PathParam("schemaId") String schemaId, String jsonBody) throws IOException {
+    public Response updateSchema(@PathParam("schemaId") String schemaId, @PathParam("realmTemplate") String realmTemplate, String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
-            SchemaRealmPath schemaRealmPath = jsonParser.readValueAs(SchemaRealmPath.class);
-            boolean updated = schemaLoader.updateRealmPath(schemaId, schemaRealmPath);
+            SchemaLoader schemaLoader = new SchemaLoader(graphDb);
+            PartialSchema partialSchema = jsonParser.readValueAs(PartialSchema.class);
+            boolean updated = schemaLoader.updateRealmPath(schemaId, realmTemplate, partialSchema);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             LOGGER.error("Unable to load schema", e);
