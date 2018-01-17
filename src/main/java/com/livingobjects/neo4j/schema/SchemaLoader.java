@@ -260,6 +260,7 @@ public final class SchemaLoader {
     }
 
     private void replaceAttributesRelationships(MemdexPathNode memdexPath, Node segmentNode) {
+        segmentNode.getRelationships(OUTGOING, ATTRIBUTE).forEach(Relationship::delete);
         memdexPath.attributes.forEach(a -> {
             String[] split = a.split(":");
             if (split.length < 2 || split.length > 3) {
