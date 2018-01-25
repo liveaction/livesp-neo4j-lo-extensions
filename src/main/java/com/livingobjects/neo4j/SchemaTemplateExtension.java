@@ -7,6 +7,7 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.PartialSchema;
+import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.Schema;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
@@ -44,9 +45,8 @@ import java.util.Optional;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.schema.SchemaReader.browseAttributes;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -118,36 +118,16 @@ public class SchemaTemplateExtension {
                 jg.writeStartObject();
                 jg.writeStringField(ID, schemaId);
                 jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
-                jg.writeObjectFieldStart("planets");
-                jg.flush();
 
                 schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
-                    try {
-                        Node targetNode = rel.getEndNode();
-                        if (targetNode.hasLabel(Labels.PLANET_TEMPLATE)) {
-                            String name = targetNode.getProperty("name").toString();
-                            jg.writeFieldName(name);
-                            jg.writeStartObject();
-                            jg.writeStringField("type", "template");
-                            jg.writeStringField(NAME, name);
-                            jg.writeObjectField("attributes", browseAttributes(targetNode));
-                            jg.writeEndObject();
-                            jg.flush();
-
-                        } else if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
-                            realmNodes.add(targetNode);
-                        }
-                    } catch (IOException e) {
-                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("STACKTRACE", e);
-                        }
+                    Node targetNode = rel.getEndNode();
+                    if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                        realmNodes.add(targetNode);
                     }
                 });
-                jg.writeEndObject();
 
                 Map<String, Node> countersDictionary = Maps.newHashMap();
-                Map<String, MemdexPathNode> memdexPaths = Maps.newHashMap();
+                Map<String, RealmNode> realms = Maps.newHashMap();
                 realmNodes.forEach(realmNode -> {
                     String name = realmNode.getProperty(NAME).toString();
                     try {
@@ -155,12 +135,16 @@ public class SchemaTemplateExtension {
                         if (firstMemdexPath != null) {
                             Node segment = firstMemdexPath.getEndNode();
                             Entry<MemdexPathNode, Map<String, Node>> segments = SchemaReader.browseSegments(segment);
-                            if (segments == null) {
-                                LOGGER.warn("The segment '{}' doesn't extend any PlanetTemplate. Realm '{}' is ignored", segment.getProperty(PATH), name);
-                                return;
-                            }
                             countersDictionary.putAll(segments.getValue());
-                            memdexPaths.put("realm:" + name, segments.getKey());
+                            List<String> attributes = Lists.newArrayList();
+                            Iterable<Relationship> attributesRel = realmNode.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+                            for (Relationship attribute : attributesRel) {
+                                String attType = attribute.getEndNode().getProperty(_TYPE).toString();
+                                String attName = attribute.getEndNode().getProperty(NAME).toString();
+                                attributes.add(attType + ":" + attName);
+                            }
+                            RealmNode realm = new RealmNode(name, attributes, segments.getKey());
+                            realms.put("realm:" + name, realm);
                         } else {
                             LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
                         }
@@ -194,7 +178,7 @@ public class SchemaTemplateExtension {
 
                 jg.writeObjectFieldStart("realms");
                 jg.flush();
-                memdexPaths.forEach((key, value) -> {
+                realms.forEach((key, value) -> {
                     try {
                         jg.writeObjectField(key, value);
                         jg.flush();

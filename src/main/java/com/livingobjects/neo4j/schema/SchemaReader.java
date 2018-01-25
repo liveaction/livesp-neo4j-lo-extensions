@@ -24,16 +24,6 @@ public class SchemaReader {
     public static Map.Entry<MemdexPathNode, Map<String, Node>> browseSegments(Node segment) {
         Map<String, Node> countersDictionary = Maps.newHashMap();
 
-        List<String> planets = Lists.newArrayList();
-        segment.getRelationships(RelationshipTypes.EXTEND, Direction.OUTGOING).forEach(extendRel -> {
-            Node planetTemplateNode = extendRel.getEndNode();
-            String name = planetTemplateNode.getProperty(NAME).toString();
-            planets.add(name);
-        });
-        if (planets.size() == 0) {
-            return null;
-        }
-
         String segmentName = segment.getProperty("path").toString();
 
         List<String> counters = Lists.newArrayList();
@@ -49,19 +39,22 @@ public class SchemaReader {
         List<MemdexPathNode> children = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(path -> {
             Map.Entry<MemdexPathNode, Map<String, Node>> entry = browseSegments(path.getEndNode());
-            if (entry == null) return;
             children.add(entry.getKey());
             countersDictionary.putAll(entry.getValue());
         });
 
+        List<String> strings = browseAttributes(segment);
+        if (strings.isEmpty()) {
+            System.out.println("ERROR : "+segment.getProperty("path"));
+        }
         return Maps.immutableEntry(new MemdexPathNode(
-                planets, segmentName, browseAttributes(segment), counters, children
+                segmentName, strings.get(0), counters, children
         ), countersDictionary);
     }
 
-    public static List<String> browseAttributes(Node planet) {
+    public static List<String> browseAttributes(Node node) {
         List<String> attributes = Lists.newArrayList();
-        planet.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
+        node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
             Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
             Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);
