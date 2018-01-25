@@ -112,7 +112,7 @@ public final class ExportCSVExtension {
         try (Transaction ignored = graphDb.beginTx()) {
             Lineages lineages = new Lineages(attributesToExport, request.exportTags);
             if (!attributesToExport.isEmpty()) {
-                for (int index = attributesToExport.size() - 1; index > 0; index--) {
+                for (int index = attributesToExport.size() - 1; index >= 0; index--) {
                     String leafAttribute = attributesToExport.get(index);
                     ImmutableList<String> lineageAttributes = attributesToExport.subList(0, index);
                     ResourceIterator<Node> leaves = graphDb.findNodes(Labels.NETWORK_ELEMENT, IwanModelConstants._TYPE, leafAttribute);
