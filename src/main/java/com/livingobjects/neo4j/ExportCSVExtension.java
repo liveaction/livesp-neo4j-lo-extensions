@@ -1,15 +1,17 @@
 package com.livingobjects.neo4j;
 
 
-import au.com.bytecode.opencsv.CSVWriter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Slf4jReporter;
+import com.davfx.ninio.csv.AutoCloseableCsvWriter;
+import com.davfx.ninio.csv.Csv;
+import com.davfx.ninio.csv.CsvWriter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
+import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
@@ -25,7 +27,6 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.ServletException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.core.Context;
@@ -35,7 +36,6 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -74,7 +74,7 @@ public final class ExportCSVExtension {
     }
 
     @POST
-    public Response exportCSV(InputStream in) throws IOException, ServletException {
+    public Response exportCSV(InputStream in) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
         Request request = json.readValue(in, new TypeReference<Request>() {
@@ -131,14 +131,15 @@ public final class ExportCSVExtension {
                 }
             }
 
-            try (CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))) {
+            try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
                 long lines = 0;
-                String[] header = generateCSVHeader(attributesToExport, lineages);
-                csvWriter.writeNext(header);
+                try (CsvWriter.Line headerLine = csv.line()) {
+                    for (String h : generateCSVHeader(attributesToExport, lineages)) {
+                        headerLine.append(h);
+                    }
+                }
                 for (Lineage lineage : lineages.lineages) {
-                    String[] line = generateCSVLine(request, lineages, header, lineage);
-                    if (line != null) {
-                        csvWriter.writeNext(line);
+                    if (writeCSVLine(csv, request, lineages, lineage)) {
                         lines++;
                     }
                 }
@@ -175,33 +176,32 @@ public final class ExportCSVExtension {
         }
     }
 
-    private String[] generateCSVLine(Request request, Lineages lineages, String[] header, Lineage lineage) throws IOException {
-        String[] line = new String[header.length];
-        int index = 0;
-        for (String attribute : request.attributesToExport) {
-            Node node = lineage.nodesByType.get(attribute);
-            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
-            if (properties != null) {
-                for (String property : properties.keySet()) {
-                    if (node != null) {
-                        Object propertyValue = node.getProperty(property, null);
-                        if (propertyValue != null) {
-                            if (propertyValue.getClass().isArray()) {
-                                line[index] = json.writeValueAsString(propertyValue);
-                            } else {
-                                line[index] = propertyValue.toString();
+    private boolean writeCSVLine(AutoCloseableCsvWriter csv, Request request, Lineages lineages, Lineage lineage) throws IOException {
+        try (CsvWriter.Line line = csv.line()) {
+            for (String attribute : request.attributesToExport) {
+                Node node = lineage.nodesByType.get(attribute);
+                SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+                if (properties != null) {
+                    for (String property : properties.keySet()) {
+                        if (node != null) {
+                            Object propertyValue = node.getProperty(property, null);
+                            if (propertyValue != null) {
+                                if (propertyValue.getClass().isArray()) {
+                                    line.append(json.writeValueAsString(propertyValue));
+                                } else {
+                                    line.append(propertyValue.toString());
+                                }
+                            }
+                        } else {
+                            if (request.requiredAttributes.contains(attribute)) {
+                                return false;
                             }
                         }
-                    } else {
-                        if (request.requiredAttributes.contains(attribute)) {
-                            return null;
-                        }
                     }
-                    index++;
                 }
             }
+            return true;
         }
-        return line;
     }
 
     private String[] generateCSVHeader(ImmutableList<String> attributesToExport, Lineages lineages) {
