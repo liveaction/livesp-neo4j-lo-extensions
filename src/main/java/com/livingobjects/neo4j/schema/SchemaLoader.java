@@ -79,7 +79,21 @@ public final class SchemaLoader {
                 }
             }
 
+
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate);
+            for (Relationship relationship : realmTemplateEntity.entity.getRelationships(ATTRIBUTE, OUTGOING)) {
+                relationship.delete();
+            }
+            for (String attribute : partialSchema.attributes) {
+                String[] split = attribute.split(":");
+                if (split.length < 2 || split.length > 3) {
+                    throw new IllegalArgumentException("Malformed attribute " + attribute);
+                }
+                String type = split[0];
+                String name = split[1];
+                UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
+                realmTemplateEntity.entity.createRelationshipTo(attributeNode.entity, RelationshipTypes.ATTRIBUTE);
+            }
             Iterable<Relationship> relationships = realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED);
             for (Relationship relationship : relationships) {
                 Node schema = relationship.getStartNode();
@@ -91,17 +105,17 @@ public final class SchemaLoader {
 
             Relationship firstLevel = realmTemplateEntity.entity.getSingleRelationship(MEMDEXPATH, OUTGOING);
             if (firstLevel == null) {
-                Node memdexTree = createMemdexTree(partialSchema.path, partialSchema.counters);
+                Node memdexTree = createMemdexTree(partialSchema.memdexPath, partialSchema.counters);
                 realmTemplateEntity.entity.createRelationshipTo(memdexTree, MEMDEXPATH);
             } else {
                 Node firstSegment = firstLevel.getEndNode();
 
                 Object existingPath = firstSegment.getProperty(PATH);
 
-                if (existingPath.equals(partialSchema.path.segment)) {
-                    updateMemdexTree(partialSchema.path, partialSchema.counters, firstSegment);
+                if (existingPath.equals(partialSchema.memdexPath.segment)) {
+                    updateMemdexTree(partialSchema.memdexPath, partialSchema.counters, firstSegment);
                 } else {
-                    throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", realmTemplate, existingPath, partialSchema.path.segment));
+                    throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", realmTemplate, existingPath, partialSchema.memdexPath.segment));
                 }
             }
 
