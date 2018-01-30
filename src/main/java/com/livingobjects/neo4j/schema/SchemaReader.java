@@ -44,9 +44,6 @@ public class SchemaReader {
         });
 
         List<String> strings = browseAttributes(segment);
-        if (strings.isEmpty()) {
-            System.out.println("ERROR : "+segment.getProperty("path"));
-        }
         return Maps.immutableEntry(new MemdexPathNode(
                 segmentName, strings.get(0), counters, children
         ), countersDictionary);
