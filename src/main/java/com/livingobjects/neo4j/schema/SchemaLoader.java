@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.schema;
 
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
@@ -13,8 +14,10 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.PartialSchema;
+import com.livingobjects.neo4j.model.schema.PlanetMigration;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.Schema;
+import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -129,8 +132,10 @@ public final class SchemaLoader {
         });
     }
 
-    public boolean load(Schema schema) {
+    public boolean load(SchemaAndPlanets schemaAndPlanets) {
         return lockAndWriteSchema(() -> {
+            Schema schema = schemaAndPlanets.schema;
+            ImmutableList<PlanetMigration> planetMigration = schemaAndPlanets.planets;
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schema.id);
             schemaNode.entity.setProperty(VERSION, schema.version);
 

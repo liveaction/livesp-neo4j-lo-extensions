@@ -8,7 +8,7 @@ import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.PartialSchema;
 import com.livingobjects.neo4j.model.schema.RealmNode;
-import com.livingobjects.neo4j.model.schema.Schema;
+import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
 import org.codehaus.jackson.JsonEncoding;
@@ -68,7 +68,7 @@ public class SchemaTemplateExtension {
     public Response loadSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb);
-            Schema schema = jsonParser.readValueAs(Schema.class);
+            SchemaAndPlanets schema = jsonParser.readValueAs(SchemaAndPlanets.class);
             boolean updated = schemaLoader.load(schema);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
