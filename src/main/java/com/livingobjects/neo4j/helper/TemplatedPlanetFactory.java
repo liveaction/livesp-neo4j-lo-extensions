@@ -41,31 +41,21 @@ public class TemplatedPlanetFactory {
         if (planetByContext == null) {
             throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate found.", keyType));
         }
-        ImmutableSet<String> elementContext = ImmutableSet.copyOf(Sets.union(element.getAllProperties().entrySet().stream()
-                .filter(e -> !e.getKey().startsWith("_"))
-                .map(e -> e.getKey() + ':' + e.getValue())
-                .collect(Collectors.toSet()), ImmutableSet.of(keyType)));
 
-        String planetTemplateName;
+        Set<String> specificContext = Sets.union(findMoreSpecificContext(element).entrySet().stream()
+                .filter(en -> !en.getKey().startsWith("_"))
+                .map(en -> en.getKey() + ':' + en.getValue())
+                .collect(Collectors.toSet()), ImmutableSet.of(keyType));
         try {
-            planetTemplateName = planetByContext.bestMatchingContext(elementContext);
+            String planetTemplateName = planetByContext.bestMatchingContext(specificContext);
+            String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
+            UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(NAME, planetName);
+            planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
+            return planet;
 
-        } catch (InsufficientContextException e) {
-            Set<String> specificContext = Sets.union(findMoreSpecificContext(element).entrySet().stream()
-                    .filter(en -> !en.getKey().startsWith("_"))
-                    .map(en -> en.getKey() + ':' + en.getValue())
-                    .collect(Collectors.toSet()), ImmutableSet.of(keyType));
-            try {
-                planetTemplateName = planetByContext.bestMatchingContext(specificContext);
-            } catch (InsufficientContextException ignored) {
-                throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
-            }
+        } catch (InsufficientContextException ignored) {
+            throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
         }
-
-        String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
-        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(NAME, planetName);
-        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
-        return planet;
     }
 
     private ImmutableMap<String, String> findMoreSpecificContext(Node element) {
