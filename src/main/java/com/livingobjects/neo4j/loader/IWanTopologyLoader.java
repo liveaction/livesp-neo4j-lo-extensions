@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -62,13 +61,14 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
@@ -84,88 +84,27 @@ public final class IWanTopologyLoader {
     private final GraphDatabaseService graphDb;
     private final TemplatedPlanetFactory planetFactory;
     private final UniqueElementFactory networkElementFactory;
+    private final UniqueElementFactory scopeElementFactory;
     private final OverridableElementFactory overridableElementFactory;
     private final ElementScopeSlider elementScopeSlider;
     private final TransactionManager txManager;
 
-    private final Node theGlobalNode;
-    private final ImmutableSet<String> overridableType;
-    private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
-    private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
-    private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
-    private final ImmutableSet<String> scopeTypes;
-    private final ImmutableMap<String, String> scopeByKeyTypes;
+    private final MetaSchema metaSchema;
 
     public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
         this.graphDb = graphDb;
         this.txManager = new TransactionManager(graphDb);
+
         try (Transaction ignore = graphDb.beginTx()) {
-
-            networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
-            overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
-
-            this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
-            Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
-
-            ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
-            ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
-            ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
-            ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
-            ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
-            ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
-            ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
-            graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
-                String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
-                String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
-                boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
-                if (isOverride) overrideBldr.add(key);
-
-                if (IwanModelConstants.KEY_TYPES.contains(keytype)) {
-                    if (IwanModelConstants.IMPORTABLE_KEY_TYPES.contains(keytype)) {
-                        importableKeyTypesBldr.put(key, n);
-                    }
-                    ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
-                    ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                    n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
-                    n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
-                    ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
-                    if (!IwanModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
-                        scopesBldr.put(n, key);
-                    }
-                    childrenRelationsBldr.put(key, crels.build());
-                    parentRelationsBldr.put(key, prels.build());
-                    crossAttributesRelationsBldr.put(key, crossAttributes);
-                }
-            });
-
-            this.overridableType = overrideBldr.build();
-            this.childrenRelations = childrenRelationsBldr.build();
-            this.parentRelations = parentRelationsBldr.build();
-            this.crossAttributesRelations = crossAttributesRelationsBldr.build();
+            this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
+            this.scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
+            this.overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
             this.planetFactory = new TemplatedPlanetFactory(graphDb);
             this.elementScopeSlider = new ElementScopeSlider(planetFactory);
-
-            ImmutableMap<Node, String> scopes = scopesBldr.build();
-            for (Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
-                String keyType = attributeNodeEntry.getKey();
-                Node attributeNode = attributeNodeEntry.getValue();
-                getScopeContext(scopes, attributeNode)
-                        .ifPresent(scope -> scopeByKeyTypesBldr.put(keyType, scope));
-            }
-            this.scopeByKeyTypes = scopeByKeyTypesBldr.build();
-
-            this.scopeTypes = ImmutableSet.<String>builder()
-                    .addAll(scopes.values())
-                    .build();
+            this.metaSchema = new MetaSchema(graphDb);
         }
-    }
-
-    private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
-        return IWanLoaderHelper.getParent(attributeNode)
-                .map(node -> getScopeContext(scopes, node))
-                .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
 
     public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
@@ -185,8 +124,8 @@ public final class IWanTopologyLoader {
         Transaction tx = graphDb.beginTx();
         while ((nextLine = reader.readNext()) != null) {
             try {
-                LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), nextLine);
-                ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, nextLine);
+                LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(metaSchema.scopeByKeyTypes.values()), nextLine);
+                ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(metaSchema.scopeTypes, nextLine);
                 ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, lineStrategy);
                 for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
@@ -222,8 +161,8 @@ public final class IWanTopologyLoader {
 
     private Transaction renewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
         tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
-            LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(scopeByKeyTypes.values()), ct);
-            ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(scopeTypes, ct);
+            LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(metaSchema.scopeByKeyTypes.values()), ct);
+            ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(metaSchema.scopeTypes, ct);
             importLine(ct, scopeKeyTypes, lineStrategy);
         });
         return tx;
@@ -231,32 +170,33 @@ public final class IWanTopologyLoader {
 
     private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, LineMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
-            ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, childrenRelations);
+            ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, metaSchema.childrenRelations);
 
             // Try to update elements which are not possible to create (no parent founds)
             // updated elements must exist or NoSuchElement was throw
-            ImmutableMap.Builder<String, Optional<UniqueEntity<Node>>> allNodesBldr = ImmutableMap.builder();
-            strategy.getAllElementsType().stream()
+            Map<String, Optional<UniqueEntity<Node>>> elementsWithoutParents = strategy.getAllElementsType().stream()
                     .filter(key -> !lineage.keySet().contains(key))
                     .filter(key -> !SCOPE_CLASS.equals(key))
-                    .forEach(key -> allNodesBldr.put(key, updateElement(strategy, line, key)));
+                    .map(key -> Maps.immutableEntry(key, updateElement(strategy, line, key)))
+                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
             // Create elements
-            Map<String, Optional<UniqueEntity<Node>>> nodes = lineage.keySet().stream()
+            Map<String, Optional<UniqueEntity<Node>>> elementsWithParents = lineage.keySet().stream()
                     .map(key -> Maps.immutableEntry(key, createElement(strategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
-            nodes.put(SCOPE_GLOBAL_ATTRIBUTE, Optional.of(UniqueEntity.existing(theGlobalNode)));
 
-            ImmutableMap<String, Optional<UniqueEntity<Node>>> allNodes =
-                    allNodesBldr
-                            .putAll(nodes)
-                            .build();
+            Map<String, Optional<UniqueEntity<Node>>> nodesBuilder = Maps.newHashMap();
+            nodesBuilder.putAll(elementsWithoutParents);
+            nodesBuilder.putAll(elementsWithParents);
+            nodesBuilder.put(SCOPE_GLOBAL_ATTRIBUTE, Optional.of(UniqueEntity.existing(metaSchema.getTheGlobalScopeNode())));
 
-            createCrossAttributeLinks(line, strategy, allNodes);
+            ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes = ImmutableMap.copyOf(nodesBuilder);
+
+            createCrossAttributeLinks(line, strategy, nodes);
 
             createConnectLink(strategy, nodes);
 
-            return createPlanetLink(strategy, nodes);
+            return createOrUpdatePlanetLink(strategy, nodes);
         }
     }
 
@@ -279,7 +219,7 @@ public final class IWanTopologyLoader {
 
     private void checkCrossAttributeDefinitionExists(IwanMappingStrategy strategy) throws InvalidSchemaException {
         for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
-            ImmutableSet<String> crossAttributesLinks = crossAttributesRelations.get(meHeader.elementName);
+            ImmutableSet<String> crossAttributesLinks = metaSchema.getCrossAttributesRelations(meHeader.elementName);
             if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
                 throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" +
                         meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
@@ -289,7 +229,7 @@ public final class IWanTopologyLoader {
 
     private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         Map<String, Relationship> multiElementLinks = Maps.newHashMap();
-        for (Entry<String, ImmutableSet<String>> rel : crossAttributesRelations.entrySet()) {
+        for (Entry<String, ImmutableSet<String>> rel : metaSchema.crossAttributesRelations.entrySet()) {
             String keyType = rel.getKey();
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
@@ -311,35 +251,38 @@ public final class IWanTopologyLoader {
                 oNode.ifPresent(node -> linkToParents(strategy, keyType, node, nodes)));
     }
 
-    private ImmutableMultimap<TypedScope, String> createPlanetLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private ImmutableMultimap<TypedScope, String> createOrUpdatePlanetLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
             if (!node.getValue().isPresent()) continue;
             UniqueEntity<Node> element = node.getValue().get();
-            String keyType = node.getKey();
+            String keyAttribute = node.getKey();
 
-            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyType)) continue;
+            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyAttribute)) continue;
 
             importedElementByScopeBuilder.put(
-                    reviewPlanetElement(strategy, element),
+                    reviewPlanetElement(strategy, element, nodes),
                     element.entity.getProperty(IwanModelConstants.TAG).toString()
             );
         }
         return importedElementByScopeBuilder.build();
     }
 
-    private TypedScope reviewPlanetElement(LineMappingStrategy strategy, UniqueEntity<Node> element) {
+    private TypedScope reviewPlanetElement(LineMappingStrategy strategy,
+                                           UniqueEntity<Node> element,
+                                           Map<String, Optional<UniqueEntity<Node>>> nodes) {
         String keyType = element.entity.getProperty(_TYPE).toString();
-        boolean isOverridable = overridableType.contains(keyType);
-        boolean isGlobal = Optional.ofNullable(scopeByKeyTypes.get(keyType))
+        boolean isOverridable = metaSchema.isOverridable(keyType);
+        boolean isGlobal = Optional.ofNullable(metaSchema.scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
         Scope scopeFromImport = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        String existingScopeTag = getElementScopeInDatabase(element).orElse(null);
+        Scope scopeFromDatabase = getScopeFromElementPlanet(element)
+                .orElseGet(() -> getScopeFromParent(keyType, nodes).orElse(null));
 
         if (scopeFromImport != null) {
-            if (existingScopeTag != null && !scopeFromImport.tag.equals(existingScopeTag)) {
+            if (scopeFromDatabase != null && !scopeFromImport.tag.equals(scopeFromDatabase.tag)) {
                 // If the imported element scope is different than the existing one
                 // slide the element to the new scope
                 elementScopeSlider.slide(element.entity, scopeFromImport);
@@ -348,15 +291,19 @@ public final class IWanTopologyLoader {
             replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));
             return new TypedScope(scopeFromImport.tag, keyType);
         } else {
-            if (existingScopeTag == null) {
+            if (scopeFromDatabase == null) {
                 Object tag = element.entity.getProperty(TAG);
                 throw new IllegalStateException(String.format("Inconsistent element '%s' in db : it is not linked to a planet which is required. Fix this.", tag));
+            } else {
+                // review the planet (in case the element has been created)
+                UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scopeFromDatabase, element.entity);
+                replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));
+                return new TypedScope(scopeFromDatabase.tag, keyType);
             }
-            return new TypedScope(existingScopeTag, keyType);
         }
     }
 
-    private Optional<String> getElementScopeInDatabase(UniqueEntity<Node> element) {
+    private Optional<Scope> getScopeFromElementPlanet(UniqueEntity<Node> element) {
         Iterator<Relationship> iterator = element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).iterator();
         if (iterator.hasNext()) {
             Relationship attributeRelationship = iterator.next();
@@ -367,26 +314,33 @@ public final class IWanTopologyLoader {
                 Object planetName = planetNode.getProperty(NAME);
                 throw new IllegalStateException(String.format("Inconsistent element '%s' in db : its planet '%s' does not have a scope property which is required. Fix this.", tag, planetName));
             }
-            return Optional.of(scopeTag);
+            return Optional.of(readScopeFromTag(scopeTag));
         } else {
             return Optional.empty();
         }
     }
 
+    private Optional<Scope> getScopeFromParent(String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+        return metaSchema.getRequiredParent(keyAttribute)
+                .flatMap(requiredParent ->
+                        nodes.getOrDefault(requiredParent, Optional.empty())
+                                .flatMap(this::getScopeFromElementPlanet));
+    }
+
     private int linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
-            ImmutableList<Relationship> relationships = parentRelations.get(keyType);
+            ImmutableList<Relationship> relationships = metaSchema.parentRelations.get(keyType);
             if (relationships == null || relationships.isEmpty()) {
                 return -1;
             }
-            boolean isOverride = overridableType.contains(keyType);
+            boolean isOverridable = metaSchema.isOverridable(keyType);
 
             int relCount = 0;
             for (Relationship relationship : relationships) {
                 Node endNode = relationship.getEndNode();
                 String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(NAME).toString();
-                if (isOverride && scopeTypes.contains(toKeytype)) {
+                if (isOverridable && metaSchema.isScope(toKeytype)) {
                     toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
                 }
 
@@ -423,11 +377,9 @@ public final class IWanTopologyLoader {
                 return Optional.of(UniqueEntity.existing(graphDb.findNode(Labels.SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
             }
 
-            boolean isOverridable = overridableType.contains(elementKeyType);
+            boolean isOverridable = metaSchema.isOverridable(elementKeyType);
 
-            Set<String> todelete = parentRelations.get(elementKeyType).stream()
-                    .filter(r -> !IwanModelConstants.CARDINALITY_MULTIPLE.equals(r.getProperty(IwanModelConstants.CARDINALITY, "")))
-                    .map(r -> r.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString())
+            Set<String> todelete = metaSchema.getMonoParentRelations(elementKeyType)
                     .filter(strategy::hasKeyType)
                     .collect(Collectors.toSet());
 
@@ -436,7 +388,7 @@ public final class IWanTopologyLoader {
             String tag = line[tagIndex];
             if (tag.isEmpty()) return Optional.empty();
 
-            boolean isScope = scopeTypes.contains(elementKeyType);
+            boolean isScope = metaSchema.isScope(elementKeyType);
             UniqueEntity<Node> uniqueEntity = (isOverridable) ?
                     overridableElementFactory.getOrOverride(strategy.scope, IwanModelConstants.TAG, tag) :
                     networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
@@ -512,7 +464,7 @@ public final class IWanTopologyLoader {
     }
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
-        boolean isOverridable = overridableType.contains(elementName);
+        boolean isOverridable = metaSchema.isOverridable(elementName);
         Scope scope = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE);
         if (isOverridable && !SCOPE_GLOBAL_TAG.equals(scope.tag)) {
             return createElement(strategy, line, elementName);
@@ -563,6 +515,21 @@ public final class IWanTopologyLoader {
             elementNode.setProperty(header.propertyName, value);
         } else {
             elementNode.removeProperty(header.propertyName);
+        }
+    }
+
+    private Scope readScopeFromTag(String scopeTag) {
+        if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
+            return GLOBAL_SCOPE;
+        } else if (scopeTag.equals(SP_SCOPE.tag)) {
+            return SP_SCOPE;
+        } else {
+            Node scope = scopeElementFactory.getWithOutcome(TAG, scopeTag);
+            if (scope == null) {
+                throw new IllegalStateException(String.format("The scope %s cannot be found in database", scopeTag));
+            }
+            String id = scope.getProperty(ID).toString();
+            return new Scope(id, scopeTag);
         }
     }
 

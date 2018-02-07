@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.List;
@@ -12,14 +12,14 @@ public final class PlanetNode {
 
     public final String name;
 
-    public final ImmutableList<String> attributes;
+    public final ImmutableSet<String> attributes;
 
     public PlanetNode(@JsonProperty("type") String type,
                       @JsonProperty("name") String name,
                       @JsonProperty("attributes") List<String> attributes) {
         this.type = type;
         this.name = name;
-        this.attributes = ImmutableList.copyOf(attributes);
+        this.attributes = ImmutableSet.copyOf(attributes);
     }
 
     @Override
