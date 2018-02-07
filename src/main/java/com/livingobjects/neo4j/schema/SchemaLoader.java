@@ -383,7 +383,7 @@ public final class SchemaLoader {
 
         updateCountersRelationships(memdexPathNode, counters, segmentNode);
 
-        String keyType = memdexPathNode.keyType;
+        String keyType = memdexPathNode.keyAttribute;
         String[] split = keyType.split(":");
         if (split.length < 2 || split.length > 3) {
             throw new IllegalArgumentException("Malformed attribute " + keyType);

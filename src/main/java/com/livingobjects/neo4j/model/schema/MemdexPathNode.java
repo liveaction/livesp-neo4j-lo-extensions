@@ -8,16 +8,16 @@ import java.util.List;
 
 public final class MemdexPathNode {
     public final String segment;
-    public final String keyType;
+    public final String keyAttribute;
     public final ImmutableSet<String> counters;
     public final ImmutableSet<MemdexPathNode> children;
 
     public MemdexPathNode(@JsonProperty("segment") String segment,
-                          @JsonProperty("keyType") String keyType,
+                          @JsonProperty("keyAttribute") String keyAttribute,
                           @JsonProperty("counters") List<String> counters,
                           @JsonProperty("children") List<MemdexPathNode> children) {
         this.segment = segment;
-        this.keyType = keyType;
+        this.keyAttribute = keyAttribute;
         this.counters = ImmutableSet.copyOf(counters);
         this.children = ImmutableSet.copyOf(children);
     }
@@ -30,7 +30,7 @@ public final class MemdexPathNode {
         MemdexPathNode that = (MemdexPathNode) o;
 
         if (segment != null ? !segment.equals(that.segment) : that.segment != null) return false;
-        if (keyType != null ? !keyType.equals(that.keyType) : that.keyType != null) return false;
+        if (keyAttribute != null ? !keyAttribute.equals(that.keyAttribute) : that.keyAttribute != null) return false;
         if (counters != null ? !counters.equals(that.counters) : that.counters != null) return false;
         return children != null ? children.equals(that.children) : that.children == null;
     }
