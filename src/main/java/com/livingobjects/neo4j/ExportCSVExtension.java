@@ -38,6 +38,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -139,7 +140,13 @@ public final class ExportCSVExtension {
                     }
                 }
                 for (Lineage lineage : lineages.lineages) {
-                    if (writeCSVLine(csv, request, lineages, lineage)) {
+                    Optional<List<String>> values = writeCSVLine(request, lineages, lineage);
+                    if (values.isPresent()) {
+                        try (CsvWriter.Line line = csv.line()) {
+                            for (String value : values.get()) {
+                                line.append(value);
+                            }
+                        }
                         lines++;
                     }
                 }
@@ -176,32 +183,33 @@ public final class ExportCSVExtension {
         }
     }
 
-    private boolean writeCSVLine(AutoCloseableCsvWriter csv, Request request, Lineages lineages, Lineage lineage) throws IOException {
-        try (CsvWriter.Line line = csv.line()) {
-            for (String attribute : request.attributesToExport) {
-                Node node = lineage.nodesByType.get(attribute);
-                SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
-                if (properties != null) {
-                    for (String property : properties.keySet()) {
-                        if (node != null) {
-                            Object propertyValue = node.getProperty(property, null);
-                            if (propertyValue != null) {
-                                if (propertyValue.getClass().isArray()) {
-                                    line.append(json.writeValueAsString(propertyValue));
-                                } else {
-                                    line.append(propertyValue.toString());
-                                }
-                            }
+    private Optional<List<String>> writeCSVLine(Request request, Lineages lineages, Lineage lineage) throws IOException {
+        List<String> values = Lists.newArrayList();
+        for (String attribute : request.attributesToExport) {
+            Node node = lineage.nodesByType.get(attribute);
+            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+            if (node == null) {
+                if (request.requiredAttributes.contains(attribute)) {
+                    return Optional.empty();
+                } else if (properties != null) {
+                    properties.keySet().forEach(property -> values.add(null));
+                }
+            } else if (properties != null) {
+                for (String property : properties.keySet()) {
+                    Object propertyValue = node.getProperty(property, null);
+                    if (propertyValue != null) {
+                        if (propertyValue.getClass().isArray()) {
+                            values.add(json.writeValueAsString(propertyValue));
                         } else {
-                            if (request.requiredAttributes.contains(attribute)) {
-                                return false;
-                            }
+                            values.add(propertyValue.toString());
                         }
+                    } else {
+                        values.add(null);
                     }
                 }
             }
-            return true;
         }
+        return Optional.of(values);
     }
 
     private String[] generateCSVHeader(ImmutableList<String> attributesToExport, Lineages lineages) {
@@ -237,6 +245,7 @@ public final class ExportCSVExtension {
             this.requiredAttributes = requiredAttributes;
             this.exportTags = exportTags;
         }
+
     }
 
     private ImmutableList<String> difference(ImmutableList<String> attributes, String attributeToRemove) {
