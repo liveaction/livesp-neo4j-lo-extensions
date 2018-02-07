@@ -12,11 +12,11 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
 
-final class PlanetByContext {
+public final class PlanetByContext {
 
     private final ImmutableMap<String, ImmutableMap<String, ImmutableSet<AttributeMatch>>> planets;
 
-    PlanetByContext(Map<String, ImmutableSet<String>> planetAttributes) {
+    public PlanetByContext(Map<String, ImmutableSet<String>> planetAttributes) {
 
         ImmutableMap.Builder<String, ImmutableMap<String, ImmutableSet<AttributeMatch>>> planetAttributeMatchesBuilder = ImmutableMap.builder();
         for (Map.Entry<String, ImmutableSet<String>> planetAttributesEntry : planetAttributes.entrySet()) {
@@ -36,7 +36,7 @@ final class PlanetByContext {
         this.planets = planetAttributeMatchesBuilder.build();
     }
 
-    String bestMatchingContext(Set<String> elementContext) {
+    public String bestMatchingContext(Set<String> elementContext) {
 
         SortedMap<MatchScore, Set<String>> matchingPlanetsByScore = Maps.newTreeMap();
 

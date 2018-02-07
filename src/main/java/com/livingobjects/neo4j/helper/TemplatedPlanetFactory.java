@@ -24,7 +24,7 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
-    private static final String PLACEHOLDER = "{:scopeId}";
+    public static final String PLACEHOLDER = "{:scopeId}";
 
     private final UniqueElementFactory planetFactory;
 
@@ -41,24 +41,31 @@ public class TemplatedPlanetFactory {
         if (planetByContext == null) {
             throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate found.", keyType));
         }
+        String planetTemplateName = localizePlanetForElement(element, planetByContext);
 
+        String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
+        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(NAME, planetName);
+        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
+        return planet;
+    }
+
+    public static String localizePlanetForElement(Node element, PlanetByContext planetByContext) {
+        String keyType = element.getProperty(_TYPE).toString();
+
+        String planetTemplateName;
         Set<String> specificContext = Sets.union(findMoreSpecificContext(element).entrySet().stream()
                 .filter(en -> !en.getKey().startsWith("_"))
                 .map(en -> en.getKey() + ':' + en.getValue())
                 .collect(Collectors.toSet()), ImmutableSet.of(keyType));
         try {
-            String planetTemplateName = planetByContext.bestMatchingContext(specificContext);
-            String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
-            UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(NAME, planetName);
-            planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
-            return planet;
-
+            planetTemplateName = planetByContext.bestMatchingContext(specificContext);
         } catch (InsufficientContextException ignored) {
             throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
         }
+        return planetTemplateName;
     }
 
-    private ImmutableMap<String, String> findMoreSpecificContext(Node element) {
+    private static ImmutableMap<String, String> findMoreSpecificContext(Node element) {
         Map<String, Object> properties = element.getAllProperties();
         Map<String, String> specificContext = Maps.newHashMapWithExpectedSize(properties.size());
         for (Relationship rel : element.getRelationships(RelationshipTypes.CONNECT, Direction.OUTGOING)) {

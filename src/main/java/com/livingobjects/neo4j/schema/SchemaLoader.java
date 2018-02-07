@@ -4,17 +4,24 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.MatchProperties;
+import com.livingobjects.neo4j.helper.PlanetByContext;
 import com.livingobjects.neo4j.helper.RelationshipUtils;
+import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
+import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.PartialSchema;
-import com.livingobjects.neo4j.model.schema.PlanetMigration;
+import com.livingobjects.neo4j.model.schema.PlanetNode;
+import com.livingobjects.neo4j.model.schema.PlanetUpdate;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.Schema;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
@@ -24,12 +31,16 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
@@ -43,10 +54,16 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static com.livingobjects.neo4j.model.schema.PlanetUpdateStatus.DELETE;
+import static com.livingobjects.neo4j.model.schema.PlanetUpdateStatus.UPDATE;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class SchemaLoader {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaLoader.class);
 
     private static final ReentrantLock schemaLock = new ReentrantLock();
 
@@ -62,6 +79,9 @@ public final class SchemaLoader {
 
     private final UniqueElementFactory counterNodeFactory;
 
+
+    private final UniqueElementFactory planetFactory;
+
     public SchemaLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
@@ -69,6 +89,7 @@ public final class SchemaLoader {
         realmTemplateFactory = new UniqueElementFactory(graphDb, Labels.REALM_TEMPLATE, Optional.empty());
         attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
+        this.planetFactory = UniqueElementFactory.planetFactory(graphDb);
     }
 
     public boolean updateRealmPath(String schemaId, String realmTemplate, PartialSchema partialSchema) {
@@ -135,7 +156,7 @@ public final class SchemaLoader {
     public boolean load(SchemaAndPlanets schemaAndPlanets) {
         return lockAndWriteSchema(() -> {
             Schema schema = schemaAndPlanets.schema;
-            ImmutableList<PlanetMigration> planetMigration = schemaAndPlanets.planets;
+            ImmutableList<PlanetUpdate> planetUpdate = schemaAndPlanets.planetMigrations;
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schema.id);
             schemaNode.entity.setProperty(VERSION, schema.version);
 
@@ -152,8 +173,157 @@ public final class SchemaLoader {
             RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
                     node -> deleteTree(true, node, OUTGOING, MEMDEXPATH));
 
+            migratePlanets(planetUpdate);
+
             return schemaNode.wasCreated;
         });
+    }
+
+    private void migratePlanets(ImmutableList<PlanetUpdate> planets) {
+        ImmutableList<PlanetUpdate> migrations = ImmutableList.copyOf(planets.stream()
+                .filter(pU -> pU.planetUpdateStatus != UPDATE)
+                .collect(Collectors.toList()));
+        ImmutableList<PlanetUpdate> updates = ImmutableList.copyOf(planets.stream()
+                .filter(pU -> pU.planetUpdateStatus == UPDATE)
+                .collect(Collectors.toList()));
+        Set<PlanetNode> allOldPlanets = migrations.stream()
+                .map(pU -> pU.oldPlanet)
+                .collect(toSet());
+        Set<PlanetNode> allDeletedPlanets = migrations.stream()
+                .filter(pU -> pU.planetUpdateStatus == DELETE)
+                .map(pU -> pU.oldPlanet)
+                .collect(toSet());
+        Set<PlanetNode> allNewPlanets = migrations.stream()
+                .flatMap(pU -> pU.newPlanets.stream())
+                .collect(toSet());
+
+        ImmutableSet<PlanetNode> createdPlanets = ImmutableSet.copyOf(Sets.difference(allNewPlanets, allOldPlanets));
+        ImmutableSet<PlanetNode> deletedPlanets = ImmutableSet.copyOf(allDeletedPlanets);
+        List<Scope> scopes = Lists.newArrayList();
+        graphDb.findNodes(Labels.SCOPE).forEachRemaining(node ->
+                scopes.add(new Scope(Optional.ofNullable(node.getProperty(ID, null))
+                        .orElseGet(() -> node.getProperty(NAME)).toString(),
+                        node.getProperty(TAG).toString())));
+
+        movePlanetTemplates(updates);
+        updates.forEach(planetUpdate -> scopes.forEach(scope -> movePlanets(planetUpdate, scope)));
+
+        createPlanetTemplates(createdPlanets);
+        migrations.forEach(planetUpdate -> scopes.forEach(scope -> migratePlanets(planetUpdate, scope)));
+
+        deletePlanetTemplates(deletedPlanets);
+        if(!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope));
+    }
+
+    private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets) {
+        createdPlanets.forEach(createdPlanet -> {
+            UniqueEntity<Node> newPlanetTemplateNode = planetTemplateFactory.getOrCreateWithOutcome(NAME, createdPlanet.name);
+            Set<MatchProperties> matchProperties = createdPlanet.attributes
+                    .stream()
+                    .map(a -> {
+                        String[] split = a.split(":");
+                        if (split.length != 2) {
+                            throw new IllegalArgumentException("Malformed attribute " + a);
+                        }
+                        return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
+                    })
+                    .collect(toSet());
+            RelationshipUtils.replaceRelationships(OUTGOING, newPlanetTemplateNode.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
+        });
+    }
+
+    private void migratePlanets(PlanetUpdate planetUpdate, Scope scope) {
+        Optional<Node> oldNodeOpt = Optional.ofNullable(planetUpdate.oldPlanet).flatMap(v -> localizePlanet(v.name, scope));
+        if (!oldNodeOpt.isPresent()) {
+            return;
+        }
+        Node oldPlanetNode = oldNodeOpt.get();
+
+        ImmutableSet<PlanetNode> newPlanets = planetUpdate.newPlanets;
+        if (newPlanets.size() == 1) {
+            PlanetNode newPlanet = Iterables.getOnlyElement(newPlanets);
+            // Move all ne from old planets to new one
+            Node newPlanetNode = planetFactory.getOrCreateWithOutcome(NAME, getPlanetName(newPlanet.name, scope)).entity;
+            for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
+                oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
+                oldRelationship.delete();
+            }
+        } else {
+            // Move all ne from old planet to best matching
+            ImmutableMap<String, ImmutableSet<String>> newPlanetAttributes = ImmutableMap.copyOf(newPlanets.stream()
+                    .collect(toMap(p -> p.name, p -> p.attributes)));
+            PlanetByContext planetByContext = new PlanetByContext(newPlanetAttributes);
+            Map<String, Node> newPlanetNodes = Maps.newHashMap();
+            for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
+                Node element = oldRelationship.getStartNode();
+                String planetTemplateName = TemplatedPlanetFactory.localizePlanetForElement(element, planetByContext);
+                Node newPlanetNode = newPlanetNodes.computeIfAbsent(planetTemplateName, k -> planetFactory.getOrCreateWithOutcome(NAME, getPlanetName(k, scope)).entity);
+                oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
+                oldRelationship.delete();
+            }
+        }
+    }
+
+    private void movePlanets(PlanetUpdate planetUpdate, Scope scope) {
+        PlanetNode oldPlanet = planetUpdate.oldPlanet;
+        PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
+        localizePlanet(oldPlanet.name, scope).ifPresent(node ->
+                node.setProperty(NAME, getPlanetName(newPlanet.name, scope)));
+
+    }
+
+    private void movePlanetTemplates(ImmutableList<PlanetUpdate> planetUpdates) {
+        planetUpdates.forEach(planetUpdate -> {
+            PlanetNode oldPlanet = planetUpdate.oldPlanet;
+            Node oldPlanetNode = planetTemplateFactory.getWithOutcome(NAME, oldPlanet.name);
+            PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
+            if (!oldPlanet.name.equals(newPlanet.name)) {
+                // Rename planet
+                oldPlanetNode.setProperty(NAME, newPlanet.name);
+            }
+            if (!oldPlanet.attributes.equals(newPlanet.attributes)) {
+                // Change planet attributes
+                Set<MatchProperties> matchProperties = newPlanet.attributes
+                        .stream()
+                        .map(a -> {
+                            String[] split = a.split(":");
+                            if (split.length != 2) {
+                                throw new IllegalArgumentException("Malformed attribute " + a);
+                            }
+                            return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
+                        })
+                        .collect(toSet());
+                RelationshipUtils.replaceRelationships(OUTGOING, oldPlanetNode, ATTRIBUTE, attributeNodeFactory, matchProperties);
+            }
+        });
+    }
+
+    private void deletePlanetTemplates(ImmutableSet<PlanetNode> deletedPlanets) {
+        deletedPlanets.forEach(deletedPlanet ->
+                Optional.ofNullable(planetTemplateFactory.getWithOutcome(NAME, deletedPlanet.name))
+                        .ifPresent(node -> {
+                            node.getRelationships().forEach(Relationship::delete);
+                            node.delete();
+                        }));
+
+    }
+
+    private void deletePlanets(ImmutableSet<PlanetNode> deletedPlanets, Scope scope) {
+        deletedPlanets.stream()
+                .map(p -> localizePlanet(p.name, scope))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .forEach(Node::delete);
+    }
+
+
+    public Optional<Node> localizePlanet(String planetTemplateName, Scope scope) {
+        String planetName = planetTemplateName.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
+        return Optional.ofNullable(planetFactory.getWithOutcome(NAME, planetName));
+    }
+
+    public String getPlanetName(String planetTemplateName, Scope scope) {
+        return planetTemplateName.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
     }
 
     private ImmutableSet<Node> createRealmTemplates(Schema schema, ImmutableMap<String, CounterNode> counters) {

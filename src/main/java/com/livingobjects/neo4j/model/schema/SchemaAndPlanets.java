@@ -9,11 +9,11 @@ public final class SchemaAndPlanets {
 
     public final Schema schema;
 
-    public final ImmutableList<PlanetMigration> planets;
+    public final ImmutableList<PlanetUpdate> planetMigrations;
 
     public SchemaAndPlanets(@JsonProperty("schema") Schema schema,
-                            @JsonProperty("planets") List<PlanetMigration> planets) {
+                            @JsonProperty("planetMigrations") List<PlanetUpdate> planetMigrations) {
         this.schema = schema;
-        this.planets = ImmutableList.copyOf(planets);
+        this.planetMigrations = ImmutableList.copyOf(planetMigrations);
     }
 }
