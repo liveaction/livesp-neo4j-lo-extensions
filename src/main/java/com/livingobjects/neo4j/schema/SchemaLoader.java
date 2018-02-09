@@ -167,10 +167,7 @@ public final class SchemaLoader {
 
             ImmutableSet<Node> realmTemplates = createRealmTemplates(schema, schema.counters);
 
-            ImmutableSet<Node> nodesToLink = ImmutableSet.<Node>builder()
-                    .addAll(realmTemplates)
-                    .build();
-            RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, nodesToLink,
+            RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, realmTemplates,
                     node -> deleteTree(true, node, OUTGOING, MEMDEXPATH));
 
             migratePlanets(planetUpdate);
@@ -212,7 +209,7 @@ public final class SchemaLoader {
         migrations.forEach(planetUpdate -> scopes.forEach(scope -> migratePlanets(planetUpdate, scope)));
 
         deletePlanetTemplates(deletedPlanets);
-        if(!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope));
+        if (!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope));
     }
 
     private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets) {
@@ -333,6 +330,7 @@ public final class SchemaLoader {
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
 
             if (!realmTemplateEntity.wasCreated) {
+                realmTemplateEntity.entity.getRelationships().forEach(Relationship::delete);
                 deleteTree(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
             }
 
