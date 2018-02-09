@@ -56,7 +56,7 @@ public final class UniqueElementFactory {
         return getOrCreateWithOutcome(true, matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2);
     }
 
-    public synchronized  UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
+    public synchronized UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
         UniqueEntity<Relationship> relation = null;
         for (Relationship r : from.getRelationships(Direction.OUTGOING, type)) {
             if (r.getEndNode().equals(to)) { // put other conditions here, if needed
@@ -110,10 +110,6 @@ public final class UniqueElementFactory {
         }
         created.setProperty(IwanModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         return created;
-    }
-
-    public static UniqueElementFactory planetFactory(GraphDatabaseService graphdb) {
-        return new UniqueElementFactory(graphdb, Labels.PLANET, Optional.empty());
     }
 
     public static UniqueElementFactory networkElementFactory(GraphDatabaseService graphdb) {

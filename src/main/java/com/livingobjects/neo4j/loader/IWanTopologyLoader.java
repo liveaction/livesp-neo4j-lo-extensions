@@ -4,7 +4,6 @@ import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.base.Splitter;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -308,12 +307,7 @@ public final class IWanTopologyLoader {
         if (iterator.hasNext()) {
             Relationship attributeRelationship = iterator.next();
             Node planetNode = attributeRelationship.getEndNode();
-            String scopeTag = planetNode.getProperty(SCOPE, "").toString();
-            if (Strings.isNullOrEmpty(scopeTag)) {
-                Object tag = element.entity.getProperty(TAG);
-                Object planetName = planetNode.getProperty(NAME);
-                throw new IllegalStateException(String.format("Inconsistent element '%s' in db : its planet '%s' does not have a scope property which is required. Fix this.", tag, planetName));
-            }
+            String scopeTag = planetNode.getProperty(SCOPE, SCOPE_GLOBAL_TAG).toString();
             return Optional.of(readScopeFromTag(scopeTag));
         } else {
             return Optional.empty();

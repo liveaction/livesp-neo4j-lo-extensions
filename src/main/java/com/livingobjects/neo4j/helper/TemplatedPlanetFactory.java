@@ -20,18 +20,17 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEY_TYPES;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
     public static final String PLACEHOLDER = "{:scopeId}";
 
-    private final UniqueElementFactory planetFactory;
+    private final PlanetFactory planetFactory;
 
     private final ImmutableMap<String, PlanetByContext> planetNameTemplateCache;
 
     public TemplatedPlanetFactory(GraphDatabaseService graphDb) {
-        this.planetFactory = UniqueElementFactory.planetFactory(graphDb);
+        this.planetFactory = new PlanetFactory(graphDb);
         this.planetNameTemplateCache = loadPlanetTemplateName(graphDb);
     }
 
@@ -43,10 +42,7 @@ public class TemplatedPlanetFactory {
         }
         String planetTemplateName = localizePlanetForElement(element, planetByContext);
 
-        String planetName = planetTemplateName.replace(PLACEHOLDER, solidScope.id);
-        UniqueEntity<Node> planet = planetFactory.getOrCreateWithOutcome(NAME, planetName);
-        planet.wasCreated(p -> p.setProperty(SCOPE, solidScope.tag));
-        return planet;
+        return planetFactory.getOrCreate(planetTemplateName, solidScope);
     }
 
     public static String localizePlanetForElement(Node element, PlanetByContext planetByContext) {

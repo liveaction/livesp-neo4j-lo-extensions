@@ -10,6 +10,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.MatchProperties;
 import com.livingobjects.neo4j.helper.PlanetByContext;
+import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.helper.RelationshipUtils;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
@@ -31,8 +32,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -63,8 +62,6 @@ import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class SchemaLoader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaLoader.class);
-
     private static final ReentrantLock schemaLock = new ReentrantLock();
 
     private final GraphDatabaseService graphDb;
@@ -79,8 +76,7 @@ public final class SchemaLoader {
 
     private final UniqueElementFactory counterNodeFactory;
 
-
-    private final UniqueElementFactory planetFactory;
+    private final PlanetFactory planetFactory;
 
     public SchemaLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
@@ -89,7 +85,7 @@ public final class SchemaLoader {
         realmTemplateFactory = new UniqueElementFactory(graphDb, Labels.REALM_TEMPLATE, Optional.empty());
         attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
-        this.planetFactory = UniqueElementFactory.planetFactory(graphDb);
+        this.planetFactory = new PlanetFactory(graphDb);
     }
 
     public boolean updateRealmPath(String schemaId, String realmTemplate, PartialSchema partialSchema) {
@@ -215,16 +211,7 @@ public final class SchemaLoader {
     private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets) {
         createdPlanets.forEach(createdPlanet -> {
             UniqueEntity<Node> newPlanetTemplateNode = planetTemplateFactory.getOrCreateWithOutcome(NAME, createdPlanet.name);
-            Set<MatchProperties> matchProperties = createdPlanet.attributes
-                    .stream()
-                    .map(a -> {
-                        String[] split = a.split(":");
-                        if (split.length != 2) {
-                            throw new IllegalArgumentException("Malformed attribute " + a);
-                        }
-                        return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
-                    })
-                    .collect(toSet());
+            Set<MatchProperties> matchProperties = matchProperties(createdPlanet);
             RelationshipUtils.replaceRelationships(OUTGOING, newPlanetTemplateNode.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
         });
     }
@@ -240,7 +227,7 @@ public final class SchemaLoader {
         if (newPlanets.size() == 1) {
             PlanetNode newPlanet = Iterables.getOnlyElement(newPlanets);
             // Move all ne from old planets to new one
-            Node newPlanetNode = planetFactory.getOrCreateWithOutcome(NAME, getPlanetName(newPlanet.name, scope)).entity;
+            Node newPlanetNode = planetFactory.getOrCreate(newPlanet.name, scope).entity;
             for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
                 oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
                 oldRelationship.delete();
@@ -254,7 +241,7 @@ public final class SchemaLoader {
             for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
                 Node element = oldRelationship.getStartNode();
                 String planetTemplateName = TemplatedPlanetFactory.localizePlanetForElement(element, planetByContext);
-                Node newPlanetNode = newPlanetNodes.computeIfAbsent(planetTemplateName, k -> planetFactory.getOrCreateWithOutcome(NAME, getPlanetName(k, scope)).entity);
+                Node newPlanetNode = newPlanetNodes.computeIfAbsent(planetTemplateName, k -> planetFactory.getOrCreate(k, scope).entity);
                 oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
                 oldRelationship.delete();
             }
@@ -265,7 +252,7 @@ public final class SchemaLoader {
         PlanetNode oldPlanet = planetUpdate.oldPlanet;
         PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
         localizePlanet(oldPlanet.name, scope).ifPresent(node ->
-                node.setProperty(NAME, getPlanetName(newPlanet.name, scope)));
+                node.setProperty(NAME, planetFactory.getPlanetName(newPlanet.name, scope)));
 
     }
 
@@ -280,19 +267,23 @@ public final class SchemaLoader {
             }
             if (!oldPlanet.attributes.equals(newPlanet.attributes)) {
                 // Change planet attributes
-                Set<MatchProperties> matchProperties = newPlanet.attributes
-                        .stream()
-                        .map(a -> {
-                            String[] split = a.split(":");
-                            if (split.length != 2) {
-                                throw new IllegalArgumentException("Malformed attribute " + a);
-                            }
-                            return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
-                        })
-                        .collect(toSet());
+                Set<MatchProperties> matchProperties = matchProperties(newPlanet);
                 RelationshipUtils.replaceRelationships(OUTGOING, oldPlanetNode, ATTRIBUTE, attributeNodeFactory, matchProperties);
             }
         });
+    }
+
+    private Set<MatchProperties> matchProperties(PlanetNode newPlanet) {
+        return newPlanet.attributes
+                .stream()
+                .map(a -> {
+                    String[] split = a.split(":");
+                    if (split.length != 2) {
+                        throw new IllegalArgumentException("Malformed attribute " + a);
+                    }
+                    return MatchProperties.of(_TYPE, split[0], NAME, split[1]);
+                })
+                .collect(toSet());
     }
 
     private void deletePlanetTemplates(ImmutableSet<PlanetNode> deletedPlanets) {
@@ -313,14 +304,8 @@ public final class SchemaLoader {
                 .forEach(Node::delete);
     }
 
-
-    public Optional<Node> localizePlanet(String planetTemplateName, Scope scope) {
-        String planetName = planetTemplateName.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
-        return Optional.ofNullable(planetFactory.getWithOutcome(NAME, planetName));
-    }
-
-    public String getPlanetName(String planetTemplateName, Scope scope) {
-        return planetTemplateName.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
+    private Optional<Node> localizePlanet(String planetTemplateName, Scope scope) {
+        return Optional.ofNullable(planetFactory.getOrCreate(planetTemplateName, scope).entity);
     }
 
     private ImmutableSet<Node> createRealmTemplates(Schema schema, ImmutableMap<String, CounterNode> counters) {
