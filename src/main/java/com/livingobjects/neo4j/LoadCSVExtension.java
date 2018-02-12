@@ -79,6 +79,10 @@ public final class LoadCSVExtension {
                 } else {
                     return errorResponse(e);
                 }
+            } finally {
+                if (csv != null) {
+                    csv.delete();
+                }
             }
 
         } catch (IllegalArgumentException e) {
