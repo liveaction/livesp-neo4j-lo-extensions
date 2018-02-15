@@ -45,11 +45,9 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_SP_TAG;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
 import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
@@ -93,12 +91,7 @@ public final class SchemaLoader {
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
             if (schemaNode.wasCreated) {
                 schemaNode.entity.setProperty(VERSION, "1.0");
-                Node spScope = graphDb.findNode(Labels.SCOPE, TAG, SCOPE_SP_TAG);
-                if (spScope != null) {
-                    RelationshipUtils.updateRelationships(INCOMING, schemaNode.entity, APPLIED_TO, ImmutableSet.of(spScope));
-                }
             }
-
 
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate);
             for (Relationship relationship : realmTemplateEntity.entity.getRelationships(ATTRIBUTE, OUTGOING)) {
@@ -155,11 +148,6 @@ public final class SchemaLoader {
             ImmutableList<PlanetUpdate> planetUpdate = schemaAndPlanets.planetMigrations;
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schema.id);
             schemaNode.entity.setProperty(VERSION, schema.version);
-
-            Node spScope = graphDb.findNode(Labels.SCOPE, TAG, SCOPE_SP_TAG);
-            if (spScope != null) {
-                RelationshipUtils.updateRelationships(OUTGOING, schemaNode.entity, APPLIED_TO, ImmutableSet.of(spScope));
-            }
 
             ImmutableSet<Node> realmTemplates = createRealmTemplates(schema, schema.counters);
 
