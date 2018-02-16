@@ -303,8 +303,8 @@ public final class SchemaLoader {
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
 
             if (!realmTemplateEntity.wasCreated) {
-                realmTemplateEntity.entity.getRelationships().forEach(Relationship::delete);
                 deleteTree(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
+                realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING).forEach(Relationship::delete);
             }
 
             createRealm(realmTemplateEntity, realmNodeEntry, counters);
