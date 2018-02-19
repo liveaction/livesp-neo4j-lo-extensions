@@ -133,8 +133,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Import-Package />
-                        <Export-Package />
+                        <Import-Package/>
+                        <Export-Package/>
                     </instructions>
                 </configuration>
             </plugin>
@@ -163,6 +163,22 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>lo</id>
+            <distributionManagement>
+                <repository>
+                    <id>nexus</id>
+                    <url>http://nexus.livingobjects.com/repository/releases</url>
+                </repository>
+                <snapshotRepository>
+                    <id>nexus</id>
+                    <url>http://nexus.livingobjects.com/repository/snapshots</url>
+                </snapshotRepository>
+            </distributionManagement>
+        </profile>
+    </profiles>
 
     <distributionManagement>
         <repository>
