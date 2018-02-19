@@ -17,6 +17,7 @@ import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ElementScopeSliderTest {
+
     @Rule
     public WithNeo4jImpermanentDatabase wNeo = new WithNeo4jImpermanentDatabase()
             .withDatapacks("neo4j-test-database");

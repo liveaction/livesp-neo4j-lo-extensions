@@ -1,7 +1,6 @@
 package com.livingobjects.neo4j.helper;
 
-import com.google.common.collect.Iterables;
-import com.google.common.primitives.Booleans;
+import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Floats;
 import com.google.common.primitives.Ints;
@@ -26,11 +25,11 @@ public final class PropertyConverter {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    private static final TypeReference STRING_LIST_TYPE = new TypeReference<List<String>>() {
+    private static final TypeReference STRING_LIST_TYPE = new TypeReference<String[]>() {
     };
-    private static final TypeReference BOOLEAN_LIST_TYPE = new TypeReference<List<Boolean>>() {
+    private static final TypeReference BOOLEAN_LIST_TYPE = new TypeReference<Boolean[]>() {
     };
-    private static final TypeReference DOUBLE_LIST_TYPE = new TypeReference<List<Number>>() {
+    private static final TypeReference NUMBER_LIST_TYPE = new TypeReference<Number[]>() {
     };
 
     public static Object convert(String value, PropertyType propertyType, boolean isArray) {
@@ -52,7 +51,7 @@ public final class PropertyConverter {
     private static Object readStringField(boolean isArray, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
             if (isArray) {
-                return Iterables.toArray(JSON_MAPPER.readValue(field, STRING_LIST_TYPE), String.class);
+                return JSON_MAPPER.readValue(field, STRING_LIST_TYPE);
             } else {
                 return field;
             }
@@ -64,7 +63,7 @@ public final class PropertyConverter {
     private static Object readBooleanField(boolean isArray, String field) throws IOException {
         if (field != null && !field.trim().isEmpty()) {
             if (isArray) {
-                return Booleans.toArray(JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE));
+                return JSON_MAPPER.readValue(field, BOOLEAN_LIST_TYPE);
             } else {
                 return Boolean.parseBoolean(field);
             }
@@ -85,11 +84,11 @@ public final class PropertyConverter {
                         break;
                     }
                 }
-                
-                Collection<? extends Number> numbers = jacksonCannotParse ? 
-                    convertAsDouble(split) :
-                    JSON_MAPPER.readValue(field, DOUBLE_LIST_TYPE);
-                
+
+                Collection<? extends Number> numbers = jacksonCannotParse ?
+                        convertAsDouble(split) :
+                        ImmutableList.copyOf((Number[]) JSON_MAPPER.readValue(field, NUMBER_LIST_TYPE));
+
                 Iterator<? extends Number> iterator = numbers.iterator();
 
                 if (iterator.hasNext()) {

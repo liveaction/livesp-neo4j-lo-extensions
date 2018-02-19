@@ -56,7 +56,7 @@ public final class LoadCSVExtension {
 
     @POST
     @Consumes("multipart/mixed")
-    public Response loadCSV(MultiPart multiPart) throws IOException, ServletException {
+    public Response loadCSV(MultiPart multiPart) throws IOException {
         Stopwatch sWatch = Stopwatch.createStarted();
         long importedElementsCounter = 0;
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
@@ -72,12 +72,16 @@ public final class LoadCSVExtension {
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 LOGGER.error("load-csv extension : unable to execute query", e);
                 if (e.getCause() != null) {
                     return errorResponse(e.getCause());
                 } else {
                     return errorResponse(e);
+                }
+            } finally {
+                if (csv != null) {
+                    csv.delete();
                 }
             }
 

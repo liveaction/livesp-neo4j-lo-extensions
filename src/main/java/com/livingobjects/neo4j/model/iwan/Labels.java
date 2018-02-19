@@ -14,4 +14,6 @@ public final class Labels {
     public static final Label PLANET_TEMPLATE = DynamicLabel.label("PlanetTemplate");
     public static final Label SEGMENT = DynamicLabel.label("Segment");
     public static final Label VERSION = DynamicLabel.label("Version");
+    public static final Label COUNTER = DynamicLabel.label("Counter");
+    public static final Label KPI = DynamicLabel.label("KPI");
 }

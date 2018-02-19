@@ -15,7 +15,7 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.7</version>
+    <version>1.8</version>
 
     <packaging>bundle</packaging>
 
@@ -29,6 +29,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.davfx.ninio</groupId>
+            <artifactId>ninio-csv</artifactId>
+            <version>3.0.26</version>
+        </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
@@ -129,7 +134,7 @@
                 <configuration>
                     <instructions>
                         <Import-Package />
-                        <Export-Package>com.livingobjects.neo4j.iwan.model.schema</Export-Package>
+                        <Export-Package />
                     </instructions>
                 </configuration>
             </plugin>
@@ -159,5 +164,31 @@
         </plugins>
     </build>
 
+    <profiles>
+        <profile>
+            <id>lo</id>
+            <distributionManagement>
+                <repository>
+                    <id>nexus</id>
+                    <url>http://nexus.livingobjects.com/repository/releases</url>
+                </repository>
+                <snapshotRepository>
+                    <id>nexus</id>
+                    <url>http://nexus.livingobjects.com/repository/snapshots</url>
+                </snapshotRepository>
+            </distributionManagement>
+        </profile>
+    </profiles>
+
+    <distributionManagement>
+        <repository>
+            <id>nexus</id>
+            <url>http://nexus.livingobjects.com/repository/releases</url>
+        </repository>
+        <snapshotRepository>
+            <id>nexus</id>
+            <url>http://nexus.livingobjects.com/repository/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
 
 </project>
