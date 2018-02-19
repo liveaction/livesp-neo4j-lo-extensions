@@ -19,7 +19,7 @@ public class SchemaReader {
 
     /**
      * @param segment The first segment
-     * @return An Entry of MemdexPath , List<Counter>
+     * @return One MemdexPath entry with all its counters
      */
     public static Map.Entry<MemdexPathNode, Map<String, Node>> browseSegments(Node segment) {
         Map<String, Node> countersDictionary = Maps.newHashMap();
