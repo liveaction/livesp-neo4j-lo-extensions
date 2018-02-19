@@ -133,8 +133,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Import-Package/>
-                        <Export-Package/>
+                        <Import-Package />
+                        <Export-Package />
                     </instructions>
                 </configuration>
             </plugin>
