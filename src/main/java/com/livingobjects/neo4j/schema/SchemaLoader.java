@@ -333,7 +333,7 @@ public final class SchemaLoader {
     }
 
     private void updateMemdexTree(MemdexPathNode memdexPath, ImmutableMap<String, CounterNode> counters, Node segmentNode) {
-//        replaceAttributesRelationships(memdexPath, segmentNode);
+        replaceAttributesRelationships(ImmutableSet.of(memdexPath.keyAttribute), segmentNode);
 
         updateCountersRelationships(memdexPath, counters, segmentNode);
 
@@ -343,7 +343,7 @@ public final class SchemaLoader {
     }
 
     private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ImmutableMap<String, CounterNode> counters) {
-        replaceAttributesRelationships(realm, realmTemplateEntity.entity);
+        replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
         Node memdexPathNode = createMemdexTree(realm.memdexPath, counters);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
     }
@@ -415,9 +415,9 @@ public final class SchemaLoader {
         }
     }
 
-    private void replaceAttributesRelationships(RealmNode realmNode, Node node) {
+    private void replaceAttributesRelationships(ImmutableSet<String> attributes, Node node) {
         node.getRelationships(OUTGOING, ATTRIBUTE).forEach(Relationship::delete);
-        realmNode.attributes.forEach(a -> {
+        attributes.forEach(a -> {
             String[] split = a.split(":");
             if (split.length < 2 || split.length > 3) {
                 throw new IllegalArgumentException("Malformed attribute " + a);
