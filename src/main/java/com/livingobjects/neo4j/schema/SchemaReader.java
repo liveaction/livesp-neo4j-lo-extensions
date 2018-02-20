@@ -49,7 +49,7 @@ public class SchemaReader {
         ), countersDictionary);
     }
 
-    public static List<String> browseAttributes(Node node) {
+    private static List<String> browseAttributes(Node node) {
         List<String> attributes = Lists.newArrayList();
         node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
