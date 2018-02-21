@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j.schema;
 
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -43,13 +44,13 @@ public class SchemaReader {
             countersDictionary.putAll(entry.getValue());
         });
 
-        List<String> strings = browseAttributes(segment);
+        String attribute = getAttribute(segment);
         return Maps.immutableEntry(new MemdexPathNode(
-                segmentName, strings.get(0), counters, children
+                segmentName, attribute, counters, children
         ), countersDictionary);
     }
 
-    private static List<String> browseAttributes(Node node) {
+    private static String getAttribute(Node node) {
         List<String> attributes = Lists.newArrayList();
         node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();
@@ -61,7 +62,7 @@ public class SchemaReader {
             }
             attributes.add(attribute);
         });
-        return attributes;
+        return Iterables.getOnlyElement(attributes);
     }
 
 }
