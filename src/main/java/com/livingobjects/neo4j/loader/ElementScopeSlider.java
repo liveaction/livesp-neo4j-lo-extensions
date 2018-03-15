@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 
 /**
  * See <a href="http://redmine.livingobjects.com/issues/12069">Redmine #12069</a>

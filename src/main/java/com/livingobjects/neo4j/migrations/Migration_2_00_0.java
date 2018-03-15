@@ -7,7 +7,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
@@ -30,8 +30,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._SCOPE;
 
 public final class Migration_2_00_0 {
     private static final Logger LOGGER = LoggerFactory.getLogger(Migration_2_00_0.class);
@@ -107,7 +107,7 @@ public final class Migration_2_00_0 {
         Stopwatch timer = Stopwatch.createStarted();
         Iterable<Node> nodes;
         try (Transaction tx = graphDb.beginTx()) {
-            nodes = Iterables.asResourceIterable(graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, "neType:application"));
+            nodes = Iterables.asResourceIterable(graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, "neType:application"));
             tx.success();
         }
 
@@ -258,7 +258,7 @@ public final class Migration_2_00_0 {
         try (Transaction tx = graphDb.beginTx()) {
             Node globalApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/global/application/cisco");
             Node spApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/sp/application/cisco");
-            graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, "neType:application").forEachRemaining(appNode -> {
+            graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, "neType:application").forEachRemaining(appNode -> {
                 String scope = appNode.getProperty(_SCOPE, "class=scope,scope=global").toString();
                 switch (scope) {
                     case "class=scope,scope=global":
@@ -293,7 +293,7 @@ public final class Migration_2_00_0 {
                         rl.delete();
                     }
                 });
-                graphDb.findNodes(Labels.ELEMENT, IwanModelConstants._TYPE, key).forEachRemaining(dscpNode ->
+                graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, key).forEachRemaining(dscpNode ->
                         dscpNode.createRelationshipTo(globalDscp, RelationshipTypes.ATTRIBUTE));
                 tx.success();
             }

@@ -17,10 +17,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEY_TYPES;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEY_TYPES;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
     public static final String PLACEHOLDER = "{:scopeId}";

@@ -1,6 +1,6 @@
 package com.livingobjects.neo4j.model.export;
 
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 
 import java.util.Comparator;
 
@@ -23,11 +23,11 @@ public final class PropertyNameComparator implements Comparator<String> {
 
     public int propertyPrecedence(String prop) {
         switch (prop) {
-            case IwanModelConstants.TAG:
+            case GraphModelConstants.TAG:
                 return 0;
-            case IwanModelConstants.ID:
+            case GraphModelConstants.ID:
                 return 1;
-            case IwanModelConstants.NAME:
+            case GraphModelConstants.NAME:
                 return 2;
             default:
                 return 3;

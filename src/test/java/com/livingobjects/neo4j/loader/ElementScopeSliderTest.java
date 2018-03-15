@@ -12,8 +12,8 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ElementScopeSliderTest {

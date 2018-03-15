@@ -5,7 +5,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.PropertyType;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
 import java.util.Map;
@@ -37,7 +37,7 @@ public final class Lineages {
     }
 
     public boolean dejaVu(Node leaf) {
-        return allTags.contains(leaf.getProperty(IwanModelConstants.TAG).toString());
+        return allTags.contains(leaf.getProperty(GraphModelConstants.TAG).toString());
     }
 
     public void markAsVisited(String nodeTag, String type, Node node) {

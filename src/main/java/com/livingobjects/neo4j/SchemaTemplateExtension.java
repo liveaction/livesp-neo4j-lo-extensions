@@ -6,9 +6,9 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
-import com.livingobjects.neo4j.model.schema.PartialSchema;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
+import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
 import org.codehaus.jackson.JsonEncoding;
@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -43,10 +44,10 @@ import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -77,15 +78,14 @@ public class SchemaTemplateExtension {
         }
     }
 
-    @POST
-    @Path("/{schemaId}/realm/{realmTemplate}")
+    @PUT
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response updateSchema(@PathParam("schemaId") String schemaId, @PathParam("realmTemplate") String realmTemplate, String jsonBody) throws IOException {
+    public Response migrateSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb);
-            PartialSchema partialSchema = jsonParser.readValueAs(PartialSchema.class);
-            boolean updated = schemaLoader.updateRealmPath(schemaId, realmTemplate, partialSchema);
+            SchemaAndPlanetsUpdate schemaAndPlanetsUpdate = jsonParser.readValueAs(SchemaAndPlanetsUpdate.class);
+            boolean updated = schemaLoader.update(schemaAndPlanetsUpdate);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             LOGGER.error("Unable to load schema", e);
