@@ -25,6 +25,11 @@ public class PlanetFactory {
         return planet;
     }
 
+    public Node get(String planetTemplate, Scope scope) {
+        String name = getPlanetName(planetTemplate, scope);
+        return name.contains(scope.id) ? delegate.getWithOutcome(NAME, name) : null;
+    }
+
     public String getPlanetName(String planetTemplate, Scope scope) {
         return planetTemplate.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
     }

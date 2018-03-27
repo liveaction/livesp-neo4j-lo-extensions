@@ -293,7 +293,7 @@ public final class SchemaLoader {
     }
 
     private Optional<Node> localizePlanet(String planetTemplateName, Scope scope) {
-        return Optional.ofNullable(planetFactory.getOrCreate(planetTemplateName, scope).entity);
+        return Optional.ofNullable(planetFactory.get(planetTemplateName, scope));
     }
 
     private ImmutableSet<Node> createRealmTemplates(Schema schema, ImmutableMap<String, CounterNode> counters) {
