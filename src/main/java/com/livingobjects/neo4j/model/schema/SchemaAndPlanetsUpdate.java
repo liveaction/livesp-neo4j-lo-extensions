@@ -4,6 +4,9 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
 import com.livingobjects.neo4j.model.schema.update.SchemaUpdate;
+import org.codehaus.jackson.annotate.JsonProperty;
+
+import java.util.List;
 
 public class SchemaAndPlanetsUpdate {
 
@@ -11,9 +14,10 @@ public class SchemaAndPlanetsUpdate {
 
     public final ImmutableList<PlanetUpdate> planetUpdates;
 
-    public SchemaAndPlanetsUpdate(ImmutableList<SchemaUpdate> schemaUpdates, ImmutableList<PlanetUpdate> planetUpdates) {
-        this.schemaUpdates = schemaUpdates;
-        this.planetUpdates = planetUpdates;
+    public SchemaAndPlanetsUpdate(@JsonProperty("schemaUpdates") List<SchemaUpdate> schemaUpdates,
+                                  @JsonProperty("planetUpdates") List<PlanetUpdate> planetUpdates) {
+        this.schemaUpdates = ImmutableList.copyOf(schemaUpdates);
+        this.planetUpdates = ImmutableList.copyOf(planetUpdates);
     }
 
     @Override

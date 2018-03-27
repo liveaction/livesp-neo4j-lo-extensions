@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 public final class RealmPathSegment {
 
@@ -8,7 +9,8 @@ public final class RealmPathSegment {
 
     public final String keyAttribute;
 
-    public RealmPathSegment(String path, String keyAttribute) {
+    public RealmPathSegment(@JsonProperty("path") String path,
+                            @JsonProperty("keyAttribute") String keyAttribute) {
         this.path = path;
         this.keyAttribute = keyAttribute;
     }

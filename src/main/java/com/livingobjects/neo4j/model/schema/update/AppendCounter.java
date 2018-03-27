@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.RealmPathSegment;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.List;
 import java.util.Set;
@@ -17,11 +18,11 @@ public final class AppendCounter extends SchemaUpdate {
 
     public final CounterNode counter;
 
-    AppendCounter(String schema,
-                  String realmTemplate,
-                  Set<String> attributes,
-                  List<RealmPathSegment> realmPath,
-                  CounterNode counter) {
+    public AppendCounter(@JsonProperty("schema") String schema,
+                  @JsonProperty("realmTemplate") String realmTemplate,
+                  @JsonProperty("attributes") Set<String> attributes,
+                  @JsonProperty("realmPath") List<RealmPathSegment> realmPath,
+                  @JsonProperty("counter") CounterNode counter) {
         super(schema, realmTemplate);
         this.attributes = ImmutableSet.copyOf(attributes);
         this.realmPath = ImmutableList.copyOf(realmPath);

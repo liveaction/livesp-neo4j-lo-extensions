@@ -3,6 +3,7 @@ package com.livingobjects.neo4j.model.schema.update;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.livingobjects.neo4j.model.schema.RealmPathSegment;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.List;
 
@@ -12,10 +13,10 @@ public final class DeleteCounter extends SchemaUpdate {
 
     public final String counter;
 
-    DeleteCounter(String schema,
-                  String realmTemplate,
-                  List<RealmPathSegment> realmPath,
-                  String counter) {
+    public DeleteCounter(@JsonProperty("schema") String schema,
+                         @JsonProperty("realmTemplate") String realmTemplate,
+                         @JsonProperty("realmPath") List<RealmPathSegment> realmPath,
+                         @JsonProperty("counter") String counter) {
         super(schema, realmTemplate);
         this.realmPath = ImmutableList.copyOf(realmPath);
         this.counter = counter;

@@ -5,31 +5,22 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.RealmPathSegment;
-import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.annotate.JsonSubTypes;
+import org.codehaus.jackson.annotate.JsonTypeInfo;
 
-import java.util.List;
-import java.util.Set;
-
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = AppendCounter.class, name = "appendCounter"),
+        @JsonSubTypes.Type(value = DeleteCounter.class, name = "deleteCounter"),
+})
 public abstract class SchemaUpdate {
 
     public final String schema;
 
     public final String realmTemplate;
-
-    public static AppendCounter appendCounter(@JsonProperty("schema") String schema,
-                                              @JsonProperty("realmTemplate") String realmTemplate,
-                                              @JsonProperty("attributes") Set<String> attributes,
-                                              @JsonProperty("realmPath") List<RealmPathSegment> realmPath,
-                                              @JsonProperty("counter") CounterNode counter) {
-        return new AppendCounter(schema, realmTemplate, attributes, realmPath, counter);
-    }
-
-    public static DeleteCounter deleteCounter(@JsonProperty("schema") String schema,
-                                              @JsonProperty("realmTemplate") String realmTemplate,
-                                              @JsonProperty("realmPath") List<RealmPathSegment> realmPath,
-                                              @JsonProperty("counter") String counter) {
-        return new DeleteCounter(schema, realmTemplate, realmPath, counter);
-    }
 
     public abstract <T> T visit(SchemaUpdateVisitor<T> visitor);
 

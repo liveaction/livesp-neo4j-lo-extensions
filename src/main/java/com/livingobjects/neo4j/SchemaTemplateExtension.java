@@ -81,7 +81,7 @@ public class SchemaTemplateExtension {
     @PUT
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response migrateSchema(String jsonBody) throws IOException {
+    public Response updateSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             SchemaAndPlanetsUpdate schemaAndPlanetsUpdate = jsonParser.readValueAs(SchemaAndPlanetsUpdate.class);
