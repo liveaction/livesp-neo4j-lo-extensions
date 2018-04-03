@@ -272,10 +272,9 @@ public final class SchemaLoader {
 
             Relationship firstLevel = realmTemplateEntity.entity.getSingleRelationship(MEMDEXPATH, OUTGOING);
             if (firstLevel == null) {
-                Node realmPathNode = createRealmPath(realmTemplate, rootSegment, tailPath, counter);
-                realmTemplateEntity.entity.createRelationshipTo(realmPathNode, MEMDEXPATH);
-                modified = true;
-
+                if (mergeRealmPath(realmTemplate, realmTemplateEntity.entity, rootSegment, tailPath, counter)) {
+                    modified = true;
+                }
             } else {
                 Node firstSegment = firstLevel.getEndNode();
 
@@ -524,15 +523,6 @@ public final class SchemaLoader {
         replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
         Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, counters);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
-    }
-
-    private Node createRealmPath(String realmTemplate,
-                                 RealmPathSegment segment,
-                                 ImmutableList<RealmPathSegment> tail,
-                                 CounterNode counter) {
-        Node segmentNode = graphDb.createNode(Labels.SEGMENT);
-        mergeRealmPath(realmTemplate, segmentNode, segment, tail, counter);
-        return segmentNode;
     }
 
     private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ImmutableMap<String, CounterNode> counters) {
