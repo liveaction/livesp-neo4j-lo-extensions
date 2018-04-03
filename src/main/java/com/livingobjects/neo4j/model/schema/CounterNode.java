@@ -7,20 +7,17 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @JsonIgnoreProperties(value = "label")
 public final class CounterNode {
 
-    public final String type;
     public final String unit;
     public final String defaultValue;
     public final String defaultAggregation;
     public final String valueType;
     public final String name;
 
-    public CounterNode(@JsonProperty("type") String type,
-                       @JsonProperty("unit") String unit,
+    public CounterNode(@JsonProperty("unit") String unit,
                        @JsonProperty("defaultValue") String defaultValue,
                        @JsonProperty("defaultAggregation") String defaultAggregation,
                        @JsonProperty("valueType") String valueType,
                        @JsonProperty("name") String name) {
-        this.type = type;
         this.unit = unit;
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;
@@ -35,7 +32,6 @@ public final class CounterNode {
 
         CounterNode that = (CounterNode) o;
 
-        if (type != null ? !type.equals(that.type) : that.type != null) return false;
         if (unit != null ? !unit.equals(that.unit) : that.unit != null) return false;
         if (defaultValue != null ? !defaultValue.equals(that.defaultValue) : that.defaultValue != null) return false;
         if (defaultAggregation != null ? !defaultAggregation.equals(that.defaultAggregation) : that.defaultAggregation != null)
@@ -46,8 +42,7 @@ public final class CounterNode {
 
     @Override
     public int hashCode() {
-        int result = type != null ? type.hashCode() : 0;
-        result = 31 * result + (unit != null ? unit.hashCode() : 0);
+        int result = unit != null ? unit.hashCode() : 0;
         result = 31 * result + (defaultValue != null ? defaultValue.hashCode() : 0);
         result = 31 * result + (defaultAggregation != null ? defaultAggregation.hashCode() : 0);
         result = 31 * result + (valueType != null ? valueType.hashCode() : 0);
@@ -58,7 +53,6 @@ public final class CounterNode {
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("type", type)
                 .add("unit", unit)
                 .add("defaultValue", defaultValue)
                 .add("defaultAggregation", defaultAggregation)

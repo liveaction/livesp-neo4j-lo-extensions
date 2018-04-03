@@ -32,9 +32,9 @@ public class SchemaReader {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
-            String counterRef = "kpi:" + counterNode.getProperty("name") + "@context:" + link.getProperty("context");
-            counters.add(counterRef);
-            countersDictionary.putIfAbsent(counterRef, counterNode);
+            String name = counterNode.getProperty("name").toString();
+            counters.add(name);
+            countersDictionary.putIfAbsent(name, counterNode);
         });
 
         List<MemdexPathNode> children = Lists.newArrayList();

@@ -158,9 +158,6 @@ public class SchemaTemplateExtension {
                 countersDictionary.forEach((key, value) -> {
                     try {
                         ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
-                        String context = key.split("@context:")[1];
-                        counter.put("type", "counter");
-                        counter.put("context", context);
                         counter.put("unit", value.getProperty("unit").toString());
                         counter.put("defaultValue", Optional.ofNullable(value.getProperty("defaultValue", null)).map(Object::toString).orElse(null));
                         counter.put("defaultAggregation", value.getProperty("defaultAggregation").toString());
