@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.collect.ImmutableList;
+import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.List;

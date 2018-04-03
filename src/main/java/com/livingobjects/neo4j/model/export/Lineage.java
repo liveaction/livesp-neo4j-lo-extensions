@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.export;
 
 import com.google.common.collect.Maps;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
 import java.util.Map;
@@ -16,6 +16,6 @@ public final class Lineage {
 
     @Override
     public String toString() {
-        return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(IwanModelConstants.TAG).toString()).collect(Collectors.joining(" - "));
+        return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(GraphModelConstants.TAG).toString()).collect(Collectors.joining(" - "));
     }
 }

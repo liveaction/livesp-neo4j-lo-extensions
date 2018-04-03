@@ -11,10 +11,10 @@ import org.neo4j.graphdb.Node;
 import java.util.List;
 import java.util.Map;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public class SchemaReader {
 

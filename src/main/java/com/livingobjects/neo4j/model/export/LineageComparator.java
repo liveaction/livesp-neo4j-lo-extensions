@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.export;
 
 import com.google.common.collect.ImmutableList;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
 import java.util.Comparator;
@@ -21,8 +21,8 @@ public final class LineageComparator implements Comparator<Lineage> {
             Node node2 = l2.nodesByType.get(attribute);
             if (node1 != null) {
                 if (node2 != null) {
-                    String tag1 = node1.getProperty(IwanModelConstants.TAG).toString();
-                    String tag2 = node2.getProperty(IwanModelConstants.TAG).toString();
+                    String tag1 = node1.getProperty(GraphModelConstants.TAG).toString();
+                    String tag2 = node2.getProperty(GraphModelConstants.TAG).toString();
                     compare = tag1.compareTo(tag2);
                 } else {
                     compare = -1;

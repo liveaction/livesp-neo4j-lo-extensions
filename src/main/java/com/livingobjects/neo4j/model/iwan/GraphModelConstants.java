@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.iwan;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.loader.Scope;
 
-public final class IwanModelConstants {
+public final class GraphModelConstants {
     public static final String LINK_PROP_SPECIALIZER = "specializer";
 
     public static final String SCOPE_CLASS = "class:scope";
@@ -34,4 +34,5 @@ public final class IwanModelConstants {
     public static final String _OVERRIDABLE = "_overridable";
     public static final String OVERRIDE = "override";
     public static final String _SCOPE = "scope";
+    public static final String CONTEXT = "context";
 }

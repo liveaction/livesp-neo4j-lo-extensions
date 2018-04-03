@@ -1,6 +1,6 @@
 package com.livingobjects.neo4j.helper;
 
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -108,7 +108,7 @@ public final class UniqueElementFactory {
         if (key2 != null) {
             created.setProperty(key2, value2);
         }
-        created.setProperty(IwanModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         return created;
     }
 
