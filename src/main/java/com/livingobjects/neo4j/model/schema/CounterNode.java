@@ -4,8 +4,8 @@ import com.google.common.base.MoreObjects;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
-import java.util.Optional;
 
 @JsonIgnoreProperties(value = "label")
 public final class CounterNode {
@@ -15,14 +15,16 @@ public final class CounterNode {
     public final String defaultAggregation;
     public final String valueType;
     public final String name;
-    public final Optional<String> description;
+
+    @Nullable
+    public final String description;
 
     public CounterNode(@JsonProperty("unit") String unit,
                        @JsonProperty("defaultValue") String defaultValue,
                        @JsonProperty("defaultAggregation") String defaultAggregation,
                        @JsonProperty("valueType") String valueType,
                        @JsonProperty("name") String name,
-                       @JsonProperty("description") Optional<String> description) {
+                       @JsonProperty("description") @Nullable String description) {
         this.unit = unit;
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;

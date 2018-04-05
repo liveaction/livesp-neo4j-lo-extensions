@@ -45,6 +45,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
@@ -573,6 +574,11 @@ public final class SchemaLoader {
         if (counterEntity.wasCreated) {
             modified = true;
             counterEntity.entity.setProperty(_TYPE, "counter");
+            if (counter.description == null) {
+                counterEntity.entity.removeProperty(DESCRIPTION);
+            } else {
+                counterEntity.entity.setProperty(_TYPE, "counter");
+            }
             counterEntity.entity.setProperty("defaultAggregation", counter.defaultAggregation);
             if (counter.defaultValue == null) {
                 counterEntity.entity.removeProperty("defaultValue");

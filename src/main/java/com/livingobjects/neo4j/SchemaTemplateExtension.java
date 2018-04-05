@@ -44,6 +44,7 @@ import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
@@ -162,7 +163,8 @@ public class SchemaTemplateExtension {
                         counter.put("defaultValue", Optional.ofNullable(value.getProperty("defaultValue", null)).map(Object::toString).orElse(null));
                         counter.put("defaultAggregation", value.getProperty("defaultAggregation").toString());
                         counter.put("valueType", value.getProperty("valueType").toString());
-                        counter.put("name", value.getProperty("name").toString());
+                        counter.put(NAME, value.getProperty(NAME).toString());
+                        counter.put(DESCRIPTION, Optional.ofNullable(value.getProperty(DESCRIPTION, null)).map(Object::toString).orElse(null));
                         jg.writeObjectField(key, counter);
                     } catch (IOException e) {
                         LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
