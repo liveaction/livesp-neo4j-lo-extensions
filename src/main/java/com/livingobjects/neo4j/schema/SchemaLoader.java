@@ -94,7 +94,7 @@ public final class SchemaLoader {
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
         return lockAndWriteSchema(() -> {
 
-            boolean modified = migrateSchemas(schemaAndPlanetsUpdate.schemaUpdates);
+            boolean modified = migrateSchemas(schemaAndPlanetsUpdate.schemaUpdates, schemaAndPlanetsUpdate.version);
 
             migratePlanets(schemaAndPlanetsUpdate.planetUpdates);
 
@@ -121,21 +121,21 @@ public final class SchemaLoader {
         });
     }
 
-    private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates) {
+    private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version) {
         boolean modified = false;
         for (SchemaUpdate schemaUpdate : schemaUpdates) {
-            if (applySchemaUpdate(schemaUpdate)) {
+            if (applySchemaUpdate(schemaUpdate, version)) {
                 modified = true;
             }
         }
         return modified;
     }
 
-    private boolean applySchemaUpdate(SchemaUpdate schemaUpdate) {
+    private boolean applySchemaUpdate(SchemaUpdate schemaUpdate, String version) {
         return schemaUpdate.visit(new SchemaUpdate.SchemaUpdateVisitor<Boolean>() {
             @Override
             public Boolean appendCounter(String schema, String realmTemplate, ImmutableSet<String> attributes, ImmutableList<RealmPathSegment> realmPath, CounterNode counter) {
-                return appendCounterToSchema(schema, realmTemplate, attributes, realmPath, counter);
+                return appendCounterToSchema(schema, realmTemplate, attributes, realmPath, counter, version);
             }
 
             @Override
@@ -240,12 +240,18 @@ public final class SchemaLoader {
                                           String realmTemplate,
                                           ImmutableSet<String> attributes,
                                           ImmutableList<RealmPathSegment> realmPath,
-                                          CounterNode counter) {
+                                          CounterNode counter,
+                                          String version) {
         boolean modified = false;
 
         UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
-        if (schemaNode.wasCreated) {
-            schemaNode.entity.setProperty(VERSION, "1.0");
+        String oldVersion = schemaNode.entity.getProperty(VERSION, "").toString();
+        if (version != null && !oldVersion.equals(version)) {
+            schemaNode.entity.setProperty(VERSION, version);
+            modified = true;
+        }
+        if (version == null && oldVersion.isEmpty()) {
+            schemaNode.entity.setProperty(VERSION, "0.1");
             modified = true;
         }
 
@@ -255,11 +261,13 @@ public final class SchemaLoader {
         }
 
         Iterable<Relationship> relationships = realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED);
+        boolean moveRealm = false;
         for (Relationship relationship : relationships) {
             Node schema = relationship.getStartNode();
             String existingSchemaId = schema.getProperty(ID, "").toString();
             if (!existingSchemaId.equalsIgnoreCase(schemaId)) {
-                throw new IllegalArgumentException(String.format("Realm '%s' is already provided by schema '%s'", realmTemplate, existingSchemaId));
+                relationship.delete();
+                moveRealm = true;
             }
         }
 
@@ -289,7 +297,7 @@ public final class SchemaLoader {
             }
         }
 
-        if (realmTemplateEntity.wasCreated) {
+        if (realmTemplateEntity.wasCreated || moveRealm) {
             for (Relationship relationship : realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING)) {
                 relationship.delete();
             }
