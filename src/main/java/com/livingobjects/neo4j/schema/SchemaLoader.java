@@ -150,7 +150,7 @@ public final class SchemaLoader {
                                             ImmutableList<RealmPathSegment> realmPath,
                                             String counter) {
         boolean modified = false;
-        Node schemaNode = schemaFactory.getWithOutcome(NAME, schema);
+        Node schemaNode = schemaFactory.getWithOutcome(ID, schema);
         if (schemaNode != null) {
             for (Relationship realmTemplateRelationship : schemaNode.getRelationships(OUTGOING, PROVIDED)) {
                 Node realmNode = realmTemplateRelationship.getEndNode();
@@ -170,6 +170,8 @@ public final class SchemaLoader {
                                 realmNode.delete();
                             }
                         }
+
+                        break;
 
                     }
                 }
@@ -203,14 +205,15 @@ public final class SchemaLoader {
                                     if (!counterNode.hasRelationship()) {
                                         counterNode.delete();
                                     }
-                                    boolean hasCounters = parentNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
-                                    boolean hasSubPaths = parentNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                                    boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
+                                    boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
                                     if (!hasCounters && !hasSubPaths) {
-                                        parentNode.getRelationships().forEach(Relationship::delete);
-                                        parentNode.delete();
+                                        memdexPathNode.getRelationships().forEach(Relationship::delete);
+                                        memdexPathNode.delete();
                                     }
 
                                     deleted = true;
+
                                     break;
                                 }
                             }
@@ -218,15 +221,15 @@ public final class SchemaLoader {
 
                     } else {
                         if (deleteCounterFromRealmPath(tail, counter, memdexPathNode)) {
-
-                            boolean hasCounters = parentNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
-                            boolean hasSubPaths = parentNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
-                            if (!hasCounters && !hasSubPaths) {
-                                parentNode.getRelationships().forEach(Relationship::delete);
-                                parentNode.delete();
-                            }
-
                             deleted = true;
+                        }
+                    }
+                    if (deleted) {
+                        boolean hasCounters = parentNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
+                        boolean hasSubPaths = parentNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                        if (!hasCounters && !hasSubPaths) {
+                            parentNode.getRelationships().forEach(Relationship::delete);
+                            parentNode.delete();
                         }
                     }
                 }
