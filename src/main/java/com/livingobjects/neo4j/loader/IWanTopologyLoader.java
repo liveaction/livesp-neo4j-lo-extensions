@@ -27,7 +27,7 @@ import com.livingobjects.neo4j.model.header.HeaderElement;
 import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
@@ -59,16 +59,16 @@ import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_CLASS;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -257,11 +257,11 @@ public final class IWanTopologyLoader {
             UniqueEntity<Node> element = node.getValue().get();
             String keyAttribute = node.getKey();
 
-            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyAttribute)) continue;
+            if (GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyAttribute)) continue;
 
             importedElementByScopeBuilder.put(
                     reviewPlanetElement(strategy, element, nodes),
-                    element.entity.getProperty(IwanModelConstants.TAG).toString()
+                    element.entity.getProperty(GraphModelConstants.TAG).toString()
             );
         }
         return importedElementByScopeBuilder.build();
@@ -332,7 +332,7 @@ public final class IWanTopologyLoader {
             int relCount = 0;
             for (Relationship relationship : relationships) {
                 Node endNode = relationship.getEndNode();
-                String toKeytype = endNode.getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR +
+                String toKeytype = endNode.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(NAME).toString();
                 if (isOverridable && metaSchema.isScope(toKeytype)) {
                     toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
@@ -340,8 +340,8 @@ public final class IWanTopologyLoader {
 
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
-                    String cardinality = relationship.getProperty(IwanModelConstants.CARDINALITY, IwanModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
-                    if (keyTypeNode.wasCreated && IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
+                    String cardinality = relationship.getProperty(GraphModelConstants.CARDINALITY, GraphModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
+                    if (keyTypeNode.wasCreated && GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
                         Object tagProperty = keyTypeNode.entity.getProperty(TAG);
                         throw new MissingElementException(String.format("Unable to update '%s' because the element does not exist : '%s'. Line is ignored.", keyType, tagProperty));
                     } else {
@@ -367,8 +367,8 @@ public final class IWanTopologyLoader {
 
     private Optional<UniqueEntity<Node>> createElement(LineMappingStrategy strategy, String[] line, String elementKeyType) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
-            if (IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementKeyType)) {
-                return Optional.of(UniqueEntity.existing(graphDb.findNode(Labels.SCOPE, "tag", IwanModelConstants.SCOPE_GLOBAL_TAG)));
+            if (GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementKeyType)) {
+                return Optional.of(UniqueEntity.existing(graphDb.findNode(Labels.SCOPE, "tag", GraphModelConstants.SCOPE_GLOBAL_TAG)));
             }
 
             boolean isOverridable = metaSchema.isOverridable(elementKeyType);
@@ -377,15 +377,15 @@ public final class IWanTopologyLoader {
                     .filter(strategy::hasKeyType)
                     .collect(Collectors.toSet());
 
-            int tagIndex = strategy.getColumnIndex(elementKeyType, IwanModelConstants.TAG);
+            int tagIndex = strategy.getColumnIndex(elementKeyType, GraphModelConstants.TAG);
             if (tagIndex < 0) return Optional.empty();
             String tag = line[tagIndex];
             if (tag.isEmpty()) return Optional.empty();
 
             boolean isScope = metaSchema.isScope(elementKeyType);
             UniqueEntity<Node> uniqueEntity = (isOverridable) ?
-                    overridableElementFactory.getOrOverride(strategy.scope, IwanModelConstants.TAG, tag) :
-                    networkElementFactory.getOrCreateWithOutcome(IwanModelConstants.TAG, tag);
+                    overridableElementFactory.getOrOverride(strategy.scope, GraphModelConstants.TAG, tag) :
+                    networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
             Node elementNode = uniqueEntity.entity;
 
             Iterable<String> schemasToApply = getSchemasToApply(strategy, line, elementKeyType);
@@ -401,11 +401,11 @@ public final class IWanTopologyLoader {
 
                     elementNode.addLabel(Labels.SCOPE);
                     if (Iterables.isEmpty(schemasToApply)) {
-                        throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
+                        throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + GraphModelConstants.SCHEMA));
                     }
                     applySchemas(elementKeyType, elementNode, schemasToApply);
                 }
-                elementNode.setProperty(IwanModelConstants._TYPE, elementKeyType);
+                elementNode.setProperty(GraphModelConstants._TYPE, elementKeyType);
 
             } else {
                 if (isScope) {
@@ -413,10 +413,10 @@ public final class IWanTopologyLoader {
                         applySchema(strategy, line, elementKeyType, tag, elementNode);
                     }
                 }
-                elementNode.setProperty(IwanModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
+                elementNode.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
 
                 elementNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT).forEach(r -> {
-                    String type = r.getEndNode().getProperty(IwanModelConstants._TYPE, IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
+                    String type = r.getEndNode().getProperty(GraphModelConstants._TYPE, GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
                     if (todelete.contains(type)) {
                         r.delete();
                     }
@@ -434,12 +434,12 @@ public final class IWanTopologyLoader {
             Iterable<String> schemas = getSchemasToApply(strategy, line, elementKeyType);
             applySchemas(elementKeyType, elementNode, schemas);
         } catch (NoSuchElementException e) {
-            throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + IwanModelConstants.SCHEMA));
+            throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + GraphModelConstants.SCHEMA));
         }
     }
 
     private Iterable<String> getSchemasToApply(IwanMappingStrategy strategy, String[] line, String elementKeyType) {
-        return strategy.tryColumnIndex(elementKeyType, IwanModelConstants.SCHEMA)
+        return strategy.tryColumnIndex(elementKeyType, GraphModelConstants.SCHEMA)
                 .map(schemaIndex -> Splitter.on(',').omitEmptyStrings().trimResults().split(line[schemaIndex]))
                 .orElse(ImmutableSet.of());
     }
@@ -447,7 +447,7 @@ public final class IWanTopologyLoader {
     private void applySchemas(String elementKeyType, Node elementNode, Iterable<String> schemas) {
         Set<Node> schemaNodes = Sets.newHashSet();
         schemas.forEach(schema -> {
-            Node schemaNode = graphDb.findNode(Labels.SCHEMA, IwanModelConstants.ID, schema);
+            Node schemaNode = graphDb.findNode(Labels.SCHEMA, GraphModelConstants.ID, schema);
             if (schemaNode != null) {
                 schemaNodes.add(schemaNode);
             } else {
@@ -466,9 +466,9 @@ public final class IWanTopologyLoader {
 
         ImmutableCollection<HeaderElement> elementHeaders = strategy.getElementHeaders(elementName);
         HeaderElement tagHeader = elementHeaders.stream()
-                .filter(h -> IwanModelConstants.TAG.equals(h.propertyName))
+                .filter(h -> GraphModelConstants.TAG.equals(h.propertyName))
                 .findAny()
-                .orElseThrow(() -> new IllegalArgumentException(IwanModelConstants.TAG + " not found for element " + elementName + ""));
+                .orElseThrow(() -> new IllegalArgumentException(GraphModelConstants.TAG + " not found for element " + elementName + ""));
 
         String tag = line[tagHeader.index];
 
@@ -476,7 +476,7 @@ public final class IWanTopologyLoader {
             throw new NoSuchElementException("Element " + elementName + " not found in database for update");
         }
 
-        Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, IwanModelConstants.TAG, tag);
+        Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, GraphModelConstants.TAG, tag);
         if (node != null) {
             persistElementProperties(line, elementHeaders, node);
             return Optional.of(UniqueEntity.existing(node));
@@ -487,7 +487,7 @@ public final class IWanTopologyLoader {
 
     private static void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
-                .filter(h -> !IwanModelConstants.TAG.equals(h.propertyName))
+                .filter(h -> !GraphModelConstants.TAG.equals(h.propertyName))
                 .forEach(h -> h.visit(new Visitor<Void>() {
                     @Override
                     public Void visitSimple(SimpleElementHeader header) {

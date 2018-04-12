@@ -5,7 +5,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.loader.Scope;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import jline.internal.Nullable;
@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Instant;
 import java.util.Optional;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 
 public final class OverridableElementFactory {
     private static final Logger LOGGER = LoggerFactory.getLogger(OverridableElementFactory.class);
@@ -101,7 +101,7 @@ public final class OverridableElementFactory {
         created.addLabel(keyLabel);
         created.setProperty(keyProperty, keyValue);
         created.setProperty(_SCOPE, scope.tag);
-        created.setProperty(IwanModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         return created;
     }
 

@@ -16,16 +16,19 @@ import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.loader.Scope;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
-import com.livingobjects.neo4j.model.schema.PartialSchema;
-import com.livingobjects.neo4j.model.schema.PlanetNode;
-import com.livingobjects.neo4j.model.schema.PlanetUpdate;
 import com.livingobjects.neo4j.model.schema.RealmNode;
+import com.livingobjects.neo4j.model.schema.RealmPathSegment;
 import com.livingobjects.neo4j.model.schema.Schema;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
+import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
+import com.livingobjects.neo4j.model.schema.planet.PlanetNode;
+import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
+import com.livingobjects.neo4j.model.schema.update.SchemaUpdate;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -33,6 +36,7 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,18 +45,19 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.PATH;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
-import static com.livingobjects.neo4j.model.schema.PlanetUpdateStatus.DELETE;
-import static com.livingobjects.neo4j.model.schema.PlanetUpdateStatus.UPDATE;
+import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
+import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -78,67 +83,23 @@ public final class SchemaLoader {
 
     public SchemaLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
-        planetTemplateFactory = new UniqueElementFactory(graphDb, Labels.PLANET_TEMPLATE, Optional.empty());
-        realmTemplateFactory = new UniqueElementFactory(graphDb, Labels.REALM_TEMPLATE, Optional.empty());
-        attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
-        counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
+        this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
+        this.planetTemplateFactory = new UniqueElementFactory(graphDb, Labels.PLANET_TEMPLATE, Optional.empty());
+        this.realmTemplateFactory = new UniqueElementFactory(graphDb, Labels.REALM_TEMPLATE, Optional.empty());
+        this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
+        this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
     }
 
-    public boolean updateRealmPath(String schemaId, String realmTemplate, PartialSchema partialSchema) {
+    public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
         return lockAndWriteSchema(() -> {
-            UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
-            if (schemaNode.wasCreated) {
-                schemaNode.entity.setProperty(VERSION, "1.0");
-            }
 
-            UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate);
-            for (Relationship relationship : realmTemplateEntity.entity.getRelationships(ATTRIBUTE, OUTGOING)) {
-                relationship.delete();
-            }
-            for (String attribute : partialSchema.attributes) {
-                String[] split = attribute.split(":");
-                if (split.length < 2 || split.length > 3) {
-                    throw new IllegalArgumentException("Malformed attribute " + attribute);
-                }
-                String type = split[0];
-                String name = split[1];
-                UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
-                realmTemplateEntity.entity.createRelationshipTo(attributeNode.entity, RelationshipTypes.ATTRIBUTE);
-            }
-            Iterable<Relationship> relationships = realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED);
-            for (Relationship relationship : relationships) {
-                Node schema = relationship.getStartNode();
-                String existingSchemaId = schema.getProperty(ID, "").toString();
-                if (!existingSchemaId.equalsIgnoreCase(schemaId)) {
-                    throw new IllegalArgumentException(String.format("Realm '%s' is already provided by schema '%s'", realmTemplate, existingSchemaId));
-                }
-            }
+            boolean modified = migrateSchemas(schemaAndPlanetsUpdate.schemaUpdates, schemaAndPlanetsUpdate.version);
 
-            Relationship firstLevel = realmTemplateEntity.entity.getSingleRelationship(MEMDEXPATH, OUTGOING);
-            if (firstLevel == null) {
-                Node memdexTree = createMemdexTree(partialSchema.memdexPath, partialSchema.counters);
-                realmTemplateEntity.entity.createRelationshipTo(memdexTree, MEMDEXPATH);
-            } else {
-                Node firstSegment = firstLevel.getEndNode();
+            migratePlanets(schemaAndPlanetsUpdate.planetUpdates);
 
-                Object existingPath = firstSegment.getProperty(PATH);
+            return modified;
 
-                if (existingPath.equals(partialSchema.memdexPath.segment)) {
-                    updateMemdexTree(partialSchema.memdexPath, partialSchema.counters, firstSegment);
-                } else {
-                    throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", realmTemplate, existingPath, partialSchema.memdexPath.segment));
-                }
-            }
-
-            if (realmTemplateEntity.wasCreated) {
-                for (Relationship relationship : realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING)) {
-                    relationship.delete();
-                }
-                schemaNode.entity.createRelationshipTo(realmTemplateEntity.entity, PROVIDED);
-            }
-            return schemaNode.wasCreated;
         });
     }
 
@@ -158,6 +119,209 @@ public final class SchemaLoader {
 
             return schemaNode.wasCreated;
         });
+    }
+
+    private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version) {
+        boolean modified = false;
+        for (SchemaUpdate schemaUpdate : schemaUpdates) {
+            if (applySchemaUpdate(schemaUpdate, version)) {
+                modified = true;
+            }
+        }
+        return modified;
+    }
+
+    private boolean applySchemaUpdate(SchemaUpdate schemaUpdate, String version) {
+        return schemaUpdate.visit(new SchemaUpdate.SchemaUpdateVisitor<Boolean>() {
+            @Override
+            public Boolean appendCounter(String schema, String realmTemplate, ImmutableSet<String> attributes, ImmutableList<RealmPathSegment> realmPath, CounterNode counter) {
+                return appendCounterToSchema(schema, realmTemplate, attributes, realmPath, counter, version);
+            }
+
+            @Override
+            public Boolean deleteCounter(String schema, String realmTemplate, ImmutableList<RealmPathSegment> realmPath, String counter) {
+                return deleteCounterFromSchema(schema, realmTemplate, realmPath, counter);
+            }
+        });
+    }
+
+    private boolean deleteCounterFromSchema(String schema,
+                                            String realmTemplate,
+                                            ImmutableList<RealmPathSegment> realmPath,
+                                            String counter) {
+        boolean modified = false;
+        Node schemaNode = schemaFactory.getWithOutcome(ID, schema);
+        if (schemaNode != null) {
+            for (Relationship realmTemplateRelationship : schemaNode.getRelationships(OUTGOING, PROVIDED)) {
+                Node realmNode = realmTemplateRelationship.getEndNode();
+                if (realmNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                    String realm = realmNode.getProperty(NAME).toString();
+
+                    if (realmTemplate.equals(realm)) {
+
+                        if (!realmPath.isEmpty()) {
+                            if (deleteCounterFromRealmPath(realmPath, counter, realmNode)) {
+                                modified = true;
+                            }
+
+                            boolean hasSubPaths = realmNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                            if (!hasSubPaths) {
+                                realmNode.getRelationships().forEach(Relationship::delete);
+                                realmNode.delete();
+                            }
+                        }
+
+                        break;
+
+                    }
+                }
+            }
+        }
+        return modified;
+    }
+
+    private boolean deleteCounterFromRealmPath(ImmutableList<RealmPathSegment> realmPath,
+                                               String counter,
+                                               Node parentNode) {
+        boolean deleted = false;
+
+        RealmPathSegment rootSegment = realmPath.get(0);
+        ImmutableList<RealmPathSegment> tail = realmPath.subList(1, realmPath.size());
+
+        for (Relationship relationship : parentNode.getRelationships(OUTGOING, MEMDEXPATH)) {
+            Node memdexPathNode = relationship.getEndNode();
+
+            if (memdexPathNode.hasLabel(Labels.SEGMENT)) {
+                String path = memdexPathNode.getProperty(PATH).toString();
+                if (path.equals(rootSegment.path)) {
+                    if (tail.isEmpty()) {
+                        for (Relationship counterRelationship : memdexPathNode.getRelationships(INCOMING, PROVIDED)) {
+                            Node counterNode = counterRelationship.getStartNode();
+                            if (counterNode.hasLabel(Labels.COUNTER)) {
+                                String counterName = counterNode.getProperty(NAME).toString();
+                                if (counterName.equals(counter)) {
+
+                                    counterRelationship.delete();
+                                    if (!counterNode.hasRelationship()) {
+                                        counterNode.delete();
+                                    }
+                                    boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
+                                    boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                                    if (!hasCounters && !hasSubPaths) {
+                                        memdexPathNode.getRelationships().forEach(Relationship::delete);
+                                        memdexPathNode.delete();
+                                    }
+
+                                    deleted = true;
+
+                                    break;
+                                }
+                            }
+                        }
+
+                    } else {
+                        if (deleteCounterFromRealmPath(tail, counter, memdexPathNode)) {
+                            deleted = true;
+                        }
+                    }
+                    if (deleted) {
+                        boolean hasCounters = parentNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
+                        boolean hasSubPaths = parentNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                        if (!hasCounters && !hasSubPaths) {
+                            parentNode.getRelationships().forEach(Relationship::delete);
+                            parentNode.delete();
+                        }
+                    }
+                }
+            }
+        }
+
+        return deleted;
+    }
+
+    private boolean appendCounterToSchema(String schemaId,
+                                          String realmTemplate,
+                                          ImmutableSet<String> attributes,
+                                          ImmutableList<RealmPathSegment> realmPath,
+                                          CounterNode counter,
+                                          String version) {
+        boolean modified = false;
+
+        UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
+        String oldVersion = schemaNode.entity.getProperty(VERSION, "").toString();
+        if (version != null && !oldVersion.equals(version)) {
+            schemaNode.entity.setProperty(VERSION, version);
+            modified = true;
+        }
+        if (version == null && oldVersion.isEmpty()) {
+            schemaNode.entity.setProperty(VERSION, "0.1");
+            modified = true;
+        }
+
+        UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate);
+        if (realmTemplateEntity.wasCreated) {
+            modified = true;
+        }
+
+        Iterable<Relationship> relationships = realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED);
+        boolean moveRealm = false;
+        for (Relationship relationship : relationships) {
+            Node schema = relationship.getStartNode();
+            String existingSchemaId = schema.getProperty(ID, "").toString();
+            if (!existingSchemaId.equalsIgnoreCase(schemaId)) {
+                relationship.delete();
+                moveRealm = true;
+            }
+        }
+
+        if (updateRealmAttributes(attributes, realmTemplateEntity)) {
+            modified = true;
+        }
+
+        if (!realmPath.isEmpty()) {
+            RealmPathSegment rootSegment = realmPath.get(0);
+            ImmutableList<RealmPathSegment> tailPath = realmPath.subList(1, realmPath.size());
+
+            Relationship firstLevel = realmTemplateEntity.entity.getSingleRelationship(MEMDEXPATH, OUTGOING);
+            if (firstLevel == null) {
+                if (mergeRealmPath(realmTemplate, realmTemplateEntity.entity, rootSegment, tailPath, counter)) {
+                    modified = true;
+                }
+            } else {
+                Node firstSegment = firstLevel.getEndNode();
+
+                Object existingPath = firstSegment.getProperty(PATH);
+
+                if (existingPath.equals(rootSegment.path)) {
+                    updateRealmPath(realmTemplate, rootSegment, tailPath, counter, firstSegment);
+                } else {
+                    throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", realmTemplate, existingPath, rootSegment.path));
+                }
+            }
+        }
+
+        if (realmTemplateEntity.wasCreated || moveRealm) {
+            for (Relationship relationship : realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING)) {
+                relationship.delete();
+            }
+            schemaNode.entity.createRelationshipTo(realmTemplateEntity.entity, PROVIDED);
+        }
+        return modified;
+    }
+
+    private boolean updateRealmAttributes(Collection<String> attributes, UniqueEntity<Node> realmTemplateEntity) {
+        Set<MatchProperties> attributesMatchProperties = attributes.stream()
+                .map(attribute -> {
+                    String[] split = attribute.split(":");
+                    if (split.length < 2 || split.length > 3) {
+                        throw new IllegalArgumentException("Malformed attribute " + attribute);
+                    }
+                    String type = split[0];
+                    String name = split[1];
+                    return MatchProperties.of(_TYPE, type, NAME, name);
+                })
+                .collect(toSet());
+        return RelationshipUtils.replaceRelationships(OUTGOING, realmTemplateEntity.entity, ATTRIBUTE, attributeNodeFactory, attributesMatchProperties);
     }
 
     private void migratePlanets(ImmutableList<PlanetUpdate> planets) {
@@ -314,45 +478,70 @@ public final class SchemaLoader {
         return ImmutableSet.copyOf(realmTemplates);
     }
 
-    private void mergeMemdexTree(Node parentNode, MemdexPathNode memdexPath, ImmutableMap<String, CounterNode> counters) {
+    private boolean mergeRealmPath(String realmTemplate,
+                                   Node parentNode,
+                                   RealmPathSegment segment,
+                                   ImmutableList<RealmPathSegment> tail,
+                                   CounterNode counter) {
+        boolean modified = false;
+
         Node segmentNode = null;
         for (Relationship relationship : parentNode.getRelationships(OUTGOING, MEMDEXPATH)) {
             Node childNode = relationship.getEndNode();
             String path = childNode.getProperty(PATH, "").toString();
-            if (memdexPath.segment.equals(path)) {
+            if (segment.path.equals(path)) {
                 segmentNode = childNode;
                 break;
             }
         }
         if (segmentNode == null) {
             segmentNode = graphDb.createNode(Labels.SEGMENT);
-            segmentNode.setProperty(PATH, memdexPath.segment);
+            segmentNode.setProperty(PATH, segment.path);
             parentNode.createRelationshipTo(segmentNode, MEMDEXPATH);
+            modified = true;
         }
-        updateMemdexTree(memdexPath, counters, segmentNode);
+
+        if (updateRealmPath(realmTemplate, segment, tail, counter, segmentNode)) {
+            modified = true;
+        }
+
+        return modified;
     }
 
-    private void updateMemdexTree(MemdexPathNode memdexPath, ImmutableMap<String, CounterNode> counters, Node segmentNode) {
-        replaceAttributesRelationships(ImmutableSet.of(memdexPath.keyAttribute), segmentNode);
+    private boolean updateRealmPath(String realmTemplate,
+                                    RealmPathSegment segment,
+                                    ImmutableList<RealmPathSegment> tail,
+                                    CounterNode counter,
+                                    Node segmentNode) {
+        boolean modified = false;
 
-        updateCountersRelationships(memdexPath, counters, segmentNode);
-
-        for (MemdexPathNode child : memdexPath.children) {
-            mergeMemdexTree(segmentNode, child, counters);
+        if (replaceAttributesRelationships(ImmutableSet.of(segment.keyAttribute), segmentNode)) {
+            modified = true;
         }
+
+        if (tail.isEmpty()) {
+            if (appendCounterToSegment(realmTemplate, counter, segmentNode)) {
+                modified = true;
+            }
+        } else {
+            if (mergeRealmPath(realmTemplate, segmentNode, tail.get(0), tail.subList(1, tail.size()), counter)) {
+                modified = true;
+            }
+        }
+        return modified;
     }
 
     private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ImmutableMap<String, CounterNode> counters) {
         replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
-        Node memdexPathNode = createMemdexTree(realm.memdexPath, counters);
+        Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, counters);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
     }
 
-    private Node createMemdexTree(MemdexPathNode memdexPathNode, ImmutableMap<String, CounterNode> counters) {
+    private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ImmutableMap<String, CounterNode> counters) {
         Node segmentNode = graphDb.createNode(Labels.SEGMENT);
         segmentNode.setProperty(PATH, memdexPathNode.segment);
 
-        updateCountersRelationships(memdexPathNode, counters, segmentNode);
+        updateCountersRelationships(realmTemplate, memdexPathNode, counters, segmentNode);
 
         String keyType = memdexPathNode.keyAttribute;
         String[] split = keyType.split(":");
@@ -374,14 +563,62 @@ public final class SchemaLoader {
         }
 
         for (MemdexPathNode child : memdexPathNode.children) {
-            Node childNode = createMemdexTree(child, counters);
+            Node childNode = createMemdexTree(realmTemplate, child, counters);
             segmentNode.createRelationshipTo(childNode, MEMDEXPATH);
         }
 
         return segmentNode;
     }
 
-    private void updateCountersRelationships(MemdexPathNode memdexPath, ImmutableMap<String, CounterNode> counters, Node segmentNode) {
+    private boolean appendCounterToSegment(String realmTemplate, CounterNode counter, Node segmentNode) {
+        boolean modified = false;
+        Relationship relationship = null;
+        for (Relationship existingRelationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
+            Node counterNode = existingRelationship.getStartNode();
+            if (counter.name.equals(counterNode.getProperty(NAME).toString())) {
+                relationship = existingRelationship;
+                break;
+            }
+        }
+
+        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counter.name);
+        if (counterEntity.wasCreated) {
+            modified = true;
+            counterEntity.entity.setProperty(_TYPE, "counter");
+            if (counter.description == null) {
+                counterEntity.entity.removeProperty(DESCRIPTION);
+            } else {
+                counterEntity.entity.setProperty(_TYPE, "counter");
+            }
+            counterEntity.entity.setProperty("defaultAggregation", counter.defaultAggregation);
+            if (counter.defaultValue == null) {
+                counterEntity.entity.removeProperty("defaultValue");
+            } else {
+                counterEntity.entity.setProperty("defaultValue", counter.defaultValue);
+            }
+            counterEntity.entity.setProperty("valueType", counter.valueType);
+            counterEntity.entity.setProperty("unit", counter.unit);
+        }
+
+        if (relationship == null) {
+            relationship = counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
+            relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
+            modified = true;
+        } else {
+            String existingContext = relationship.getProperty(GraphModelConstants.CONTEXT, "").toString();
+            if (existingContext.equals(realmTemplate)) {
+                relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
+                modified = true;
+            }
+        }
+
+        return modified;
+    }
+
+    private void updateCountersRelationships(String realmTemplate,
+                                             MemdexPathNode memdexPath,
+                                             ImmutableMap<String, CounterNode> counters,
+                                             Node segmentNode) {
         Map<String, Relationship> existingRelationships = Maps.newHashMap();
         for (Relationship relationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
             Node counterNode = relationship.getStartNode();
@@ -411,16 +648,31 @@ public final class SchemaLoader {
             if (relationshipTo == null) {
                 relationshipTo = counterNodeEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             }
-            relationshipTo.setProperty("context", counterNode.context);
+            relationshipTo.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
         }
     }
 
-    private void replaceAttributesRelationships(ImmutableSet<String> attributes, Node node) {
-        node.getRelationships(OUTGOING, ATTRIBUTE).forEach(Relationship::delete);
-        attributes.forEach(a -> {
-            String[] split = a.split(":");
+    private boolean replaceAttributesRelationships(ImmutableSet<String> attributes, Node node) {
+        boolean modified = false;
+
+        Map<String, Relationship> existingRelationships = Maps.newHashMap();
+        for (Relationship relationship : node.getRelationships(OUTGOING, ATTRIBUTE)) {
+            Node attributeNode = relationship.getEndNode();
+            String a = attributeNode.getProperty(_TYPE).toString() + ':' + attributeNode.getProperty(NAME).toString();
+            if (attributes.contains(a)) {
+                existingRelationships.put(a, relationship);
+            } else {
+                relationship.delete();
+                modified = true;
+            }
+        }
+
+        for (String attribute : attributes) {
+            Relationship relationship = existingRelationships.get(attribute);
+
+            String[] split = attribute.split(":");
             if (split.length < 2 || split.length > 3) {
-                throw new IllegalArgumentException("Malformed attribute " + a);
+                throw new IllegalArgumentException("Malformed attribute " + attribute);
             }
             String type = split[0];
             String name = split[1];
@@ -428,14 +680,32 @@ public final class SchemaLoader {
             if (split.length == 3) {
                 specializer = split[2];
             }
-            UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
-            Relationship relationshipTo = node.createRelationshipTo(attributeNode.entity, ATTRIBUTE);
-            if (specializer == null) {
-                relationshipTo.removeProperty(LINK_PROP_SPECIALIZER);
+
+            if (relationship == null) {
+                UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
+                Relationship relationshipTo = node.createRelationshipTo(attributeNode.entity, ATTRIBUTE);
+                if (specializer == null) {
+                    relationshipTo.removeProperty(LINK_PROP_SPECIALIZER);
+                } else {
+                    relationshipTo.setProperty(LINK_PROP_SPECIALIZER, specializer);
+                }
+                modified = true;
             } else {
-                relationshipTo.setProperty(LINK_PROP_SPECIALIZER, specializer);
+                if (specializer == null) {
+                    if (relationship.getProperty(LINK_PROP_SPECIALIZER, null) != null) {
+                        relationship.removeProperty(LINK_PROP_SPECIALIZER);
+                        modified = true;
+                    }
+                } else {
+                    String existingSpecializer = relationship.getProperty(LINK_PROP_SPECIALIZER, "").toString();
+                    if (!existingSpecializer.equals(specializer)) {
+                        relationship.setProperty(LINK_PROP_SPECIALIZER, specializer);
+                        modified = true;
+                    }
+                }
             }
-        });
+        }
+        return modified;
     }
 
     private void deleteTree(boolean deleteRoot, Node root, Direction direction, RelationshipType relationshipType) {

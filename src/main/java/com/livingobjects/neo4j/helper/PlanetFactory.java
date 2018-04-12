@@ -7,8 +7,8 @@ import org.neo4j.graphdb.Node;
 
 import java.util.Optional;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 
 public class PlanetFactory {
 

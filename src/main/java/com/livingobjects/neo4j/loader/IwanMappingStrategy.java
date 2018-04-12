@@ -12,7 +12,7 @@ import com.livingobjects.neo4j.model.header.HeaderElement;
 import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
@@ -29,7 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 class IwanMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
@@ -118,7 +118,7 @@ class IwanMappingStrategy {
                 collect.putAll(addChildrenAttribute(s, collect, children)));
 
         if (collect.isEmpty()) {
-            collect.putAll(addChildrenAttribute(IwanModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children));
+            collect.putAll(addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children));
         }
         mapping.keySet().stream()
                 .filter(k -> !collect.keySet().contains(k))
@@ -159,9 +159,9 @@ class IwanMappingStrategy {
                 Set<String> p = collect.computeIfAbsent(current, k -> Sets.newHashSet());
 
                 Node startNode = relationship.getStartNode();
-                String type = startNode.getProperty(IwanModelConstants._TYPE).toString();
-                String name = startNode.getProperty(IwanModelConstants.NAME).toString();
-                String key = type + IwanModelConstants.KEYTYPE_SEPARATOR + name;
+                String type = startNode.getProperty(GraphModelConstants._TYPE).toString();
+                String name = startNode.getProperty(GraphModelConstants.NAME).toString();
+                String key = type + GraphModelConstants.KEYTYPE_SEPARATOR + name;
                 if (mapping.keySet().contains(key)) {
                     p.add(key);
                     addChildrenAttribute(key, collect, children).forEach((k, v) -> {

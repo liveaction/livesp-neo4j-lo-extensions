@@ -11,10 +11,10 @@ import org.neo4j.graphdb.Node;
 import java.util.List;
 import java.util.Map;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public class SchemaReader {
 
@@ -32,9 +32,9 @@ public class SchemaReader {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
-            String counterRef = "kpi:" + counterNode.getProperty("name") + "@context:" + link.getProperty("context");
-            counters.add(counterRef);
-            countersDictionary.putIfAbsent(counterRef, counterNode);
+            String name = counterNode.getProperty("name").toString();
+            counters.add(name);
+            countersDictionary.putIfAbsent(name, counterNode);
         });
 
         List<MemdexPathNode> children = Lists.newArrayList();

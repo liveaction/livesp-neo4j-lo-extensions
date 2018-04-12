@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
@@ -17,10 +17,10 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
 import static org.neo4j.graphdb.Direction.INCOMING;
 
 public final class MetaSchema {
@@ -47,13 +47,13 @@ public final class MetaSchema {
         ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
-            String keytype = n.getProperty(IwanModelConstants._TYPE).toString();
-            String key = keytype + IwanModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
+            String keytype = n.getProperty(GraphModelConstants._TYPE).toString();
+            String key = keytype + GraphModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
             boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
             if (isOverride) overrideBldr.add(key);
 
-            if (IwanModelConstants.KEY_TYPES.contains(keytype)) {
-                if (IwanModelConstants.IMPORTABLE_KEY_TYPES.contains(keytype)) {
+            if (GraphModelConstants.KEY_TYPES.contains(keytype)) {
+                if (GraphModelConstants.IMPORTABLE_KEY_TYPES.contains(keytype)) {
                     importableKeyTypesBldr.put(key, n);
                 }
                 ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
@@ -61,7 +61,7 @@ public final class MetaSchema {
                 n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
                 n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
                 ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
-                if (!IwanModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
+                if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
                 childrenRelationsBldr.put(key, crels.build());
@@ -112,22 +112,22 @@ public final class MetaSchema {
     }
 
     public Stream<String> getMonoParentRelations(String keyAttribute) {
-        return filterParentRelations(keyAttribute, cardinality -> !IwanModelConstants.CARDINALITY_MULTIPLE.equals(cardinality));
+        return filterParentRelations(keyAttribute, cardinality -> !GraphModelConstants.CARDINALITY_MULTIPLE.equals(cardinality));
     }
 
     public Optional<String> getRequiredParent(String keyAttribute) {
-        return filterParentRelations(keyAttribute, cardinality -> cardinality == null || IwanModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality))
+        return filterParentRelations(keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality))
                 .findFirst();
     }
 
     private Stream<String> filterParentRelations(String keyAttribute, Function<String, Boolean> cardinalityFilter) {
         return parentRelations.get(keyAttribute).stream()
-                .filter(r -> cardinalityFilter.apply(r.getProperty(IwanModelConstants.CARDINALITY, "").toString()))
+                .filter(r -> cardinalityFilter.apply(r.getProperty(GraphModelConstants.CARDINALITY, "").toString()))
                 .map(this::getKeyAttribute);
     }
 
     private String getKeyAttribute(Relationship r) {
-        return r.getEndNode().getProperty(IwanModelConstants._TYPE).toString() + IwanModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
+        return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
     }
 
 }

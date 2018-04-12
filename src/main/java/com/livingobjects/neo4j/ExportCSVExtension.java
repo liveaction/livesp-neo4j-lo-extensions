@@ -11,7 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
-import com.livingobjects.neo4j.model.iwan.IwanModelConstants;
+import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
@@ -43,8 +43,8 @@ import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.IwanModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 @Path("/export")
 public final class ExportCSVExtension {
@@ -116,7 +116,7 @@ public final class ExportCSVExtension {
                 for (int index = attributesToExport.size() - 1; index >= 0; index--) {
                     String leafAttribute = attributesToExport.get(index);
                     ImmutableList<String> lineageAttributes = attributesToExport.subList(0, index);
-                    ResourceIterator<Node> leaves = graphDb.findNodes(Labels.NETWORK_ELEMENT, IwanModelConstants._TYPE, leafAttribute);
+                    ResourceIterator<Node> leaves = graphDb.findNodes(Labels.NETWORK_ELEMENT, GraphModelConstants._TYPE, leafAttribute);
                     while (leaves.hasNext()) {
                         Node leaf = leaves.next();
                         if (!lineages.dejaVu(leaf)) {

@@ -18,50 +18,58 @@ public class RelationshipUtils {
     /**
      * Update the given relationships between the given nodes (create or update it).
      * Other relationships of the same type that already exists are not removed.
+     *
+     * @return true if database has been modified, false otherwise.
      */
-    public static void updateRelationships(Direction direction,
-                                           Node startNode,
-                                           RelationshipType relationshipType,
-                                           UniqueElementFactory uniqueNodeFactory,
-                                           Iterable<MatchProperties> nodesToMatch) {
-        updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, false, node -> {
+    public static boolean updateRelationships(Direction direction,
+                                              Node startNode,
+                                              RelationshipType relationshipType,
+                                              UniqueElementFactory uniqueNodeFactory,
+                                              Iterable<MatchProperties> nodesToMatch) {
+        return updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, false, node -> {
         });
     }
 
     /**
      * Update the given relationships between the given nodes (create or update it).
      * Other relationships of the same type that already exists are not removed.
+     *
+     * @return true if database has been modified, false otherwise.
      */
-    public static void updateRelationships(Direction direction,
-                                           Node startNode,
-                                           RelationshipType relationshipType,
-                                           Iterable<Node> relationshipsEndNodes) {
-        updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, false, node -> {
+    public static boolean updateRelationships(Direction direction,
+                                              Node startNode,
+                                              RelationshipType relationshipType,
+                                              Iterable<Node> relationshipsEndNodes) {
+        return updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, false, node -> {
         });
     }
 
     /**
      * Update the given relationships between the given nodes.
      * Other relationships of the same type that already exists are removed.
+     *
+     * @return true if database has been modified, false otherwise.
      */
-    public static void replaceRelationships(Direction direction,
-                                            Node startNode,
-                                            RelationshipType relationshipType,
-                                            UniqueElementFactory uniqueNodeFactory,
-                                            Iterable<MatchProperties> nodesToMatch) {
-        replaceRelationships(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, node -> {
+    public static boolean replaceRelationships(Direction direction,
+                                               Node startNode,
+                                               RelationshipType relationshipType,
+                                               UniqueElementFactory uniqueNodeFactory,
+                                               Iterable<MatchProperties> nodesToMatch) {
+        return replaceRelationships(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, node -> {
         });
     }
 
     /**
      * Update the given relationships between the given nodes.
      * Other relationships of the same type that already exists are removed.
+     *
+     * @return true if database has been modified, false otherwise.
      */
-    public static void replaceRelationships(Direction direction,
-                                            Node startNode,
-                                            RelationshipType relationshipType,
-                                            Iterable<Node> relationshipsEndNodes) {
-        replaceRelationships(direction, startNode, relationshipType, relationshipsEndNodes, node -> {
+    public static boolean replaceRelationships(Direction direction,
+                                               Node startNode,
+                                               RelationshipType relationshipType,
+                                               Iterable<Node> relationshipsEndNodes) {
+        return replaceRelationships(direction, startNode, relationshipType, relationshipsEndNodes, node -> {
         });
     }
 
@@ -69,45 +77,48 @@ public class RelationshipUtils {
      * Update the given relationships between the given nodes.
      * Other relationships of the same type that already exists are removed.
      * Can prodive a handler to handle nodes that have been detached during process.
+     *
+     * @return true if database has been modified, false otherwise.
      */
-    public static void replaceRelationships(Direction direction,
-                                            Node startNode,
-                                            RelationshipType relationshipType,
-                                            Iterable<Node> relationshipsEndNodes,
-                                            Consumer<Node> detachedNodeHandler) {
-        updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, true, detachedNodeHandler);
+    public static boolean replaceRelationships(Direction direction,
+                                               Node startNode,
+                                               RelationshipType relationshipType,
+                                               Iterable<Node> relationshipsEndNodes,
+                                               Consumer<Node> detachedNodeHandler) {
+        return updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, true, detachedNodeHandler);
     }
 
-    private static void replaceRelationships(Direction direction,
-                                             Node startNode,
-                                             RelationshipType relationshipType,
-                                             UniqueElementFactory uniqueNodeFactory,
-                                             Iterable<MatchProperties> nodesToMatch,
-                                             Consumer<Node> detachedNodeHandler) {
-        updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, true, detachedNodeHandler);
+    private static boolean replaceRelationships(Direction direction,
+                                                Node startNode,
+                                                RelationshipType relationshipType,
+                                                UniqueElementFactory uniqueNodeFactory,
+                                                Iterable<MatchProperties> nodesToMatch,
+                                                Consumer<Node> detachedNodeHandler) {
+        return updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, true, detachedNodeHandler);
     }
 
-    private static void updateRelationshipsInternal(Direction direction,
-                                                    Node startNode,
-                                                    RelationshipType relationshipType,
-                                                    UniqueElementFactory uniqueNodeFactory,
-                                                    Iterable<MatchProperties> nodesToMatch,
-                                                    boolean removeOtherRelationships,
-                                                    Consumer<Node> detachedNodeHandler) {
+    private static boolean updateRelationshipsInternal(Direction direction,
+                                                       Node startNode,
+                                                       RelationshipType relationshipType,
+                                                       UniqueElementFactory uniqueNodeFactory,
+                                                       Iterable<MatchProperties> nodesToMatch,
+                                                       boolean removeOtherRelationships,
+                                                       Consumer<Node> detachedNodeHandler) {
         Set<Node> relationshipsEndNodes = Sets.newLinkedHashSet();
         for (MatchProperties matchProperties : nodesToMatch) {
             UniqueEntity<Node> node = uniqueNodeFactory.getOrCreateWithOutcome(matchProperties);
             relationshipsEndNodes.add(node.entity);
         }
-        updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, removeOtherRelationships, detachedNodeHandler);
+        return updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, removeOtherRelationships, detachedNodeHandler);
     }
 
-    private static void updateRelationshipsInternal(Direction direction,
-                                                    Node startNode,
-                                                    RelationshipType relationshipType,
-                                                    Iterable<Node> relationshipsEndNodes,
-                                                    boolean removeOtherRelationships,
-                                                    Consumer<Node> detachedNodeHandler) {
+    private static boolean updateRelationshipsInternal(Direction direction,
+                                                       Node startNode,
+                                                       RelationshipType relationshipType,
+                                                       Iterable<Node> relationshipsEndNodes,
+                                                       boolean removeOtherRelationships,
+                                                       Consumer<Node> detachedNodeHandler) {
+        boolean modified = false;
         Set<Node> toLinks = Sets.newHashSet(relationshipsEndNodes);
 
         Set<Node> detachedNodes = Sets.newHashSet();
@@ -117,6 +128,7 @@ public class RelationshipUtils {
             if (!toLinks.remove(otherNode)) {
                 if (removeOtherRelationships) {
                     relationship.delete();
+                    modified = true;
                     detachedNodes.add(otherNode);
                 }
             }
@@ -128,7 +140,9 @@ public class RelationshipUtils {
             } else {
                 relationshipsEndNode.createRelationshipTo(startNode, relationshipType);
             }
+            modified = true;
         }
+        return modified;
     }
 
 }
