@@ -56,6 +56,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static java.util.stream.Collectors.toMap;
@@ -201,9 +202,11 @@ public final class SchemaLoader {
                                 String counterName = counterNode.getProperty(NAME).toString();
                                 if (counterName.equals(counter)) {
 
-                                    if (!counterNode.hasRelationship()) {
+                                    if (!counterNode.hasRelationship(INCOMING, VAR)) {
                                         counterRelationship.delete();
-                                        counterNode.delete();
+                                        if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
+                                            counterNode.delete();
+                                        }
                                     }
                                     boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
                                     boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();

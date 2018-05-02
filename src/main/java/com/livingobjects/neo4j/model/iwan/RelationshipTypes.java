@@ -12,4 +12,5 @@ public final class RelationshipTypes {
     public static final RelationshipType MEMDEXPATH = DynamicRelationshipType.withName("MdxPath");
     public static final RelationshipType EXTEND = DynamicRelationshipType.withName("Extend");
     public static final RelationshipType APPLIED_TO = DynamicRelationshipType.withName("AppliedTo");
+    public static final RelationshipType VAR = DynamicRelationshipType.withName("Var");
 }
