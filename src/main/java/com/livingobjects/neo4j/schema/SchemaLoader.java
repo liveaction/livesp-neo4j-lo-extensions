@@ -201,8 +201,8 @@ public final class SchemaLoader {
                                 String counterName = counterNode.getProperty(NAME).toString();
                                 if (counterName.equals(counter)) {
 
-                                    counterRelationship.delete();
                                     if (!counterNode.hasRelationship()) {
+                                        counterRelationship.delete();
                                         counterNode.delete();
                                     }
                                     boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
