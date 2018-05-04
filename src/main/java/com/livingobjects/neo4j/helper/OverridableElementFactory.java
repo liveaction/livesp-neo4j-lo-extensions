@@ -3,7 +3,6 @@ package com.livingobjects.neo4j.helper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -42,12 +41,11 @@ public final class OverridableElementFactory {
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
         graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
             Iterable<Relationship> relationships = node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
-            if (Iterables.size(relationships) != 1) {
-                LOGGER.error("Element node {} as too many Planet relations !", node.getProperty(TAG));
+            if (relationships.iterator().hasNext()) {
+                Relationship only = relationships.iterator().next();
+                String nodeScope = only.getEndNode().getProperty(_SCOPE).toString();
+                expandsBldr.put(nodeScope, node);
             }
-            Relationship only = relationships.iterator().next();
-            String nodeScope = only.getEndNode().getProperty(_SCOPE).toString();
-            expandsBldr.put(nodeScope, node);
         });
         ImmutableMap<String, Node> expands = expandsBldr.build();
 
