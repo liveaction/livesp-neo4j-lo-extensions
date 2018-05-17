@@ -171,8 +171,7 @@ public final class IWanTopologyLoader {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
             ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, metaSchema.childrenRelations);
 
-            // Try to update elements which are not possible to create (no parent founds)
-            // updated elements must exist or NoSuchElement was throw
+            // Update the elements in the CSV line that cannot be created in any case (because required parent are missing in the CSV line)
             Map<String, Optional<UniqueEntity<Node>>> elementsWithoutParents = strategy.getAllElementsType().stream()
                     .filter(key -> !lineage.keySet().contains(key))
                     .filter(key -> !SCOPE_CLASS.equals(key))
