@@ -5,7 +5,7 @@ import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import com.livingobjects.neo4j.model.schema.MemdexPathNode;
+import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
@@ -15,13 +15,9 @@ import org.codehaus.jackson.JsonEncoding;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.JsonParser;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.NotFoundException;
-import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,15 +36,12 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
@@ -127,45 +120,18 @@ public class SchemaTemplateExtension {
                     }
                 });
 
-                Map<String, Node> countersDictionary = Maps.newHashMap();
-                Map<String, RealmNode> realms = Maps.newHashMap();
-                realmNodes.forEach(realmNode -> {
-                    String name = realmNode.getProperty(NAME).toString();
-                    try {
-                        Relationship firstMemdexPath = realmNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING);
-                        if (firstMemdexPath != null) {
-                            Node segment = firstMemdexPath.getEndNode();
-                            Entry<MemdexPathNode, Map<String, Node>> segments = SchemaReader.browseSegments(segment);
-                            countersDictionary.putAll(segments.getValue());
-                            List<String> attributes = Lists.newArrayList();
-                            Iterable<Relationship> attributesRel = realmNode.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
-                            for (Relationship attribute : attributesRel) {
-                                String attType = attribute.getEndNode().getProperty(_TYPE).toString();
-                                String attName = attribute.getEndNode().getProperty(NAME).toString();
-                                attributes.add(attType + ":" + attName);
-                            }
-                            RealmNode realm = new RealmNode(name, attributes, segments.getKey());
-                            realms.put("realm:" + name, realm);
-                        } else {
-                            LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
-                        }
-                    } catch (NotFoundException e) {
-                        throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
-                    }
-                });
+                Map<String, CounterNode> countersDictionary = Maps.newHashMap();
+                Map<String, RealmNode> realms = realmNodes.stream()
+                        .map(n -> SchemaReader.readRealm(n, false, countersDictionary))
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));
 
                 jg.writeObjectFieldStart("counters");
                 jg.flush();
                 countersDictionary.forEach((key, value) -> {
                     try {
-                        ObjectNode counter = new ObjectNode(JsonNodeFactory.instance);
-                        counter.put("unit", value.getProperty("unit").toString());
-                        counter.put("defaultValue", Optional.ofNullable(value.getProperty("defaultValue", null)).map(Object::toString).orElse(null));
-                        counter.put("defaultAggregation", value.getProperty("defaultAggregation").toString());
-                        counter.put("valueType", value.getProperty("valueType").toString());
-                        counter.put(NAME, value.getProperty(NAME).toString());
-                        counter.put(DESCRIPTION, Optional.ofNullable(value.getProperty(DESCRIPTION, null)).map(Object::toString).orElse(null));
-                        jg.writeObjectField(key, counter);
+                        jg.writeObjectField(key, value);
                     } catch (IOException e) {
                         LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
                         if (LOGGER.isDebugEnabled()) {

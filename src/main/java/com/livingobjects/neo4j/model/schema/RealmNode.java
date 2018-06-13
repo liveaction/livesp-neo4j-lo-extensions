@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.schema;
 import com.google.common.collect.ImmutableSet;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-import java.util.List;
+import java.util.Set;
 
 public final class RealmNode {
     public final String name;
@@ -11,7 +11,7 @@ public final class RealmNode {
     public final MemdexPathNode memdexPath;
 
     public RealmNode(@JsonProperty("topologyRealm") String name,
-                     @JsonProperty("attributes") List<String> attributes,
+                     @JsonProperty("attributes") Set<String> attributes,
                      @JsonProperty("memdexPath") MemdexPathNode memdexPath) {
         this.name = name;
         this.attributes = ImmutableSet.copyOf(attributes);
