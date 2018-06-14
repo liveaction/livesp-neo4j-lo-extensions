@@ -173,7 +173,7 @@ public final class SchemaLoader {
                 Optional<MemdexPathNode> previousMemdexPath = SchemaReader.readMemdexPath(segmentNode, true, Maps.newHashMap());
                 if (previousMemdexPath.isPresent()) {
                     throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", managedRealm.name, existingPath, managedRealm.memdexPath.segment));
-                }else {
+                } else {
                     return managedRealm;
                 }
             }
@@ -731,18 +731,16 @@ public final class SchemaLoader {
                 throw new IllegalArgumentException(String.format("Counter with reference '%s' is not found in provided schema.", counter));
             }
             UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counterNode.name);
-            if (counterNodeEntity.wasCreated) {
-                counterNodeEntity.entity.setProperty("_type", "counter");
-                counterNodeEntity.entity.setProperty(MANAGED, true);
-                counterNodeEntity.entity.setProperty("defaultAggregation", counterNode.defaultAggregation);
-                if (counterNode.defaultValue == null) {
-                    counterNodeEntity.entity.removeProperty("defaultValue");
-                } else {
-                    counterNodeEntity.entity.setProperty("defaultValue", counterNode.defaultValue);
-                }
-                counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
-                counterNodeEntity.entity.setProperty("unit", counterNode.unit);
+            counterNodeEntity.entity.setProperty("_type", "counter");
+            counterNodeEntity.entity.setProperty(MANAGED, true);
+            counterNodeEntity.entity.setProperty("defaultAggregation", counterNode.defaultAggregation);
+            if (counterNode.defaultValue == null) {
+                counterNodeEntity.entity.removeProperty("defaultValue");
+            } else {
+                counterNodeEntity.entity.setProperty("defaultValue", counterNode.defaultValue);
             }
+            counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
+            counterNodeEntity.entity.setProperty("unit", counterNode.unit);
 
             Relationship relationshipTo = existingRelationships.remove(counterNode.name);
             if (relationshipTo == null) {
