@@ -1,14 +1,13 @@
 package com.livingobjects.neo4j;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
+import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
 import org.codehaus.jackson.JsonEncoding;
@@ -120,16 +119,19 @@ public class SchemaTemplateExtension {
                     }
                 });
 
-                Map<String, CounterNode> countersDictionary = Maps.newHashMap();
+                CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder();
                 Map<String, RealmNode> realms = realmNodes.stream()
-                        .map(n -> SchemaReader.readRealm(n, false, countersDictionary))
+                        .map(n -> SchemaReader.readRealm(n, false, countersDefinitionBuilder))
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));
 
                 jg.writeObjectFieldStart("counters");
                 jg.flush();
-                countersDictionary.forEach((key, value) -> {
+
+                CountersDefinition countersDefinition = countersDefinitionBuilder.build();
+
+                countersDefinition.counters.forEach((key, value) -> {
                     try {
                         jg.writeObjectField(key, value);
                     } catch (IOException e) {

@@ -8,6 +8,7 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.RealmNode;
+import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
@@ -31,13 +32,13 @@ public class SchemaReader {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaReader.class);
 
-    public static Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, Map<String, CounterNode> countersDictionary) {
+    public static Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String name = realmTemplateNode.getProperty(NAME).toString();
         try {
             Relationship firstMemdexPath = realmTemplateNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING);
             if (firstMemdexPath != null) {
                 Node segment = firstMemdexPath.getEndNode();
-                Optional<MemdexPathNode> memdexPathNode = SchemaReader.readMemdexPath(segment, onlyUnamanagedCounters, countersDictionary);
+                Optional<MemdexPathNode> memdexPathNode = SchemaReader.readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
                 if (!memdexPathNode.isPresent()) {
                     LOGGER.warn("No counter for realm '{}'. Realm is ignored.", name);
                 }
@@ -61,14 +62,14 @@ public class SchemaReader {
         }
     }
 
-    static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, Map<String, CounterNode> countersDictionary) {
+    static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
 
-        List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDictionary);
+        List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
         List<MemdexPathNode> children = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(path -> {
-            readMemdexPath(path.getEndNode(), onlyUnamanagedCounters, countersDictionary)
+            readMemdexPath(path.getEndNode(), onlyUnamanagedCounters, countersDefinitionBuilder)
                     .ifPresent(children::add);
         });
 
@@ -79,21 +80,23 @@ public class SchemaReader {
         return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children));
     }
 
-    private static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, Map<String, CounterNode> countersDictionary) {
+    private static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
 
             String name = counterNode.getProperty("name").toString();
+            CounterNode counter = readCounter(counterNode);
+            Boolean managed = isManaged(counterNode);
             if (onlyUnamanagedCounters) {
-                if (!isManaged(counterNode)) {
+                if (!managed) {
                     counters.add(name);
-                    countersDictionary.putIfAbsent(name, readCounter(counterNode));
+                    countersDefinitionBuilder.add(counter, managed);
                 }
             } else {
                 counters.add(name);
-                countersDictionary.putIfAbsent(name, readCounter(counterNode));
+                countersDefinitionBuilder.add(counter, managed);
             }
         });
         return ImmutableList.copyOf(counters);
