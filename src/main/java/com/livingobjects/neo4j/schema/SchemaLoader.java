@@ -293,23 +293,15 @@ public final class SchemaLoader {
                                 String counterName = counterNode.getProperty(NAME).toString();
                                 if (counterName.equals(counter)) {
 
-                                    if (!isManaged(counterNode)) {
-
-                                        counterRelationship.delete();
-                                        if (!counterNode.hasRelationship(INCOMING, VAR)) {
-                                            if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
-                                                counterNode.delete();
-                                            }
-                                        }
-                                        boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
-                                        boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
-                                        if (!hasCounters && !hasSubPaths) {
-                                            memdexPathNode.getRelationships().forEach(Relationship::delete);
-                                            memdexPathNode.delete();
-                                        }
-
+                                    if (deleteCounter(counterRelationship, counterNode)) {
                                         deleted = true;
-
+                                    }
+                                    boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
+                                    boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
+                                    if (!hasCounters && !hasSubPaths) {
+                                        memdexPathNode.getRelationships().forEach(Relationship::delete);
+                                        memdexPathNode.delete();
+                                        deleted = true;
                                     }
                                     break;
                                 }
@@ -334,6 +326,21 @@ public final class SchemaLoader {
         }
 
         return deleted;
+    }
+
+    private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
+        if (!isManaged(counterNode)) {
+
+            providedRelationship.delete();
+            if (!counterNode.hasRelationship(INCOMING, VAR)) {
+                if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
+                    counterNode.delete();
+                }
+            }
+
+            return true;
+        }
+        return false;
     }
 
     private boolean appendCounterToSchema(String schemaId,
@@ -750,10 +757,9 @@ public final class SchemaLoader {
         }
 
         for (Map.Entry<String, Relationship> counterRelationship : existingRelationships.entrySet()) {
-            Node counterNode = counterRelationship.getValue().getStartNode();
-            if (isManaged(counterNode)) {
-                counterNode.delete();
-            }
+            Relationship relationship = counterRelationship.getValue();
+            Node counterNode = relationship.getStartNode();
+            deleteCounter(relationship, counterNode);
         }
     }
 
@@ -823,10 +829,7 @@ public final class SchemaLoader {
             for (Relationship relationship : root.getRelationships(INCOMING, PROVIDED)) {
                 Node counterNode = relationship.getStartNode();
                 if (counterNode.hasLabel(Labels.COUNTER)) {
-                    if (isManaged(counterNode)) {
-                        counterNode.getRelationships().forEach(Relationship::delete);
-                        counterNode.delete();
-                    }
+                    deleteCounter(relationship, counterNode);
                 }
             }
             root.getRelationships().forEach(Relationship::delete);
