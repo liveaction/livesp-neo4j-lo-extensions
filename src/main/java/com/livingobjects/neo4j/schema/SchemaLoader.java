@@ -493,7 +493,13 @@ public final class SchemaLoader {
             }
         } else {
             // Move all ne from old planet to best matching
-            ImmutableMap<String, ImmutableSet<String>> newPlanetAttributes = ImmutableMap.copyOf(newPlanets.stream()
+            ImmutableSet.Builder<PlanetNode> targetPlanetsBuilder = ImmutableSet.builder();
+            if (planetUpdate.planetUpdateStatus != DELETE) {
+                targetPlanetsBuilder.add(planetUpdate.oldPlanet);
+            }
+            targetPlanetsBuilder.addAll(newPlanets);
+            ImmutableMap<String, ImmutableSet<String>> newPlanetAttributes = ImmutableMap.copyOf(targetPlanetsBuilder.build()
+                    .stream()
                     .collect(toMap(p -> p.name, p -> p.attributes)));
             PlanetByContext planetByContext = new PlanetByContext(newPlanetAttributes);
             Map<String, Node> newPlanetNodes = Maps.newHashMap();
