@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
@@ -694,7 +695,10 @@ public final class SchemaLoader {
             }
         }
 
-        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counter.name);
+        String counterId = counter.name + "@context:" + realmTemplate;
+        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+        counterEntity.entity.setProperty(NAME, counter.name);
+        counterEntity.entity.setProperty(CONTEXT, realmTemplate);
         if (counterEntity.wasCreated) {
             modified = true;
             counterEntity.entity.setProperty(_TYPE, "counter");
@@ -744,7 +748,10 @@ public final class SchemaLoader {
             if (counterNode == null) {
                 throw new IllegalArgumentException(String.format("Counter with reference '%s' is not found in provided schema.", counter));
             }
-            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counterNode.name);
+            String counterId = counterNode.name + "@context:" + realmTemplate;
+            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+            counterNodeEntity.entity.setProperty(NAME, counterNode.name);
+            counterNodeEntity.entity.setProperty(CONTEXT, realmTemplate);
             counterNodeEntity.entity.setProperty("_type", "counter");
             if (managedSchema.counters.isManaged(counter)) {
                 counterNodeEntity.entity.setProperty(MANAGED, true);

@@ -74,10 +74,10 @@ public final class CountersDefinition {
             return this;
         }
 
-        public Builder add(CounterNode counterNode, boolean managed) {
-            counters.put(counterNode.name, counterNode);
+        public Builder add(String id, CounterNode counterNode, boolean managed) {
+            counters.put(id, counterNode);
             if (managed) {
-                managedCounters.add(counterNode.name);
+                managedCounters.add(id);
             }
             return this;
         }

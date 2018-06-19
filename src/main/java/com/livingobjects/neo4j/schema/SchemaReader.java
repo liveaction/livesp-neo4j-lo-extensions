@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
@@ -84,19 +85,19 @@ public class SchemaReader {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
-            if (!counterNode.hasProperty("name") || !link.hasProperty("context")) return;
+            if (!counterNode.hasProperty(ID)) return;
 
-            String name = counterNode.getProperty("name").toString();
+            String id = counterNode.getProperty(ID).toString();
             CounterNode counter = readCounter(counterNode);
             Boolean managed = isManaged(counterNode);
             if (onlyUnamanagedCounters) {
                 if (!managed) {
-                    counters.add(name);
-                    countersDefinitionBuilder.add(counter, managed);
+                    counters.add(id);
+                    countersDefinitionBuilder.add(id, counter, managed);
                 }
             } else {
-                counters.add(name);
-                countersDefinitionBuilder.add(counter, managed);
+                counters.add(id);
+                countersDefinitionBuilder.add(id, counter, managed);
             }
         });
         return ImmutableList.copyOf(counters);
