@@ -16,7 +16,6 @@ import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.loader.Scope;
-import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
@@ -718,15 +717,8 @@ public final class SchemaLoader {
         }
 
         if (relationship == null) {
-            relationship = counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
-            relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
+           counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             modified = true;
-        } else {
-            String existingContext = relationship.getProperty(GraphModelConstants.CONTEXT, "").toString();
-            if (!existingContext.equals(realmTemplate)) {
-                relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
-                modified = true;
-            }
         }
 
         return modified;
@@ -767,9 +759,8 @@ public final class SchemaLoader {
 
             Relationship relationshipTo = existingRelationships.remove(counterNode.name);
             if (relationshipTo == null) {
-                relationshipTo = counterNodeEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
+                counterNodeEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             }
-            relationshipTo.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
         }
 
         for (Map.Entry<String, Relationship> counterRelationship : existingRelationships.entrySet()) {
