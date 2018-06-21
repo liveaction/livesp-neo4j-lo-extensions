@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.loader;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
@@ -50,15 +51,20 @@ public final class TopologyLoader {
 
     public void loadRelationships(List<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer) {
         try (Transaction tx = graphDb.beginTx()) {
+            List<RelationshipStatus> statuses = Lists.newArrayList();
             for (Relationship relationship : relationships) {
                 try {
                     loadRelationship(relationship);
-                    relationshipStatusConsumer.accept(new RelationshipStatus(relationship.type, relationship.from, relationship.to, true, null));
+                    statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, true, null));
                 } catch (Throwable e) {
-                    relationshipStatusConsumer.accept(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, e.getMessage()));
+                    statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, e.getMessage()));
                 }
             }
             tx.success();
+            statuses.forEach(relationshipStatusConsumer);
+        } catch (Throwable e) {
+            String message = e.getMessage();
+            relationships.forEach(relationship -> relationshipStatusConsumer.accept(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, message)));
         }
     }
 
@@ -81,7 +87,16 @@ public final class TopologyLoader {
             ImmutableSet<String> authorizedRels = crossAttributeRelationships.get(fromType);
             if (authorizedRels != null && authorizedRels.contains(toType)) {
                 org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
-                relationship.attributes.forEach(r::setProperty);
+                for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
+                    r.setProperty(e.getKey(), e.getValue());
+                }
+                relationship.attributes.forEach((key, value) -> {
+                    if (value != null) {
+                        r.setProperty(key, value);
+                    } else {
+                        r.removeProperty(key);
+                    }
+                });
             } else {
                 throw new IllegalArgumentException(String.format("Relationship %s is not allowed from '%s' to '%s'", relationship.type, fromType, toType));
             }

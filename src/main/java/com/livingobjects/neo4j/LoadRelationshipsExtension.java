@@ -109,12 +109,7 @@ public final class LoadRelationshipsExtension {
 
     private void load(Iterable<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer) {
         for (List<Relationship> batch : Lists.partition(ImmutableList.copyOf(relationships), 10000)) {
-            try {
-                topologyLoader.loadRelationships(batch, relationshipStatusConsumer);
-            } catch (Throwable e) {
-                String message = e.getMessage();
-                batch.forEach(relationship -> relationshipStatusConsumer.accept(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, message)));
-            }
+            topologyLoader.loadRelationships(batch, relationshipStatusConsumer);
         }
     }
 
