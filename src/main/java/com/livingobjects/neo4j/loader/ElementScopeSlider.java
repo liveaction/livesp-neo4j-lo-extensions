@@ -13,7 +13,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 /**
  * See <a href="http://redmine.livingobjects.com/issues/12069">Redmine #12069</a>

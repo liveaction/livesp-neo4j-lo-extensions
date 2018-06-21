@@ -33,7 +33,6 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 
 import java.util.Collection;
@@ -826,7 +825,7 @@ public final class SchemaLoader {
         return modified;
     }
 
-    private void deleteRealm(boolean deleteRoot, Node root, Direction direction, RelationshipType relationshipType) {
+    private void deleteRealm(boolean deleteRoot, Node root, Direction direction, org.neo4j.graphdb.RelationshipType relationshipType) {
         Iterable<Relationship> relationships = root.getRelationships(direction, relationshipType);
         for (Relationship relationship : relationships) {
             Node otherNode = relationship.getOtherNode(root);

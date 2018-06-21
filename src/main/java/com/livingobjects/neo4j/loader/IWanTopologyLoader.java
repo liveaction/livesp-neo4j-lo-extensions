@@ -37,7 +37,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -355,7 +354,7 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Relationship createOutgoingUniqueLink(Node node, Node parent, RelationshipType linkType) {
+    private Relationship createOutgoingUniqueLink(Node node, Node parent, org.neo4j.graphdb.RelationshipType linkType) {
         for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
             if (next.getEndNode().equals(parent)) {
                 return next;

@@ -3,7 +3,8 @@ package com.livingobjects.neo4j.model.iwan;
 import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.RelationshipType;
 
-public final class RelationshipTypes {
+public class RelationshipTypes {
+
     public static final RelationshipType ATTRIBUTE = DynamicRelationshipType.withName("Attribute");
     public static final RelationshipType CROSS_ATTRIBUTE = DynamicRelationshipType.withName("CrossAttribute");
     public static final RelationshipType CONNECT = DynamicRelationshipType.withName("Connect");
@@ -13,4 +14,5 @@ public final class RelationshipTypes {
     public static final RelationshipType EXTEND = DynamicRelationshipType.withName("Extend");
     public static final RelationshipType APPLIED_TO = DynamicRelationshipType.withName("AppliedTo");
     public static final RelationshipType VAR = DynamicRelationshipType.withName("Var");
+
 }

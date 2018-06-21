@@ -90,7 +90,7 @@ public class SchemaTemplateExtension {
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
-        try (Transaction tx = graphDb.beginTx()) {
+        try (Transaction ignore = graphDb.beginTx()) {
             Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
 
             if (schemaNode == null) {

@@ -25,7 +25,7 @@ public class ElementScopeSliderTest {
     private ElementScopeSlider tested;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         GraphDatabaseService graphDb = wNeo.getGraphDatabaseService();
         try (Transaction ignore = graphDb.beginTx()) {
             TemplatedPlanetFactory templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
@@ -34,7 +34,7 @@ public class ElementScopeSliderTest {
     }
 
     @Test
-    public void slide() throws Exception {
+    public void slide() {
         GraphDatabaseService graphDb = wNeo.getGraphDatabaseService();
         try (Transaction ignore = graphDb.beginTx()) {
             Node element = graphDb.findNode(Labels.NETWORK_ELEMENT, TAG, "class=neType,cpe=AA_RJ45,neType=cpe");
