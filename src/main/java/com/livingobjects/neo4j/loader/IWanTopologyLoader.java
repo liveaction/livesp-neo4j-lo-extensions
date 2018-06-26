@@ -231,12 +231,14 @@ public final class IWanTopologyLoader {
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
                 for (String endKeyType : rel.getValue()) {
-                    Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
-                    optEndNode.ifPresent(toNode -> {
-                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
-                        String key = keyType + ELEMENT_SEPARATOR + endKeyType;
-                        multiElementLinks.put(key, link);
-                    });
+                    if (!keyType.equals(endKeyType)) {
+                        Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
+                        optEndNode.ifPresent(toNode -> {
+                            Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
+                            String key = keyType + ELEMENT_SEPARATOR + endKeyType;
+                            multiElementLinks.put(key, link);
+                        });
+                    }
                 }
             });
         }
