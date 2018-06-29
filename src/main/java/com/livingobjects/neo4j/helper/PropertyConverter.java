@@ -35,7 +35,8 @@ public final class PropertyConverter {
 
     public static Object checkPropertyValue(Object value) {
         if (value instanceof Iterable) {
-            return Iterables.toArray((Iterable) value);
+            Iterable iterable = (Iterable) value;
+            return Iterables.toArray(String.class, iterable);
         } else {
             return value;
         }
