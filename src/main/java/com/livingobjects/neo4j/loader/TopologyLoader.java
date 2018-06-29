@@ -89,7 +89,7 @@ public final class TopologyLoader {
             if (authorizedRels != null && authorizedRels.contains(toType)) {
                 org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
                 for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
-                    r.setProperty(e.getKey(), e.getValue());
+                    r.setProperty(e.getKey(), PropertyConverter.checkPropertyValue(e.getValue()));
                 }
                 relationship.attributes.forEach((key, value) -> {
                     Object checkedValue = PropertyConverter.checkPropertyValue(value);
