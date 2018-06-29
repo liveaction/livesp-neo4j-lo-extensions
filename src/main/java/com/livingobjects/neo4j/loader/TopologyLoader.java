@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -91,8 +92,9 @@ public final class TopologyLoader {
                     r.setProperty(e.getKey(), e.getValue());
                 }
                 relationship.attributes.forEach((key, value) -> {
-                    if (value != null) {
-                        r.setProperty(key, value);
+                    Object checkedValue = PropertyConverter.checkPropertyValue(value);
+                    if (checkedValue != null) {
+                        r.setProperty(key, checkedValue);
                     } else {
                         r.removeProperty(key);
                     }
