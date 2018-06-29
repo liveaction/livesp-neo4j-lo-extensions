@@ -34,14 +34,10 @@ public final class PropertyConverter {
     };
 
     public static Object checkPropertyValue(Object value) {
-        if (value instanceof String) {
-            return value;
-        } else if (value instanceof Number) {
-            return value;
-        } else if (value instanceof Iterable) {
+        if (value instanceof Iterable) {
             return Iterables.toArray((Iterable) value);
         } else {
-            return null;
+            return value;
         }
     }
 
