@@ -79,7 +79,7 @@ public class TemplatedPlanetFactory {
         graphDb.findNodes(Labels.PLANET_TEMPLATE).forEachRemaining(pltNode -> {
             String keyType = null;
             ImmutableSet.Builder<String> contexts = ImmutableSet.builder();
-            for (Relationship aRelation : pltNode.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
+            for (Relationship aRelation : pltNode.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
                 Node attNode = aRelation.getEndNode();
                 if (!attNode.hasLabel(Labels.ATTRIBUTE)) continue;
                 String type = attNode.getProperty(_TYPE).toString();

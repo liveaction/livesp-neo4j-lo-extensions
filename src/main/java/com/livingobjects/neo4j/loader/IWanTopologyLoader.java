@@ -37,7 +37,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,12 +231,14 @@ public final class IWanTopologyLoader {
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
                 for (String endKeyType : rel.getValue()) {
-                    Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
-                    optEndNode.ifPresent(toNode -> {
-                        Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
-                        String key = keyType + ELEMENT_SEPARATOR + endKeyType;
-                        multiElementLinks.put(key, link);
-                    });
+                    if (!keyType.equals(endKeyType)) {
+                        Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
+                        optEndNode.ifPresent(toNode -> {
+                            Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
+                            String key = keyType + ELEMENT_SEPARATOR + endKeyType;
+                            multiElementLinks.put(key, link);
+                        });
+                    }
                 }
             });
         }
@@ -355,7 +356,7 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Relationship createOutgoingUniqueLink(Node node, Node parent, RelationshipType linkType) {
+    private Relationship createOutgoingUniqueLink(Node node, Node parent, org.neo4j.graphdb.RelationshipType linkType) {
         for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
             if (next.getEndNode().equals(parent)) {
                 return next;

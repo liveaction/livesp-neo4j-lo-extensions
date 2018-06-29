@@ -16,16 +16,16 @@ import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.helper.UniqueElementFactory;
 import com.livingobjects.neo4j.helper.UniqueEntity;
 import com.livingobjects.neo4j.loader.Scope;
-import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.RealmPathSegment;
-import com.livingobjects.neo4j.model.schema.Schema;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanets;
 import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
+import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
+import com.livingobjects.neo4j.model.schema.managed.ManagedSchema;
 import com.livingobjects.neo4j.model.schema.planet.PlanetNode;
 import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
 import com.livingobjects.neo4j.model.schema.update.SchemaUpdate;
@@ -33,21 +33,22 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
@@ -59,6 +60,9 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
+import static com.livingobjects.neo4j.schema.SchemaReader.isManaged;
+import static com.livingobjects.neo4j.schema.SchemaReader.readRealm;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -106,20 +110,107 @@ public final class SchemaLoader {
 
     public boolean load(SchemaAndPlanets schemaAndPlanets) {
         return lockAndWriteSchema(() -> {
-            Schema schema = schemaAndPlanets.schema;
+            ManagedSchema managedSchema = ManagedSchema.fullyManaged(schemaAndPlanets.schema);
             ImmutableList<PlanetUpdate> planetUpdate = schemaAndPlanets.planetMigrations;
-            UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schema.id);
-            schemaNode.entity.setProperty(VERSION, schema.version);
+            UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaAndPlanets.schema.id);
+            schemaNode.entity.setProperty(VERSION, schemaAndPlanets.schema.version);
+            if (!schemaNode.wasCreated) {
+                managedSchema = mergeAllUnmanagedCounters(managedSchema, schemaNode.entity);
+                for (Relationship realmRelationship : schemaNode.entity.getRelationships(OUTGOING, PROVIDED)) {
+                    Node realmTemplateNode = realmRelationship.getEndNode();
+                    realmRelationship.delete();
+                    deleteRealm(true, realmTemplateNode, OUTGOING, MEMDEXPATH);
+                }
+            }
 
-            ImmutableSet<Node> realmTemplates = createRealmTemplates(schema, schema.counters);
+            ImmutableSet<Node> realmTemplates = createRealmTemplates(managedSchema);
 
-            RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, realmTemplates,
-                    node -> deleteTree(true, node, OUTGOING, MEMDEXPATH));
+            RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, realmTemplates);
 
             migratePlanets(planetUpdate);
 
-            return schemaNode.wasCreated;
+            return true;
         });
+    }
+
+    private ManagedSchema mergeAllUnmanagedCounters(ManagedSchema managedSchema, Node node) {
+        Map<String, RealmNode> mergedRealms = managedSchema.realms.values().stream()
+                .collect(toMap(r -> r.name, r -> r));
+        CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder().addFullyManaged(managedSchema.counters.counters);
+
+        for (Relationship relationship : node.getRelationships(OUTGOING, PROVIDED)) {
+            Node realmTemplateNode = relationship.getEndNode();
+            if (realmTemplateNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                String name = realmTemplateNode.getProperty(NAME).toString();
+                RealmNode inputRealm = mergedRealms.get(name);
+                if (inputRealm != null) {
+                    mergedRealms.put(name, mergeManagedWithUnmanagedRealm(inputRealm, realmTemplateNode, countersDefinitionBuilder));
+                } else {
+                    readRealm(realmTemplateNode, true, countersDefinitionBuilder)
+                            .ifPresent(r -> mergedRealms.put(r.name, r));
+                }
+            }
+        }
+
+
+        return new ManagedSchema(ImmutableMap.copyOf(mergedRealms), countersDefinitionBuilder.build());
+    }
+
+    private RealmNode mergeManagedWithUnmanagedRealm(RealmNode managedRealm, Node unmanagedRealm, CountersDefinition.Builder countersDefinitionBuilder) {
+        Iterator<Relationship> subPathsIterator = unmanagedRealm.getRelationships(OUTGOING, MEMDEXPATH).iterator();
+        boolean hasSubPaths = subPathsIterator.hasNext();
+        if (!hasSubPaths) {
+            return managedRealm;
+        }
+        Relationship mdxPathRelationship = subPathsIterator.next();
+        Node segmentNode = mdxPathRelationship.getEndNode();
+        if (segmentNode.hasLabel(Labels.SEGMENT)) {
+            Object existingPath = segmentNode.getProperty(PATH);
+
+            if (existingPath.equals(managedRealm.memdexPath.segment)) {
+                return new RealmNode(managedRealm.name, managedRealm.attributes, mergeManagedWithUnmanagedMemdexPath(managedRealm.memdexPath, unmanagedRealm, countersDefinitionBuilder));
+            } else {
+                Optional<MemdexPathNode> previousMemdexPath = SchemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
+                if (previousMemdexPath.isPresent()) {
+                    throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", managedRealm.name, existingPath, managedRealm.memdexPath.segment));
+                } else {
+                    return managedRealm;
+                }
+            }
+        } else {
+            return managedRealm;
+        }
+    }
+
+    private MemdexPathNode mergeManagedWithUnmanagedMemdexPath(MemdexPathNode managedMemdexPath, Node unmanagedRealm, CountersDefinition.Builder countersDefinitionBuilder) {
+        List<String> mergedCounters = Lists.newArrayList(managedMemdexPath.counters);
+        List<MemdexPathNode> mergedChildren = Lists.newArrayList();
+
+        Map<String, MemdexPathNode> children = managedMemdexPath.children.stream()
+                .collect(toMap(m -> m.segment, m -> m));
+
+        Set<String> notFound = Sets.newLinkedHashSet(children.keySet());
+        for (Relationship relationship : unmanagedRealm.getRelationships(OUTGOING, MEMDEXPATH)) {
+            Node segmentNode = relationship.getEndNode();
+            if (segmentNode.hasLabel(Labels.SEGMENT)) {
+                String path = segmentNode.getProperty(PATH).toString();
+                if (notFound.remove(path)) {
+                    MemdexPathNode managedChild = children.get(path);
+                    if (managedChild != null) {
+                        mergedChildren.add(mergeManagedWithUnmanagedMemdexPath(managedChild, segmentNode, countersDefinitionBuilder));
+                    } else {
+                        SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                                .ifPresent(mergedChildren::add);
+                    }
+                }
+            }
+        }
+
+        for (String path : notFound) {
+            mergedChildren.add(children.get(path));
+        }
+
+        return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren);
     }
 
     private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version) {
@@ -202,21 +293,16 @@ public final class SchemaLoader {
                                 String counterName = counterNode.getProperty(NAME).toString();
                                 if (counterName.equals(counter)) {
 
-                                    if (!counterNode.hasRelationship(INCOMING, VAR)) {
-                                        counterRelationship.delete();
-                                        if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
-                                            counterNode.delete();
-                                        }
+                                    if (deleteCounter(counterRelationship, counterNode)) {
+                                        deleted = true;
                                     }
                                     boolean hasCounters = memdexPathNode.getRelationships(INCOMING, PROVIDED).iterator().hasNext();
                                     boolean hasSubPaths = memdexPathNode.getRelationships(OUTGOING, MEMDEXPATH).iterator().hasNext();
                                     if (!hasCounters && !hasSubPaths) {
                                         memdexPathNode.getRelationships().forEach(Relationship::delete);
                                         memdexPathNode.delete();
+                                        deleted = true;
                                     }
-
-                                    deleted = true;
-
                                     break;
                                 }
                             }
@@ -240,6 +326,21 @@ public final class SchemaLoader {
         }
 
         return deleted;
+    }
+
+    private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
+        if (!isManaged(counterNode)) {
+
+            providedRelationship.delete();
+            if (!counterNode.hasRelationship(INCOMING, VAR)) {
+                if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
+                    counterNode.delete();
+                }
+            }
+
+            return true;
+        }
+        return false;
     }
 
     private boolean appendCounterToSchema(String schemaId,
@@ -296,7 +397,9 @@ public final class SchemaLoader {
                 Object existingPath = firstSegment.getProperty(PATH);
 
                 if (existingPath.equals(rootSegment.path)) {
-                    updateRealmPath(realmTemplate, rootSegment, tailPath, counter, firstSegment);
+                    if (updateRealmPath(realmTemplate, rootSegment, tailPath, counter, firstSegment)) {
+                        modified = true;
+                    }
                 } else {
                     throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", realmTemplate, existingPath, rootSegment.path));
                 }
@@ -330,10 +433,10 @@ public final class SchemaLoader {
     private void migratePlanets(ImmutableList<PlanetUpdate> planets) {
         ImmutableList<PlanetUpdate> migrations = ImmutableList.copyOf(planets.stream()
                 .filter(pU -> pU.planetUpdateStatus != UPDATE)
-                .collect(Collectors.toList()));
+                .collect(toList()));
         ImmutableList<PlanetUpdate> updates = ImmutableList.copyOf(planets.stream()
                 .filter(pU -> pU.planetUpdateStatus == UPDATE)
-                .collect(Collectors.toList()));
+                .collect(toList()));
         Set<PlanetNode> allOldPlanets = migrations.stream()
                 .map(pU -> pU.oldPlanet)
                 .collect(toSet());
@@ -389,7 +492,13 @@ public final class SchemaLoader {
             }
         } else {
             // Move all ne from old planet to best matching
-            ImmutableMap<String, ImmutableSet<String>> newPlanetAttributes = ImmutableMap.copyOf(newPlanets.stream()
+            ImmutableSet.Builder<PlanetNode> targetPlanetsBuilder = ImmutableSet.builder();
+            if (planetUpdate.planetUpdateStatus != DELETE) {
+                targetPlanetsBuilder.add(planetUpdate.oldPlanet);
+            }
+            targetPlanetsBuilder.addAll(newPlanets);
+            ImmutableMap<String, ImmutableSet<String>> newPlanetAttributes = ImmutableMap.copyOf(targetPlanetsBuilder.build()
+                    .stream()
                     .collect(toMap(p -> p.name, p -> p.attributes)));
             PlanetByContext planetByContext = new PlanetByContext(newPlanetAttributes);
             Map<String, Node> newPlanetNodes = Maps.newHashMap();
@@ -463,18 +572,18 @@ public final class SchemaLoader {
         return Optional.ofNullable(planetFactory.get(planetTemplateName, scope));
     }
 
-    private ImmutableSet<Node> createRealmTemplates(Schema schema, ImmutableMap<String, CounterNode> counters) {
-        Set<Node> realmTemplates = Sets.newHashSet();
-        for (RealmNode realmNodeEntry : schema.realms.values()) {
+    private ImmutableSet<Node> createRealmTemplates(ManagedSchema managedSchema) {
+        Set<Node> realmTemplates = Sets.newLinkedHashSet();
+        for (RealmNode realmNodeEntry : managedSchema.realms.values()) {
             String realm = realmNodeEntry.name;
             UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
 
             if (!realmTemplateEntity.wasCreated) {
-                deleteTree(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
+                deleteRealm(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
                 realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING).forEach(Relationship::delete);
             }
 
-            createRealm(realmTemplateEntity, realmNodeEntry, counters);
+            createRealm(realmTemplateEntity, realmNodeEntry, managedSchema);
 
             realmTemplates.add(realmTemplateEntity.entity);
         }
@@ -534,17 +643,17 @@ public final class SchemaLoader {
         return modified;
     }
 
-    private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ImmutableMap<String, CounterNode> counters) {
+    private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ManagedSchema managedSchema) {
         replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
-        Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, counters);
+        Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, managedSchema);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
     }
 
-    private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ImmutableMap<String, CounterNode> counters) {
+    private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ManagedSchema managedSchema) {
         Node segmentNode = graphDb.createNode(Labels.SEGMENT);
         segmentNode.setProperty(PATH, memdexPathNode.segment);
 
-        updateCountersRelationships(realmTemplate, memdexPathNode, counters, segmentNode);
+        updateCountersRelationships(realmTemplate, memdexPathNode, managedSchema, segmentNode);
 
         String keyType = memdexPathNode.keyAttribute;
         String[] split = keyType.split(":");
@@ -566,7 +675,7 @@ public final class SchemaLoader {
         }
 
         for (MemdexPathNode child : memdexPathNode.children) {
-            Node childNode = createMemdexTree(realmTemplate, child, counters);
+            Node childNode = createMemdexTree(realmTemplate, child, managedSchema);
             segmentNode.createRelationshipTo(childNode, MEMDEXPATH);
         }
 
@@ -584,7 +693,10 @@ public final class SchemaLoader {
             }
         }
 
-        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counter.name);
+        String counterId = counter.name + "@context:" + realmTemplate;
+        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+        counterEntity.entity.setProperty(NAME, counter.name);
+        counterEntity.entity.setProperty(CONTEXT, realmTemplate);
         if (counterEntity.wasCreated) {
             modified = true;
             counterEntity.entity.setProperty(_TYPE, "counter");
@@ -604,15 +716,8 @@ public final class SchemaLoader {
         }
 
         if (relationship == null) {
-            relationship = counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
-            relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
+           counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             modified = true;
-        } else {
-            String existingContext = relationship.getProperty(GraphModelConstants.CONTEXT, "").toString();
-            if (existingContext.equals(realmTemplate)) {
-                relationship.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
-                modified = true;
-            }
         }
 
         return modified;
@@ -620,7 +725,7 @@ public final class SchemaLoader {
 
     private void updateCountersRelationships(String realmTemplate,
                                              MemdexPathNode memdexPath,
-                                             ImmutableMap<String, CounterNode> counters,
+                                             ManagedSchema managedSchema,
                                              Node segmentNode) {
         Map<String, Relationship> existingRelationships = Maps.newHashMap();
         for (Relationship relationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
@@ -630,28 +735,37 @@ public final class SchemaLoader {
         }
 
         for (String counter : memdexPath.counters) {
-            CounterNode counterNode = counters.get(counter);
+            CounterNode counterNode = managedSchema.counters.get(counter);
             if (counterNode == null) {
                 throw new IllegalArgumentException(String.format("Counter with reference '%s' is not found in provided schema.", counter));
             }
-            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(NAME, counterNode.name);
-            if (counterNodeEntity.wasCreated) {
-                counterNodeEntity.entity.setProperty("_type", "counter");
-                counterNodeEntity.entity.setProperty("defaultAggregation", counterNode.defaultAggregation);
-                if (counterNode.defaultValue == null) {
-                    counterNodeEntity.entity.removeProperty("defaultValue");
-                } else {
-                    counterNodeEntity.entity.setProperty("defaultValue", counterNode.defaultValue);
-                }
-                counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
-                counterNodeEntity.entity.setProperty("unit", counterNode.unit);
+            String counterId = counterNode.name + "@context:" + realmTemplate;
+            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+            counterNodeEntity.entity.setProperty(NAME, counterNode.name);
+            counterNodeEntity.entity.setProperty(CONTEXT, realmTemplate);
+            counterNodeEntity.entity.setProperty("_type", "counter");
+            if (managedSchema.counters.isManaged(counter)) {
+                counterNodeEntity.entity.setProperty(MANAGED, true);
             }
+            counterNodeEntity.entity.setProperty("defaultAggregation", counterNode.defaultAggregation);
+            if (counterNode.defaultValue == null) {
+                counterNodeEntity.entity.removeProperty("defaultValue");
+            } else {
+                counterNodeEntity.entity.setProperty("defaultValue", counterNode.defaultValue);
+            }
+            counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
+            counterNodeEntity.entity.setProperty("unit", counterNode.unit);
 
-            Relationship relationshipTo = existingRelationships.get(counterNode.name);
+            Relationship relationshipTo = existingRelationships.remove(counterNode.name);
             if (relationshipTo == null) {
-                relationshipTo = counterNodeEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
+                counterNodeEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             }
-            relationshipTo.setProperty(GraphModelConstants.CONTEXT, realmTemplate);
+        }
+
+        for (Map.Entry<String, Relationship> counterRelationship : existingRelationships.entrySet()) {
+            Relationship relationship = counterRelationship.getValue();
+            Node counterNode = relationship.getStartNode();
+            deleteCounter(relationship, counterNode);
         }
     }
 
@@ -711,13 +825,19 @@ public final class SchemaLoader {
         return modified;
     }
 
-    private void deleteTree(boolean deleteRoot, Node root, Direction direction, RelationshipType relationshipType) {
+    private void deleteRealm(boolean deleteRoot, Node root, Direction direction, org.neo4j.graphdb.RelationshipType relationshipType) {
         Iterable<Relationship> relationships = root.getRelationships(direction, relationshipType);
         for (Relationship relationship : relationships) {
             Node otherNode = relationship.getOtherNode(root);
-            deleteTree(true, otherNode, direction, relationshipType);
+            deleteRealm(true, otherNode, direction, relationshipType);
         }
         if (deleteRoot) {
+            for (Relationship relationship : root.getRelationships(INCOMING, PROVIDED)) {
+                Node counterNode = relationship.getStartNode();
+                if (counterNode.hasLabel(Labels.COUNTER)) {
+                    deleteCounter(relationship, counterNode);
+                }
+            }
             root.getRelationships().forEach(Relationship::delete);
             root.delete();
         }

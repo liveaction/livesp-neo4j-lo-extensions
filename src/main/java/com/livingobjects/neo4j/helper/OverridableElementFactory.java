@@ -13,16 +13,16 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.Optional;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.OVERRIDE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._SCOPE;
 
 public final class OverridableElementFactory {
-    private static final Logger LOGGER = LoggerFactory.getLogger(OverridableElementFactory.class);
 
     private final GraphDatabaseService graphdb;
     private final Label keyLabel;
