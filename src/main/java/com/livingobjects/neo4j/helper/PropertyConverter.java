@@ -10,6 +10,7 @@ import com.livingobjects.neo4j.model.PropertyType;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
+import org.neo4j.helpers.collection.Iterables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,18 @@ public final class PropertyConverter {
     };
     private static final TypeReference NUMBER_LIST_TYPE = new TypeReference<Number[]>() {
     };
+
+    public static Object checkPropertyValue(Object value) {
+        if (value instanceof String) {
+            return value;
+        } else if (value instanceof Number) {
+            return value;
+        } else if (value instanceof Iterable) {
+            return Iterables.toArray((Iterable) value);
+        } else {
+            return null;
+        }
+    }
 
     public static Object convert(String value, PropertyType propertyType, boolean isArray) {
         try {
