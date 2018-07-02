@@ -88,11 +88,10 @@ public final class TopologyLoader {
             ImmutableSet<String> authorizedRels = crossAttributeRelationships.get(fromType);
             if (authorizedRels != null && authorizedRels.contains(toType)) {
                 org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
-                for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
-                    r.setProperty(e.getKey(), PropertyConverter.checkPropertyValue(e.getValue()));
-                }
+
                 relationship.attributes.forEach((key, value) -> {
                     Object checkedValue = PropertyConverter.checkPropertyValue(value);
+
                     if (checkedValue != null) {
                         r.setProperty(key, checkedValue);
                     } else {
