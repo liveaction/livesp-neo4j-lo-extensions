@@ -755,6 +755,16 @@ public final class SchemaLoader {
             }
             counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
             counterNodeEntity.entity.setProperty("unit", counterNode.unit);
+            if (counterNode.type == null) {
+                counterNodeEntity.entity.removeProperty("type");
+            } else {
+                counterNodeEntity.entity.setProperty("type", counterNode.type);
+            }
+            if (counterNode.count == null) {
+                counterNodeEntity.entity.removeProperty("count");
+            } else {
+                counterNodeEntity.entity.setProperty("count", counterNode.count);
+            }
 
             Relationship relationshipTo = existingRelationships.remove(counterNode.name);
             if (relationshipTo == null) {

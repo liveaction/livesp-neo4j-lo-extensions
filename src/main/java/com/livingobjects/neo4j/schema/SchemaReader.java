@@ -16,6 +16,7 @@ import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.text.html.Option;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -109,8 +110,10 @@ public class SchemaReader {
         String defaultAggregation = node.getProperty("defaultAggregation").toString();
         String name = node.getProperty(NAME).toString();
         String valueType = node.getProperty("valueType").toString();
+        String type = Optional.ofNullable(node.getProperty("type", null)).map(Object::toString).orElse(null);
+        String count = Optional.ofNullable(node.getProperty("count", null)).map(Object::toString).orElse(null);
         String description = Optional.ofNullable(node.getProperty(DESCRIPTION, null)).map(Object::toString).orElse(null);
-        return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, description);
+        return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, type, count, description);
     }
 
     static Boolean isManaged(Node counterNode) {
