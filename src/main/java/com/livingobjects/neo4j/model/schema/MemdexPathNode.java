@@ -11,15 +11,18 @@ public final class MemdexPathNode {
     public final String keyAttribute;
     public final ImmutableSet<String> counters;
     public final ImmutableSet<MemdexPathNode> children;
+    public final Integer topCount;
 
     public MemdexPathNode(@JsonProperty("segment") String segment,
                           @JsonProperty("keyAttribute") String keyAttribute,
                           @JsonProperty("counters") List<String> counters,
-                          @JsonProperty("children") List<MemdexPathNode> children) {
+                          @JsonProperty("children") List<MemdexPathNode> children,
+                          @JsonProperty("topCount") Integer topCount) {
         this.segment = segment;
         this.keyAttribute = keyAttribute;
         this.counters = ImmutableSet.copyOf(counters);
         this.children = ImmutableSet.copyOf(children);
+        this.topCount = topCount;
     }
 
     @Override
@@ -32,6 +35,7 @@ public final class MemdexPathNode {
         if (segment != null ? !segment.equals(that.segment) : that.segment != null) return false;
         if (keyAttribute != null ? !keyAttribute.equals(that.keyAttribute) : that.keyAttribute != null) return false;
         if (counters != null ? !counters.equals(that.counters) : that.counters != null) return false;
+        if (topCount != null ? !topCount.equals(that.topCount) : that.topCount != null) return false;
         return children != null ? children.equals(that.children) : that.children == null;
     }
 
@@ -41,6 +45,7 @@ public final class MemdexPathNode {
         result = 31 * result + (segment != null ? segment.hashCode() : 0);
         result = 31 * result + (counters != null ? counters.hashCode() : 0);
         result = 31 * result + (children != null ? children.hashCode() : 0);
+        result = 31 * result + (topCount!= null ? topCount.hashCode() : 0);
         return result;
     }
 
@@ -51,6 +56,7 @@ public final class MemdexPathNode {
                 .add("segment", segment)
                 .add("counters", counters)
                 .add("children", children)
+                .add("top", topCount)
                 .toString();
     }
 }

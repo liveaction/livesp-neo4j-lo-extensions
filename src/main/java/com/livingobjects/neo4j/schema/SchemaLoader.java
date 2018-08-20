@@ -210,7 +210,7 @@ public final class SchemaLoader {
             mergedChildren.add(children.get(path));
         }
 
-        return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren);
+        return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren, managedMemdexPath.topCount);
     }
 
     private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version) {
@@ -652,6 +652,9 @@ public final class SchemaLoader {
     private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ManagedSchema managedSchema) {
         Node segmentNode = graphDb.createNode(Labels.SEGMENT);
         segmentNode.setProperty(PATH, memdexPathNode.segment);
+        if(memdexPathNode.topCount != null) {
+            segmentNode.setProperty("topCount", memdexPathNode.topCount);
+        }
 
         updateCountersRelationships(realmTemplate, memdexPathNode, managedSchema, segmentNode);
 

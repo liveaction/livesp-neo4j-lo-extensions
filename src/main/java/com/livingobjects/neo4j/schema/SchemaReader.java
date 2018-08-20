@@ -16,7 +16,6 @@ import org.neo4j.graphdb.Relationship;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.text.html.Option;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -66,6 +65,10 @@ public class SchemaReader {
 
     static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
+        Integer topCount = null;
+        if(segment.getProperty("topCount") != null) {
+            topCount = Integer.parseInt(segment.getProperty("topCount").toString());
+        }
 
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
@@ -79,7 +82,7 @@ public class SchemaReader {
         if (counters.isEmpty() && children.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children));
+        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
     private static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
