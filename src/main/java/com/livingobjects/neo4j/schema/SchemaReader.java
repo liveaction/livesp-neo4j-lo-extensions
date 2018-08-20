@@ -66,7 +66,7 @@ public class SchemaReader {
     static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
         Integer topCount = null;
-        if(segment.getProperty("topCount") != null) {
+        if(segment.hasProperty("topCount")) {
             topCount = Integer.parseInt(segment.getProperty("topCount").toString());
         }
 
