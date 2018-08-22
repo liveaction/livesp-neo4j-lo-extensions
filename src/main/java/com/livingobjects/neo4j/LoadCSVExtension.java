@@ -5,7 +5,7 @@ import com.codahale.metrics.Slf4jReporter;
 import com.codahale.metrics.Slf4jReporter.LoggingLevel;
 import com.codahale.metrics.Timer;
 import com.google.common.base.Stopwatch;
-import com.livingobjects.neo4j.loader.IWanTopologyLoader;
+import com.livingobjects.neo4j.loader.CsvTopologyLoader;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.sun.jersey.multipart.MultiPart;
@@ -14,7 +14,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.ServletException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -67,7 +66,7 @@ public final class LoadCSVExtension {
                     .orElseThrow(IllegalArgumentException::new);
 
             try (InputStream is = new FileInputStream(csv)) {
-                Neo4jLoadResult result = new IWanTopologyLoader(graphDb, metrics).loadFromStream(is);
+                Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is);
                 importedElementsCounter = result.importedElementsByScope.values().size();
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();

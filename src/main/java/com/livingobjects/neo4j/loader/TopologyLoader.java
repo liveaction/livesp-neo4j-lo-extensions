@@ -19,6 +19,7 @@ import org.neo4j.graphdb.Transaction;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -29,6 +30,8 @@ public final class TopologyLoader {
     private final UniqueElementFactory networkElementFactory;
 
     private final ImmutableMap<String, ImmutableSet<String>> crossAttributeRelationships;
+
+    private final TopologyLoaderUtils topologyLoaderUtils;
 
     public TopologyLoader(GraphDatabaseService graphDb) {
         try (Transaction ignore = graphDb.beginTx()) {
@@ -46,7 +49,13 @@ public final class TopologyLoader {
                         }
                     });
             this.crossAttributeRelationships = ImmutableMap.copyOf(Maps.transformValues(rels, ImmutableSet::copyOf));
+
+            UniqueElementFactory scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
+            MetaSchema metaSchema = new MetaSchema(graphDb);
+
+            this.topologyLoaderUtils = new TopologyLoaderUtils(metaSchema, scopeElementFactory);
         }
+
         this.graphDb = graphDb;
     }
 
@@ -87,24 +96,40 @@ public final class TopologyLoader {
             String toType = to.getProperty(GraphModelConstants._TYPE).toString();
             ImmutableSet<String> authorizedRels = crossAttributeRelationships.get(fromType);
             if (authorizedRels != null && authorizedRels.contains(toType)) {
-                org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
-                for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
-                    r.setProperty(e.getKey(), PropertyConverter.checkPropertyValue(e.getValue()));
-                }
-                relationship.attributes.forEach((key, value) -> {
-                    Object checkedValue = PropertyConverter.checkPropertyValue(value);
-                    if (checkedValue != null) {
-                        r.setProperty(key, checkedValue);
-                    } else {
-                        r.removeProperty(key);
+                if (nodeScopesAreEqualOrGlobal(from, to)) {
+                    org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
+                    for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
+                        r.setProperty(e.getKey(), PropertyConverter.checkPropertyValue(e.getValue()));
                     }
-                });
+                    relationship.attributes.forEach((key, value) -> {
+                        Object checkedValue = PropertyConverter.checkPropertyValue(value);
+                        if (checkedValue != null) {
+                            r.setProperty(key, checkedValue);
+                        } else {
+                            r.removeProperty(key);
+                        }
+                    });
+                } else {
+                    throw new IllegalArgumentException(
+                            String.format("Relationship %s is not allowed from '%s' to '%s' : elements should have the same scope or one element should have the global scope",
+                                    relationship.type, fromType, toType));
+                }
             } else {
                 throw new IllegalArgumentException(String.format("Relationship %s is not allowed from '%s' to '%s'", relationship.type, fromType, toType));
             }
         } else {
             throw new IllegalArgumentException(String.format("Relationship type %s is not allowed", relationship.type));
         }
+    }
+
+    private boolean nodeScopesAreEqualOrGlobal(Node nodeLeft, Node nodeRight) {
+        Scope scopeLeft = topologyLoaderUtils.getScope(nodeLeft);
+        Scope scopeRight = topologyLoaderUtils.getScope(nodeRight);
+
+        boolean scopeAreEqual = scopeLeft.equals(scopeRight);
+        boolean oneScopeIsGlobal = scopeLeft.equals(GraphModelConstants.GLOBAL_SCOPE) || scopeRight.equals(GraphModelConstants.GLOBAL_SCOPE);
+
+        return scopeAreEqual || oneScopeIsGlobal;
     }
 
     private org.neo4j.graphdb.Relationship mergeRelationship(Node from, Node to, ImportRelationship relationshipType) {
