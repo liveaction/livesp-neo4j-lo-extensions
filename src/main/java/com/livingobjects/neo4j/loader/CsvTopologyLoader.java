@@ -47,7 +47,6 @@ import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -59,13 +58,10 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
@@ -73,9 +69,9 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
-public final class IWanTopologyLoader {
+public final class CsvTopologyLoader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(IWanTopologyLoader.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
     private static final int MAX_TRANSACTION_COUNT = 500;
 
     private final MetricRegistry metrics;
@@ -86,10 +82,10 @@ public final class IWanTopologyLoader {
     private final OverridableElementFactory overridableElementFactory;
     private final ElementScopeSlider elementScopeSlider;
     private final TransactionManager txManager;
-
     private final MetaSchema metaSchema;
+    private final TopologyLoaderUtils topologyLoaderUtils;
 
-    public IWanTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
+    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
         this.graphDb = graphDb;
         this.txManager = new TransactionManager(graphDb);
@@ -102,6 +98,8 @@ public final class IWanTopologyLoader {
             this.planetFactory = new TemplatedPlanetFactory(graphDb);
             this.elementScopeSlider = new ElementScopeSlider(planetFactory);
             this.metaSchema = new MetaSchema(graphDb);
+
+            topologyLoaderUtils = new TopologyLoaderUtils(metaSchema, scopeElementFactory);
         }
     }
 
@@ -277,7 +275,7 @@ public final class IWanTopologyLoader {
                 .orElse(false);
         Scope scopeFromImport = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
 
-        Scope scopeFromDatabase = getScopeFromElementPlanet(element)
+        Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity)
                 .orElseGet(() -> getScopeFromParent(keyType, nodes).orElse(null));
 
         if (scopeFromImport != null) {
@@ -302,23 +300,11 @@ public final class IWanTopologyLoader {
         }
     }
 
-    private Optional<Scope> getScopeFromElementPlanet(UniqueEntity<Node> element) {
-        Iterator<Relationship> iterator = element.entity.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).iterator();
-        if (iterator.hasNext()) {
-            Relationship attributeRelationship = iterator.next();
-            Node planetNode = attributeRelationship.getEndNode();
-            String scopeTag = planetNode.getProperty(SCOPE, SCOPE_GLOBAL_TAG).toString();
-            return Optional.of(readScopeFromTag(scopeTag));
-        } else {
-            return Optional.empty();
-        }
-    }
-
     private Optional<Scope> getScopeFromParent(String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         return metaSchema.getRequiredParent(keyAttribute)
                 .flatMap(requiredParent ->
                         nodes.getOrDefault(requiredParent, Optional.empty())
-                                .flatMap(this::getScopeFromElementPlanet));
+                                .flatMap(nodeUniqueEntity -> topologyLoaderUtils.getScopeFromElementPlanet(nodeUniqueEntity.entity)));
     }
 
     private int linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
@@ -511,20 +497,4 @@ public final class IWanTopologyLoader {
             elementNode.removeProperty(header.propertyName);
         }
     }
-
-    private Scope readScopeFromTag(String scopeTag) {
-        if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
-            return GLOBAL_SCOPE;
-        } else if (scopeTag.equals(SP_SCOPE.tag)) {
-            return SP_SCOPE;
-        } else {
-            Node scope = scopeElementFactory.getWithOutcome(TAG, scopeTag);
-            if (scope == null) {
-                throw new IllegalStateException(String.format("The scope %s cannot be found in database", scopeTag));
-            }
-            String id = scope.getProperty(ID).toString();
-            return new Scope(id, scopeTag);
-        }
-    }
-
 }
