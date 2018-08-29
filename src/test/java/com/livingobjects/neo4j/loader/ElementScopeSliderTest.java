@@ -11,6 +11,9 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.impl.logging.LogService;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.logging.Log;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
@@ -27,9 +30,12 @@ public class ElementScopeSliderTest {
     @Before
     public void setUp() {
         GraphDatabaseService graphDb = wNeo.getGraphDatabaseService();
+        LogService logService = ((GraphDatabaseAPI) graphDb).getDependencyResolver().resolveDependency(LogService.class);
+        Log log = logService.getUserLog(getClass());
+        log.info("test");
         try (Transaction ignore = graphDb.beginTx()) {
             TemplatedPlanetFactory templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
-            tested = new ElementScopeSlider(templatedPlanetFactory);
+            tested = new ElementScopeSlider(templatedPlanetFactory, log);
         }
     }
 

@@ -1,8 +1,6 @@
 package com.livingobjects.neo4j;
 
 
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Slf4jReporter;
 import com.davfx.ninio.csv.AutoCloseableCsvWriter;
 import com.davfx.ninio.csv.Csv;
 import com.davfx.ninio.csv.CsvWriter;
@@ -25,8 +23,7 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -55,8 +52,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 @Path("/export")
 public final class ExportCSVExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ExportCSVExtension.class);
-    private static final Logger PACKAGE_LOGGER = LoggerFactory.getLogger("com.livingobjects.neo4j");
+    private final Log logger;
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -64,24 +60,13 @@ public final class ExportCSVExtension {
     private final ObjectMapper json = new ObjectMapper();
 
     private final GraphDatabaseService graphDb;
-
-    private final MetricRegistry metrics = new MetricRegistry();
-    private final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
-            .outputTo(PACKAGE_LOGGER)
-            .withLoggingLevel(Slf4jReporter.LoggingLevel.DEBUG)
-            .convertRatesTo(TimeUnit.SECONDS)
-            .convertDurationsTo(TimeUnit.MILLISECONDS)
-            .build();
-
     private final MetaSchema metaSchema;
 
-    public ExportCSVExtension(@Context GraphDatabaseService graphDb) {
+    public ExportCSVExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
+        this.logger = log;
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(graphDb);
-        }
-        if (PACKAGE_LOGGER.isDebugEnabled()) {
-            this.reporter.start(5, TimeUnit.MINUTES);
         }
     }
 
@@ -98,12 +83,12 @@ public final class ExportCSVExtension {
             return Response.ok().entity(stream).type(TEXT_CSV_MEDIATYPE).build();
 
         } catch (IllegalArgumentException e) {
-            LOGGER.error("export-csv extension : ", e);
+            logger.error("export-csv extension : ", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
 
         } catch (Exception e) {
-            LOGGER.error("export-csv extension : ", e);
+            logger.error("export-csv extension : ", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {
@@ -111,11 +96,7 @@ public final class ExportCSVExtension {
             }
 
         } finally {
-            LOGGER.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
-            if (PACKAGE_LOGGER.isDebugEnabled()) {
-                reporter.stop();
-                reporter.report();
-            }
+            logger.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
@@ -136,7 +117,7 @@ public final class ExportCSVExtension {
                                 rewindLineage(leaf, lineageAttributes, lineage, lineages);
                                 lineages.add(lineage);
                             } catch (LineageCardinalityException e) {
-                                LOGGER.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
+                                logger.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
                             }
                         }
                     }
@@ -165,7 +146,7 @@ public final class ExportCSVExtension {
             }
 
         } catch (Exception e) {
-            LOGGER.error("export-csv extension : ", e);
+            logger.error("export-csv extension : ", e);
             throw new RuntimeException(e);
         }
     }
@@ -273,7 +254,7 @@ public final class ExportCSVExtension {
 
     private static final class Request {
         final List<String> attributesToExport;
-        public final List<String> requiredAttributes;
+        final List<String> requiredAttributes;
         boolean exportTags;
 
         public Request(

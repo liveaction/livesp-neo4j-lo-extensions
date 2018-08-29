@@ -38,8 +38,7 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,9 +71,9 @@ import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class CsvTopologyLoader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
     private static final int MAX_TRANSACTION_COUNT = 500;
 
+    private final Log logger;
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
     private final TemplatedPlanetFactory planetFactory;
@@ -85,8 +84,9 @@ public final class CsvTopologyLoader {
     private final MetaSchema metaSchema;
     private final TopologyLoaderUtils topologyLoaderUtils;
 
-    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
+    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics, Log logger) {
         this.metrics = metrics;
+        this.logger = logger;
         this.graphDb = graphDb;
         this.txManager = new TransactionManager(graphDb);
 
@@ -96,7 +96,7 @@ public final class CsvTopologyLoader {
             this.overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
             this.planetFactory = new TemplatedPlanetFactory(graphDb);
-            this.elementScopeSlider = new ElementScopeSlider(planetFactory);
+            this.elementScopeSlider = new ElementScopeSlider(planetFactory, logger);
             this.metaSchema = new MetaSchema(graphDb);
 
             topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
@@ -123,7 +123,6 @@ public final class CsvTopologyLoader {
             try {
                 ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.scopeTypes, nextLine);
                 ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy);
-                LOGGER.debug("Line {} imported.", lineIndex);
                 for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
                     set.addAll(importedElements.getValue());
@@ -137,15 +136,15 @@ public final class CsvTopologyLoader {
             } catch (ImportException e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                LOGGER.error("Line {} not imported : {}", lineIndex, e.getLocalizedMessage());
-                LOGGER.error(Arrays.toString(nextLine));
+                logger.debug(e.getLocalizedMessage());
+                logger.debug(Arrays.toString(nextLine));
             } catch (Exception e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                LOGGER.error("Line {} not imported : {}", lineIndex, e.getLocalizedMessage());
-                LOGGER.error(Arrays.toString(nextLine));
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("STACKTRACE", e);
+                logger.error(e.getLocalizedMessage());
+                if (logger.isDebugEnabled()) {
+                    logger.debug("STACKTRACE", e);
+                    logger.debug(Arrays.toString(nextLine));
                 }
             }
             lineIndex++;
@@ -410,11 +409,9 @@ public final class CsvTopologyLoader {
             if (isOverridable) {
                 Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
-                LOGGER.debug("Create Element scope: '" + scope.tag + "' tag: '" + tag + "'");
             } else {
                 Optional<Scope> scope = lineStrategy.tryToGuessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
-                LOGGER.debug("Create NetworkElement scope: '" + scope.map(s -> s.tag).orElse("<from database>") + "' tag: '" + tag + "'");
             }
 
             Iterable<String> schemasToApply = getSchemasToApply(lineStrategy.strategy, line, elementKeyType);
@@ -508,7 +505,6 @@ public final class CsvTopologyLoader {
 
         Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, GraphModelConstants.TAG, tag);
         if (node != null) {
-            LOGGER.debug("Update NetworkElement scope: '" + scope.tag + "' tag: '" + tag + "'");
             persistElementProperties(line, elementHeaders, node);
             return Optional.of(UniqueEntity.existing(node));
         } else {

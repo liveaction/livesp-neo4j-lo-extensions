@@ -15,11 +15,8 @@ import com.livingobjects.neo4j.model.header.SimpleElementHeader;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +27,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 class CsvMappingStrategy {
-    private static final Logger LOGGER = LoggerFactory.getLogger(CsvMappingStrategy.class);
 
     private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
@@ -45,8 +41,6 @@ class CsvMappingStrategy {
         ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
 
-        LOGGER.debug("header : " + Arrays.toString(headers));
-
         int index = 0;
         for (String header : headers) {
             HeaderElement he = HeaderElement.of(header, index);
@@ -56,8 +50,6 @@ class CsvMappingStrategy {
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
-        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[0])));
-
         return new CsvMappingStrategy(columnIndexesBldr.build(), mapping);
     }
 

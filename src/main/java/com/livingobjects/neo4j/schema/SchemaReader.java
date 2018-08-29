@@ -15,8 +15,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import java.util.List;
 import java.util.Map;
@@ -34,17 +33,21 @@ import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
 
 public class SchemaReader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaReader.class);
+    private final Log logger;
 
-    public static Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    public SchemaReader(Log logger) {
+        this.logger = logger;
+    }
+
+    public Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String name = realmTemplateNode.getProperty(NAME).toString();
         try {
             Relationship firstMemdexPath = realmTemplateNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING);
             if (firstMemdexPath != null) {
                 Node segment = firstMemdexPath.getEndNode();
-                Optional<MemdexPathNode> memdexPathNode = SchemaReader.readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
+                Optional<MemdexPathNode> memdexPathNode = readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
                 if (!memdexPathNode.isPresent()) {
-                    LOGGER.warn("No counter for realm '{}'. Realm is ignored.", name);
+                    logger.warn("No counter for realm '{}'. Realm is ignored.", name);
                 }
                 return memdexPathNode
                         .map(n -> {
@@ -58,7 +61,7 @@ public class SchemaReader {
                             return new RealmNode(name, attributes, n);
                         });
             } else {
-                LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
+                logger.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
                 return Optional.empty();
             }
         } catch (NotFoundException e) {
@@ -66,7 +69,7 @@ public class SchemaReader {
         }
     }
 
-    static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
         Integer topCount = null;
         if (segment.hasProperty("topCount")) {
@@ -88,7 +91,7 @@ public class SchemaReader {
         return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
-    static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    private ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
@@ -110,7 +113,7 @@ public class SchemaReader {
         return ImmutableList.copyOf(counters);
     }
 
-    private static CounterNode readCounter(Node node) {
+    private CounterNode readCounter(Node node) {
         String unit = node.getProperty("unit").toString();
         String defaultValue = Optional.ofNullable(node.getProperty("defaultValue", null)).map(Object::toString).orElse(null);
         String defaultAggregation = node.getProperty("defaultAggregation").toString();
@@ -136,14 +139,14 @@ public class SchemaReader {
         return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, counterType, description);
     }
 
-    static Boolean isManaged(Node counterNode) {
+    Boolean isManaged(Node counterNode) {
         return Optional.ofNullable(counterNode.getProperty(MANAGED, ""))
                 .map(Object::toString)
                 .map(Boolean::parseBoolean)
                 .orElse(false);
     }
 
-    private static String getAttribute(Node node) {
+    private String getAttribute(Node node) {
         List<String> attributes = Lists.newArrayList();
         node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();

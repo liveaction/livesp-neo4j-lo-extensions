@@ -9,8 +9,7 @@ import com.livingobjects.neo4j.model.iwan.RelationshipStatus;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -32,15 +31,16 @@ import java.util.function.Consumer;
 @Path("/load-relationships")
 public final class LoadRelationshipsExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadRelationshipsExtension.class);
+    private final Log logger;
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private static final String PARAM_UPDATE_ONLY = "updateOnly";
 
     private final TopologyLoader topologyLoader;
 
-    public LoadRelationshipsExtension(@Context GraphDatabaseService graphDb) {
+    public LoadRelationshipsExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
         this.topologyLoader = new TopologyLoader(graphDb);
+        this.logger = log;
     }
 
     @POST
@@ -58,7 +58,7 @@ public final class LoadRelationshipsExtension {
                         outputStream.write(JSON_MAPPER.writeValueAsBytes(relationshipStatus));
                         outputStream.write("\n".getBytes(Charsets.UTF_8));
                     } catch (IOException e) {
-                        LOGGER.error("load-relationships extension : error streaming result", e);
+                        logger.error("load-relationships extension : error streaming result", e);
                         throw new IllegalStateException(e);
                     }
                 }, updateOnly);
@@ -67,11 +67,11 @@ public final class LoadRelationshipsExtension {
             return Response.ok().entity(stream)
                     .type(MediaType.TEXT_PLAIN_TYPE).build();
         } catch (IllegalArgumentException e) {
-            LOGGER.error("load-relationships extension : bad request", e);
+            logger.error("load-relationships extension : bad request", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Throwable e) {
-            LOGGER.error("load-relationships extension : unable to execute query", e);
+            logger.error("load-relationships extension : unable to execute query", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {

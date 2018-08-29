@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.livingobjects</groupId>
@@ -20,8 +21,8 @@
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>2.3.6</neo4j.version>
-        <jersey.version>1.19</jersey.version>
+        <neo4j.version>3.4.6</neo4j.version>
+        <jersey.version>1.19.3</jersey.version>
         <jackson.version>1.9.13</jackson.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
         <metrics.version>3.1.2</metrics.version>
@@ -75,7 +76,6 @@
             <groupId>com.sun.jersey.contribs</groupId>
             <artifactId>jersey-multipart</artifactId>
             <version>${jersey.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.neo4j</groupId>
@@ -92,7 +92,13 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <scope>provided</scope>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.3</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -141,8 +147,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Import-Package />
-                        <Export-Package />
+                        <Import-Package/>
+                        <Export-Package/>
                     </instructions>
                 </configuration>
             </plugin>

@@ -1,8 +1,6 @@
 package com.livingobjects.neo4j;
 
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Slf4jReporter;
-import com.codahale.metrics.Slf4jReporter.LoggingLevel;
 import com.codahale.metrics.Timer;
 import com.google.common.base.Stopwatch;
 import com.livingobjects.neo4j.loader.CsvTopologyLoader;
@@ -11,8 +9,7 @@ import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
@@ -30,8 +27,7 @@ import java.util.concurrent.TimeUnit;
 @Path("/load-csv")
 public final class LoadCSVExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
-    private static final Logger PACKAGE_LOGGER = LoggerFactory.getLogger("com.livingobjects.neo4j");
+    private final Log logger;
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -39,18 +35,10 @@ public final class LoadCSVExtension {
     private final GraphDatabaseService graphDb;
 
     private final MetricRegistry metrics = new MetricRegistry();
-    private final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
-            .outputTo(PACKAGE_LOGGER)
-            .withLoggingLevel(LoggingLevel.DEBUG)
-            .convertRatesTo(TimeUnit.SECONDS)
-            .convertDurationsTo(TimeUnit.MILLISECONDS)
-            .build();
 
-    public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
+    public LoadCSVExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
         this.graphDb = graphDb;
-        if (PACKAGE_LOGGER.isDebugEnabled()) {
-            this.reporter.start(5, TimeUnit.MINUTES);
-        }
+        this.logger = log;
     }
 
     @POST
@@ -66,13 +54,13 @@ public final class LoadCSVExtension {
                     .orElseThrow(IllegalArgumentException::new);
 
             try (InputStream is = new FileInputStream(csv)) {
-                Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is);
+                Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics, logger).loadFromStream(is);
                 importedElementsCounter = result.importedElementsByScope.values().size();
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
             } catch (Throwable e) {
-                LOGGER.error("load-csv extension : unable to execute query", e);
+                logger.error("load-csv extension : unable to execute query", e);
                 if (e.getCause() != null) {
                     return errorResponse(e.getCause());
                 } else {
@@ -91,11 +79,7 @@ public final class LoadCSVExtension {
             return errorResponse(e);
 
         } finally {
-            LOGGER.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
-            if (PACKAGE_LOGGER.isDebugEnabled()) {
-                reporter.stop();
-                reporter.report();
-            }
+            logger.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 

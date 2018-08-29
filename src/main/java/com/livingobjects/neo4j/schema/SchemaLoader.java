@@ -35,6 +35,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.logging.Log;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -45,20 +46,8 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
@@ -88,7 +77,9 @@ public final class SchemaLoader {
 
     private final PlanetFactory planetFactory;
 
-    public SchemaLoader(GraphDatabaseService graphDb) {
+    private final SchemaReader schemaReader;
+
+    public SchemaLoader(GraphDatabaseService graphDb, Log logger) {
         this.graphDb = graphDb;
         this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
         this.planetTemplateFactory = new UniqueElementFactory(graphDb, Labels.PLANET_TEMPLATE, Optional.empty());
@@ -96,6 +87,7 @@ public final class SchemaLoader {
         this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
+        this.schemaReader = new SchemaReader(logger);
     }
 
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
@@ -148,7 +140,7 @@ public final class SchemaLoader {
                 if (inputRealm != null) {
                     mergedRealms.put(name, mergeManagedWithUnmanagedRealm(inputRealm, realmTemplateNode, countersDefinitionBuilder));
                 } else {
-                    readRealm(realmTemplateNode, true, countersDefinitionBuilder)
+                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder)
                             .ifPresent(r -> mergedRealms.put(r.name, r));
                 }
             }
@@ -172,7 +164,7 @@ public final class SchemaLoader {
             if (existingPath.equals(managedRealm.memdexPath.segment)) {
                 return new RealmNode(managedRealm.name, managedRealm.attributes, mergeManagedWithUnmanagedMemdexPath(managedRealm.memdexPath, segmentNode, countersDefinitionBuilder));
             } else {
-                Optional<MemdexPathNode> previousMemdexPath = SchemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
+                Optional<MemdexPathNode> previousMemdexPath = schemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
                 if (previousMemdexPath.isPresent()) {
                     throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", managedRealm.name, existingPath, managedRealm.memdexPath.segment));
                 } else {
@@ -204,7 +196,7 @@ public final class SchemaLoader {
                     if (managedChild != null) {
                         mergedChildren.add(mergeManagedWithUnmanagedMemdexPath(managedChild, segmentNode, countersDefinitionBuilder));
                     } else {
-                        SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                        schemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
                                 .ifPresent(mergedChildren::add);
                     }
                 } else {
@@ -337,7 +329,7 @@ public final class SchemaLoader {
     }
 
     private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
-        if (!isManaged(counterNode)) {
+        if (!schemaReader.isManaged(counterNode)) {
 
             providedRelationship.delete();
             if (!counterNode.hasRelationship(INCOMING, VAR)) {

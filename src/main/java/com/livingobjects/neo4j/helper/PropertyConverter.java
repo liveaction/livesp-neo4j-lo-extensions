@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.helper;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Floats;
 import com.google.common.primitives.Ints;
@@ -10,9 +11,6 @@ import com.livingobjects.neo4j.model.PropertyType;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
-import org.neo4j.helpers.collection.Iterables;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -21,8 +19,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 public final class PropertyConverter {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(PropertyConverter.class);
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -36,7 +32,7 @@ public final class PropertyConverter {
     public static Object checkPropertyValue(Object value) {
         if (value instanceof Iterable) {
             Iterable iterable = (Iterable) value;
-            return Iterables.toArray(String.class, iterable);
+            return Iterables.toArray(iterable, String.class);
         } else {
             return value;
         }
@@ -53,7 +49,6 @@ public final class PropertyConverter {
                     return readStringField(isArray, value);
             }
         } catch (Exception ignored) {
-            LOGGER.debug("Unable to parse value " + value + " as " + propertyType + (isArray ? "[]" : ""));
             return value;
         }
     }

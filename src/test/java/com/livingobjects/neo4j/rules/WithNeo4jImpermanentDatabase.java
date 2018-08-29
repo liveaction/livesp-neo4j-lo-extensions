@@ -7,12 +7,11 @@ import com.google.common.reflect.ClassPath.ResourceInfo;
 import org.apache.commons.io.IOUtils;
 import org.junit.rules.ExternalResource;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.kernel.GraphDatabaseAPI;
+import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.kernel.configuration.Config;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.logging.NullLog;
 import org.neo4j.server.Bootstrapper;
-import org.neo4j.server.WrappingNeoServerBootstrapper;
-import org.neo4j.server.configuration.ConfigurationBuilder.ConfigWrappingConfigurator;
 import org.neo4j.server.configuration.ServerSettings;
 import org.neo4j.test.TestGraphDatabaseFactory;
 import org.slf4j.Logger;
@@ -50,7 +49,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 
     private GraphDatabaseService db;
 
-    private WrappingNeoServerBootstrapper neoServerBootstrapper;
+    //private WrappingNeoServerBootstrapper neoServerBootstrapper;
     private List<String> cyphers = new ArrayList<>();
 
     private Optional<InputStream> cypherStream = Optional.empty();
@@ -148,7 +147,17 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 //        SLF4JBridgeHandler.removeHandlersForRootLogger();
 //        SLF4JBridgeHandler.install();
 
-        db = new TestGraphDatabaseFactory().newImpermanentDatabase();
+        Map<String, String> config = new HashMap<>();
+        //config.put(ServerSettings.awebserver_address.name(), NEO4J_EMBEDDED_HOST);
+        //config.put(ServerSettings.webserver_port.name(), Integer.toString(port));
+        //config.put(ServerSettings.auth_enabled.name(), Boolean.toString(false));
+        //config.put(ServerSettings.http_logging_enabled.name(), Boolean.toString(false));
+
+        db = new GraphDatabaseFactory()
+                .newEmbeddedDatabaseBuilder(Files.createTempDirectory("neo4j-test-db").toFile())
+                .setConfig(config).newGraphDatabase();
+
+        /*db = new TestGraphDatabaseFactory().newImpermanentDatabase();
 
         boolean available = db.isAvailable(5000);
         assert available;
@@ -167,6 +176,8 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 
                 neoServerBootstrapper = new WrappingNeoServerBootstrapper((GraphDatabaseAPI) db, confBuilder);
                 start = neoServerBootstrapper.start(null);
+                new GraphDatabaseFactory()
+                        .newEmbeddedDatabaseBuilder(testDirectory.graphDbDir())
                 java.util.logging.Logger l0 = java.util.logging.Logger.getLogger("");
                 l0.removeHandler(l0.getHandlers()[0]);
                 l0.setLevel(Level.OFF);
@@ -178,7 +189,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
         // Pas bien
         Field log = Bootstrapper.class.getDeclaredField("log");
         log.setAccessible(true);
-        log.set(neoServerBootstrapper, NullLog.getInstance());
+        log.set(neoServerBootstrapper, NullLog.getInstance());*/
 
         LOGGER.debug("Graph database started.");
         initializeDatabase();
@@ -214,7 +225,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 
     @Override
     public void after() {
-        neoServerBootstrapper.stop();
+        //neoServerBootstrapper.stop();
         db.shutdown();
         cypherStream.ifPresent(cs -> {
             try {
