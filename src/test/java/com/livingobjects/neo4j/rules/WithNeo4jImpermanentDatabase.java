@@ -8,19 +8,12 @@ import org.apache.commons.io.IOUtils;
 import org.junit.rules.ExternalResource;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
-import org.neo4j.kernel.configuration.Config;
-import org.neo4j.kernel.internal.GraphDatabaseAPI;
-import org.neo4j.logging.NullLog;
-import org.neo4j.server.Bootstrapper;
-import org.neo4j.server.configuration.ServerSettings;
-import org.neo4j.test.TestGraphDatabaseFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,8 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.Random;
-import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.fail;
