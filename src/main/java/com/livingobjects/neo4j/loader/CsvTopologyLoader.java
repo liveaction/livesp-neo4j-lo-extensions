@@ -57,13 +57,7 @@ import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -269,11 +263,10 @@ public final class CsvTopologyLoader {
                                            UniqueEntity<Node> element,
                                            Map<String, Optional<UniqueEntity<Node>>> nodes) {
         String keyType = element.entity.getProperty(_TYPE).toString();
-        boolean isOverridable = metaSchema.isOverridable(keyType);
         boolean isGlobal = Optional.ofNullable(metaSchema.scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
-        Scope scopeFromImport = IWanLoaderHelper.consolidateScope(strategy.scope, isOverridable, isGlobal);
+        Scope scopeFromImport = isGlobal ? GLOBAL_SCOPE : strategy.scope;
 
         Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity)
                 .orElseGet(() -> getScopeFromParent(keyType, nodes).orElse(null));
@@ -320,9 +313,14 @@ public final class CsvTopologyLoader {
                 Node endNode = relationship.getEndNode();
                 String toKeytype = endNode.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(NAME).toString();
-                if (isOverridable && metaSchema.isScope(toKeytype)) {
-                    toKeytype = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE).attribute;
+
+                if (metaSchema.isScope(toKeytype) && !toKeytype.equals(strategy.scope.attribute)) {
+                    continue;
                 }
+
+                // if (isOverridable) {
+                //     toKeytype = strategy.scope.attribute;
+                // }
 
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {
@@ -445,8 +443,7 @@ public final class CsvTopologyLoader {
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
         boolean isOverridable = metaSchema.isOverridable(elementName);
-        Scope scope = Optional.ofNullable(strategy.scope).orElse(GLOBAL_SCOPE);
-        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(scope.tag)) {
+        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(strategy.scope.tag)) {
             return createElement(strategy, line, elementName);
         }
 

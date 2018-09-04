@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 class IwanMappingStrategy {
@@ -58,7 +59,7 @@ class IwanMappingStrategy {
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
-        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[mapping.keySet().size()])));
+        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[0])));
 
 
         return new IwanMappingStrategy(columnIndexesBldr.build(), mapping);
@@ -78,7 +79,7 @@ class IwanMappingStrategy {
             }
         });
 
-        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line).orElse(null);
+        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line).orElse(GLOBAL_SCOPE);
 
         return new LineMappingStrategy(scope, newIndex.build(), newMapping.build(), empties.build());
     }
@@ -114,15 +115,14 @@ class IwanMappingStrategy {
 
     ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
-        scopeKeyTypes.forEach(s ->
-                collect.putAll(addChildrenAttribute(s, collect, children)));
+
+        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, children));
 
         if (collect.isEmpty()) {
-            collect.putAll(addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children));
+            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children);
         }
-        mapping.keySet().stream()
-                .filter(k -> !collect.keySet().contains(k))
-                .forEach(k -> collect.putAll(addChildrenAttribute(k, collect, children)));
+        mapping.keySet()
+                .forEach(k -> addChildrenAttribute(k, collect, children));
 
         return ImmutableMap.copyOf(collect);
     }

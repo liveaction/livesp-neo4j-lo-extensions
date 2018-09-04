@@ -56,19 +56,6 @@ final class IWanLoaderHelper {
         return crossBldr.build();
     }
 
-    static Scope consolidateScope(Scope scope, boolean isOverridable, boolean isGlobal) {
-        if (isOverridable) {
-            if (scope != null)
-                return scope;
-            else
-                return GLOBAL_SCOPE;
-        } else if (isGlobal) {
-            return GLOBAL_SCOPE;
-        } else {
-            return scope;
-        }
-    }
-
     static Optional<Node> getParent(Node attributeNode) {
         for (Relationship relationship : attributeNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT)) {
             Object cardinality = relationship.getProperty(GraphModelConstants.CARDINALITY, GraphModelConstants.CARDINALITY_UNIQUE_PARENT);

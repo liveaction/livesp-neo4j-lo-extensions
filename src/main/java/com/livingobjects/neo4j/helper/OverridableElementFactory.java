@@ -7,7 +7,6 @@ import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import jline.internal.Nullable;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
@@ -34,8 +33,7 @@ public final class OverridableElementFactory {
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
-    public UniqueEntity<Node> getOrOverride(@Nullable Scope nullableScope, String keyProperty, Object keyValue) {
-        Scope scope = (nullableScope != null) ? nullableScope : GLOBAL_SCOPE;
+    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue) {
         ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
