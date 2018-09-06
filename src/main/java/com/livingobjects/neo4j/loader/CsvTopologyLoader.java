@@ -117,6 +117,7 @@ public final class CsvTopologyLoader {
                 LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(metaSchema.scopeByKeyTypes.values()), nextLine);
                 ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(metaSchema.scopeTypes, nextLine);
                 ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, lineStrategy);
+                LOGGER.debug("Line {} imported.", lineIndex);
                 for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
                     set.addAll(importedElements.getValue());
@@ -130,15 +131,15 @@ public final class CsvTopologyLoader {
             } catch (ImportException e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                LOGGER.debug(e.getLocalizedMessage());
-                LOGGER.debug(Arrays.toString(nextLine));
+                LOGGER.error("Line {} not imported : {}", lineIndex, e.getLocalizedMessage());
+                LOGGER.error(Arrays.toString(nextLine));
             } catch (Exception e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                LOGGER.error(e.getLocalizedMessage());
+                LOGGER.error("Line {} not imported : {}", lineIndex, e.getLocalizedMessage());
+                LOGGER.error(Arrays.toString(nextLine));
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("STACKTRACE", e);
-                    LOGGER.debug(Arrays.toString(nextLine));
                 }
             }
             lineIndex++;
@@ -263,13 +264,14 @@ public final class CsvTopologyLoader {
                                            UniqueEntity<Node> element,
                                            Map<String, Optional<UniqueEntity<Node>>> nodes) {
         String keyType = element.entity.getProperty(_TYPE).toString();
+        boolean isOverridable = metaSchema.isOverridable(keyType);
         boolean isGlobal = Optional.ofNullable(metaSchema.scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
         Scope scopeFromImport = isGlobal ? GLOBAL_SCOPE : strategy.scope;
 
         Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity)
-                .orElseGet(() -> getScopeFromParent(keyType, nodes).orElse(null));
+                .orElseGet(() -> !isOverridable ? getScopeFromParent(strategy, keyType, nodes).orElse(null) : null);
 
         if (scopeFromImport != null) {
             if (scopeFromDatabase != null && !scopeFromImport.tag.equals(scopeFromDatabase.tag)) {
@@ -293,7 +295,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private Optional<Scope> getScopeFromParent(String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private Optional<Scope> getScopeFromParent(LineMappingStrategy strategy, String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         return metaSchema.getRequiredParent(keyAttribute)
                 .flatMap(requiredParent ->
                         nodes.getOrDefault(requiredParent, Optional.empty())

@@ -12,7 +12,8 @@ import org.neo4j.graphdb.Relationship;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 final class IWanLoaderHelper {
 

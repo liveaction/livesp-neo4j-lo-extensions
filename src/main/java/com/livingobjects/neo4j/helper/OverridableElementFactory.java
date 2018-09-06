@@ -38,12 +38,8 @@ public final class OverridableElementFactory {
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
         graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
-            Iterable<Relationship> relationships = node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
-            if (relationships.iterator().hasNext()) {
-                Relationship only = relationships.iterator().next();
-                String nodeScope = only.getEndNode().getProperty(_SCOPE).toString();
-                expandsBldr.put(nodeScope, node);
-            }
+            String nodeScope = getElementScopeFromPlanet(keyProperty, keyValue, node);
+            expandsBldr.put(nodeScope, node);
         });
         ImmutableMap<String, Node> expands = expandsBldr.build();
 
@@ -75,6 +71,14 @@ public final class OverridableElementFactory {
             extraLabel.forEach(node.entity::addLabel);
             return node;
         }
+    }
+
+    private String getElementScopeFromPlanet(String keyProperty, Object keyValue, Node node) {
+        Relationship planetRelationship = node.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+        if (planetRelationship == null) {
+            throw new IllegalArgumentException(String.format("%s %s=%s is not linked to a planet", keyLabel, keyProperty, keyValue));
+        }
+        return planetRelationship.getEndNode().getProperty(_SCOPE).toString();
     }
 
     private UniqueEntity<Node> ensureExtendRelation(UniqueEntity<Node> node, Node extendedNode) {

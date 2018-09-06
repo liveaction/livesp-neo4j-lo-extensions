@@ -23,7 +23,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
-    public static final String PLACEHOLDER = "{:scopeId}";
+    static final String PLACEHOLDER = "{:scopeId}";
 
     private final PlanetFactory planetFactory;
 
@@ -55,8 +55,8 @@ public class TemplatedPlanetFactory {
                 .collect(Collectors.toSet()), ImmutableSet.of(keyType));
         try {
             planetTemplateName = planetByContext.bestMatchingContext(specificContext);
-        } catch (InsufficientContextException ignored) {
-            throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
+        } catch (InsufficientContextException e) {
+            throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, e.missingAttributesToChoose));
         }
         return planetTemplateName;
     }
