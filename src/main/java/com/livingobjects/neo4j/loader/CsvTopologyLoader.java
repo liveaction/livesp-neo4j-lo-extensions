@@ -57,7 +57,14 @@ import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -99,9 +106,12 @@ public final class CsvTopologyLoader {
 
     public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
-        IwanMappingStrategy strategy = IwanMappingStrategy.captureHeader(reader);
+        CsvMappingStrategy strategy = CsvMappingStrategy.captureHeader(reader);
 
-        checkCrossAttributeDefinitionExists(strategy);
+        try (Transaction ignore = graphDb.beginTx()) {
+            checkRequiredScopeColumns(strategy);
+            checkCrossAttributeDefinitionExists(strategy);
+        }
 
         String[] nextLine;
 
@@ -150,7 +160,17 @@ public final class CsvTopologyLoader {
         return new Neo4jLoadResult(imported, errors, importedElementByScope);
     }
 
-    private Transaction renewTransaction(IwanMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
+    private void checkRequiredScopeColumns(CsvMappingStrategy strategy) throws IOException {
+        for (String keyAttribute : strategy.getAllElementsType()) {
+            if (metaSchema.getParentScopes(keyAttribute).size() > 1) {
+                if (!strategy.tryColumnIndex(keyAttribute, SCOPE).isPresent()) {
+                    throw new IOException(String.format("Column '%s.%s' is required.", keyAttribute, SCOPE));
+                }
+            }
+        }
+    }
+
+    private Transaction renewTransaction(CsvMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
         tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
             LineMappingStrategy lineStrategy = strategy.reduceStrategyForLine(ImmutableSet.copyOf(metaSchema.scopeByKeyTypes.values()), ct);
             ImmutableSet<String> scopeKeyTypes = lineStrategy.guessKeyTypesForLine(metaSchema.scopeTypes, ct);
@@ -190,7 +210,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void createCrossAttributeLinks(String[] line, IwanMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private void createCrossAttributeLinks(String[] line, CsvMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createCrossAttributeLinks").time()) {
             Map<String, Relationship> crossAttributeRelationships = createCrossAttributeRelationships(nodes);
             for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
@@ -207,7 +227,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void checkCrossAttributeDefinitionExists(IwanMappingStrategy strategy) throws InvalidSchemaException {
+    private void checkCrossAttributeDefinitionExists(CsvMappingStrategy strategy) throws InvalidSchemaException {
         for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
             ImmutableSet<String> crossAttributesLinks = metaSchema.getCrossAttributesRelations(meHeader.elementName);
             if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
@@ -268,7 +288,7 @@ public final class CsvTopologyLoader {
         boolean isGlobal = Optional.ofNullable(metaSchema.scopeByKeyTypes.get(keyType))
                 .map(SCOPE_GLOBAL_ATTRIBUTE::equals)
                 .orElse(false);
-        Scope scopeFromImport = isGlobal ? GLOBAL_SCOPE : strategy.scope;
+        Scope scopeFromImport = isGlobal ? GLOBAL_SCOPE : strategy.lineScope;
 
         Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity)
                 .orElseGet(() -> !isOverridable ? getScopeFromParent(strategy, keyType, nodes).orElse(null) : null);
@@ -316,7 +336,7 @@ public final class CsvTopologyLoader {
                 String toKeytype = endNode.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(NAME).toString();
 
-                if (metaSchema.isScope(toKeytype) && !toKeytype.equals(strategy.scope.attribute)) {
+                if (metaSchema.isScope(toKeytype) && !toKeytype.equals(strategy.lineScope.attribute)) {
                     continue;
                 }
 
@@ -370,7 +390,7 @@ public final class CsvTopologyLoader {
 
             boolean isScope = metaSchema.isScope(elementKeyType);
             UniqueEntity<Node> uniqueEntity = (isOverridable) ?
-                    overridableElementFactory.getOrOverride(strategy.scope, GraphModelConstants.TAG, tag) :
+                    overridableElementFactory.getOrOverride(strategy.lineScope, GraphModelConstants.TAG, tag) :
                     networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
             Node elementNode = uniqueEntity.entity;
 
@@ -415,7 +435,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void applySchema(IwanMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
+    private void applySchema(CsvMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
         try {
             Iterable<String> schemas = getSchemasToApply(strategy, line, elementKeyType);
             applySchemas(elementKeyType, elementNode, schemas);
@@ -424,7 +444,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private Iterable<String> getSchemasToApply(IwanMappingStrategy strategy, String[] line, String elementKeyType) {
+    private Iterable<String> getSchemasToApply(CsvMappingStrategy strategy, String[] line, String elementKeyType) {
         return strategy.tryColumnIndex(elementKeyType, GraphModelConstants.SCHEMA)
                 .map(schemaIndex -> Splitter.on(',').omitEmptyStrings().trimResults().split(line[schemaIndex]))
                 .orElse(ImmutableSet.of());
@@ -445,7 +465,7 @@ public final class CsvTopologyLoader {
 
     private Optional<UniqueEntity<Node>> updateElement(LineMappingStrategy strategy, String[] line, String elementName) throws NoSuchElementException {
         boolean isOverridable = metaSchema.isOverridable(elementName);
-        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(strategy.scope.tag)) {
+        if (isOverridable && !SCOPE_GLOBAL_TAG.equals(strategy.lineScope.tag)) {
             return createElement(strategy, line, elementName);
         }
 

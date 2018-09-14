@@ -32,18 +32,18 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
-class IwanMappingStrategy {
-    private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
+class CsvMappingStrategy {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvMappingStrategy.class);
 
     private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
 
-    IwanMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
+    CsvMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
         this.columnIndexes = columnIndexes;
         this.mapping = mapping;
     }
 
-    static IwanMappingStrategy captureHeader(CSVReader reader) throws IOException {
+    static CsvMappingStrategy captureHeader(CSVReader reader) throws IOException {
         String[] headers = reader.readNext();
         ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
@@ -61,8 +61,7 @@ class IwanMappingStrategy {
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
         LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[0])));
 
-
-        return new IwanMappingStrategy(columnIndexesBldr.build(), mapping);
+        return new CsvMappingStrategy(columnIndexesBldr.build(), mapping);
     }
 
     LineMappingStrategy reduceStrategyForLine(Set<String> scopesTypes, String[] line) {

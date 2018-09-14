@@ -7,14 +7,14 @@ import com.livingobjects.neo4j.model.header.HeaderElement;
 
 import java.util.Collection;
 
-public final class LineMappingStrategy extends IwanMappingStrategy {
-    public final Scope scope;
+final class LineMappingStrategy extends CsvMappingStrategy {
+    final Scope lineScope;
     private final ImmutableSet<String> empties;
 
     LineMappingStrategy(Scope scope, ImmutableMap<String, Integer> columnIndexes,
                         ImmutableMultimap<String, HeaderElement> mapping, Collection<String> empties) {
         super(columnIndexes, mapping);
-        this.scope = scope;
+        this.lineScope = scope;
         this.empties = ImmutableSet.copyOf(empties);
     }
 

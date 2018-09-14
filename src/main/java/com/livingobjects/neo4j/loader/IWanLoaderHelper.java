@@ -19,7 +19,7 @@ final class IWanLoaderHelper {
 
     private static final String CLASS_SCOPE = "class:scope";
 
-    static Optional<Scope> findScopeValue(IwanMappingStrategy strategy, Set<String> scopeTypes, String[] line) {
+    static Optional<Scope> findScopeValue(CsvMappingStrategy strategy, Set<String> scopeTypes, String[] line) {
         Optional<Scope> oScope = strategy.getAllElementsType().stream()
                 .filter(scopeTypes::contains)
                 .map(kt -> Maps.immutableEntry(line[strategy.getColumnIndex(kt, ID)], line[strategy.getColumnIndex(kt, TAG)]))

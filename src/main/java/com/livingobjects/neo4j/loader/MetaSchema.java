@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
@@ -128,6 +129,14 @@ public final class MetaSchema {
 
     private String getKeyAttribute(Relationship r) {
         return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
+    }
+
+    public ImmutableSet<String> getParentScopes(String keyAttribute) {
+        return ImmutableSet.copyOf(
+                getMonoParentRelations(keyAttribute)
+                        .filter(scopeTypes::contains)
+                        .collect(Collectors.toSet())
+        );
     }
 
 }
