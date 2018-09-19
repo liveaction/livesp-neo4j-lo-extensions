@@ -29,9 +29,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-
 class CsvMappingStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(CsvMappingStrategy.class);
 
@@ -62,25 +59,6 @@ class CsvMappingStrategy {
         LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[0])));
 
         return new CsvMappingStrategy(columnIndexesBldr.build(), mapping);
-    }
-
-    LineMappingStrategy reduceStrategyForLine(Set<String> scopesTypes, String[] line) {
-        ImmutableMap.Builder<String, Integer> newIndex = ImmutableMap.builder();
-        ImmutableMultimap.Builder<String, HeaderElement> newMapping = ImmutableMultimap.builder();
-        ImmutableSet.Builder<String> empties = ImmutableSet.builder();
-        mapping.values().forEach(he -> {
-            String value = line[he.index];
-            if (value != null && !value.trim().isEmpty()) {
-                newIndex.put(he.columnIdentifier(), he.index);
-                newMapping.put(he.elementName, he);
-            } else if (TAG.equals(he.propertyName)) {
-                empties.add(he.elementName);
-            }
-        });
-
-        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line).orElse(GLOBAL_SCOPE);
-
-        return new LineMappingStrategy(scope, newIndex.build(), newMapping.build(), empties.build());
     }
 
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {

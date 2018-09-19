@@ -61,7 +61,7 @@ public final class MetaSchema {
                 ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
                 n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
                 n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
-                ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
+                ImmutableSet<String> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
                 if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
@@ -107,7 +107,7 @@ public final class MetaSchema {
     }
 
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
-        return IWanLoaderHelper.getParent(attributeNode)
+        return CsvLoaderHelper.getParent(attributeNode)
                 .map(node -> getScopeContext(scopes, node))
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
@@ -139,4 +139,7 @@ public final class MetaSchema {
         );
     }
 
+    public boolean keyAttributeExists(String keyAttribute) {
+        return parentRelations.get(keyAttribute) != null;
+    }
 }
