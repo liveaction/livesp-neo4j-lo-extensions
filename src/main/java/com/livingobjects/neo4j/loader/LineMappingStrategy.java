@@ -22,7 +22,7 @@ public final class LineMappingStrategy {
     public Scope guessElementScope(MetaSchema metaSchema, String keyAttribute) {
         ImmutableSet<String> parentScopes = metaSchema.getParentScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
-            String parentScope = guessSelectedScope(keyAttribute, parentScopes, false);
+            String parentScope = guessSelectedScope(keyAttribute, metaSchema.scopeTypes, false);
             return readScopeFromLine(keyAttribute, parentScope);
         } else {
             if (parentScopes.isEmpty()) {
