@@ -98,7 +98,7 @@ public final class CsvTopologyLoader {
             this.elementScopeSlider = new ElementScopeSlider(planetFactory);
             this.metaSchema = new MetaSchema(graphDb);
 
-            topologyLoaderUtils = new TopologyLoaderUtils(metaSchema, scopeElementFactory);
+            topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
         }
     }
 

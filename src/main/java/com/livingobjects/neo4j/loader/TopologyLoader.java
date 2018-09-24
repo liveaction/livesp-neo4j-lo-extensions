@@ -54,7 +54,7 @@ public final class TopologyLoader {
             UniqueElementFactory scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
             MetaSchema metaSchema = new MetaSchema(graphDb);
 
-            this.topologyLoaderUtils = new TopologyLoaderUtils(metaSchema, scopeElementFactory);
+            this.topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
         }
 
         this.graphDb = graphDb;

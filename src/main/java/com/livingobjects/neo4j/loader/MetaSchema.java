@@ -3,6 +3,7 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -14,12 +15,14 @@ import org.neo4j.graphdb.Relationship;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -85,9 +88,12 @@ public final class MetaSchema {
         }
         this.scopeByKeyTypes = scopeByKeyTypesBldr.build();
 
-        this.scopeTypes = ImmutableSet.<String>builder()
-                .addAll(scopes.values())
-                .build();
+        Set<String> scopeTypes = Sets.newHashSet();
+        scopeTypes.addAll(scopes.values());
+        scopeTypes.add(SP_SCOPE.attribute);
+        scopeTypes.add(GLOBAL_SCOPE.attribute);
+        this.scopeTypes = ImmutableSet.copyOf(scopeTypes);
+
     }
 
     public Node getTheGlobalScopeNode() {
