@@ -22,21 +22,26 @@ public final class LineMappingStrategy {
         this.line = line;
     }
 
-    Scope guessElementScope(MetaSchema metaSchema, String keyAttribute) {
+    Scope guessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
+        return tryToGuessElementScopeInLine(metaSchema, keyAttribute)
+                .orElseThrow(() -> new IllegalStateException(String.format("Unable to found a scope in the line to import '%s'.", keyAttribute)));
+    }
+
+    Optional<Scope> tryToGuessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
         ImmutableSet<String> parentScopes = metaSchema.getParentScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
             String parentScopeAttribute = guessScopeAttribute(keyAttribute, metaSchema.scopeTypes, false);
-            return readScopeFromLine(keyAttribute, parentScopeAttribute);
+            return readScopeFromLine(parentScopeAttribute);
         } else {
             if (parentScopes.isEmpty()) {
-                return GLOBAL_SCOPE;
+                return Optional.of(GLOBAL_SCOPE);
             } else {
                 if (parentScopes.size() == 1) {
                     String parentScopeAttribute = parentScopes.iterator().next();
-                    return readScopeFromLine(keyAttribute, parentScopeAttribute);
+                    return readScopeFromLine(parentScopeAttribute);
                 } else {
                     String parentScopeAttribute = guessScopeAttribute(keyAttribute, parentScopes, true);
-                    return readScopeFromLine(keyAttribute, parentScopeAttribute);
+                    return readScopeFromLine(parentScopeAttribute);
                 }
             }
         }
@@ -63,21 +68,21 @@ public final class LineMappingStrategy {
         return parentScopes.stream().filter(s -> s.endsWith(":" + scopeName)).findFirst();
     }
 
-    private Scope readScopeFromLine(String keyAttribute, String parentScopeAttribute) {
+    private Optional<Scope> readScopeFromLine(String parentScopeAttribute) {
         if (parentScopeAttribute.equals(SP_SCOPE.attribute)) {
-            return SP_SCOPE;
+            return Optional.of(SP_SCOPE);
         } else if (parentScopeAttribute.equals(GLOBAL_SCOPE.attribute)) {
-            return GLOBAL_SCOPE;
+            return Optional.of(GLOBAL_SCOPE);
         } else if (strategy.hasKeyType(parentScopeAttribute)) {
             String tag = line[strategy.getColumnIndex(parentScopeAttribute, TAG)];
             if (tag != null && !tag.isEmpty()) {
                 String id = line[strategy.getColumnIndex(parentScopeAttribute, ID)];
-                return new Scope(id, tag);
+                return Optional.of(new Scope(id, tag));
             } else {
-                throw new IllegalStateException(String.format("Column '%s' is required to import '%s'.", parentScopeAttribute, keyAttribute));
+                return Optional.empty();
             }
         } else {
-            throw new IllegalStateException(String.format("Column '%s' is required to import '%s'.", parentScopeAttribute, keyAttribute));
+            return Optional.empty();
         }
     }
 
