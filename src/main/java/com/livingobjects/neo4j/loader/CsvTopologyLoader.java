@@ -210,7 +210,7 @@ public final class CsvTopologyLoader {
 
             createCrossAttributeLinks(line, strategy, nodes);
 
-            createConnectLink(nodes);
+            createConnectLink(lineStrategy, nodes);
 
             return createOrUpdatePlanetLink(lineStrategy, nodes);
         }
@@ -264,9 +264,9 @@ public final class CsvTopologyLoader {
         return multiElementLinks;
     }
 
-    private void createConnectLink(Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private void createConnectLink(LineMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         nodes.forEach((keyType, oNode) ->
-                oNode.ifPresent(node -> linkToParents(keyType, node, nodes)));
+                oNode.ifPresent(node -> linkToParents(strategy, keyType, node, nodes)));
     }
 
     private ImmutableMultimap<TypedScope, String> createOrUpdatePlanetLink(LineMappingStrategy lineStrategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
@@ -328,17 +328,23 @@ public final class CsvTopologyLoader {
                                 .flatMap(nodeUniqueEntity -> topologyLoaderUtils.getScopeFromElementPlanet(nodeUniqueEntity.entity)));
     }
 
-    private void linkToParents(String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private void linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
             ImmutableList<Relationship> relationships = metaSchema.parentRelations.get(keyType);
             if (relationships == null || relationships.isEmpty()) {
                 return;
             }
 
+            String scopeAttribute = strategy.guessScopeAttributeInLine(metaSchema, keyType);
+
             for (Relationship relationship : relationships) {
                 Node endNode = relationship.getEndNode();
                 String toKeytype = endNode.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR +
                         endNode.getProperty(NAME).toString();
+
+                if (metaSchema.isScope(toKeytype) && !scopeAttribute.equals(toKeytype)) {
+                    continue;
+                }
 
                 Optional<UniqueEntity<Node>> parent = nodes.get(toKeytype);
                 if (parent == null || !parent.isPresent()) {

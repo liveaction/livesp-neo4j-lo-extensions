@@ -20,24 +20,20 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 import static org.neo4j.graphdb.Direction.INCOMING;
 
-public final class MetaSchema {
+final class MetaSchema {
 
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
 
-    public final ImmutableSet<String> scopeTypes;
+    final ImmutableSet<String> scopeTypes;
 
-    public final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
-    public final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
-    public final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
-    public final ImmutableMap<String, String> scopeByKeyTypes;
+    final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
+    final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
+    final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
+    private final ImmutableMap<String, String> scopeByKeyTypes;
 
     MetaSchema(GraphDatabaseService graphDb) {
         this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
@@ -96,19 +92,19 @@ public final class MetaSchema {
 
     }
 
-    public Node getTheGlobalScopeNode() {
+    Node getTheGlobalScopeNode() {
         return theGlobalNode;
     }
 
-    public boolean isOverridable(String elementKeyType) {
+    boolean isOverridable(String elementKeyType) {
         return overridableType.contains(elementKeyType);
     }
 
-    public boolean isScope(String elementKeyType) {
+    boolean isScope(String elementKeyType) {
         return scopeTypes.contains(elementKeyType);
     }
 
-    public ImmutableSet<String> getCrossAttributesRelations(String keyAttribute) {
+    ImmutableSet<String> getCrossAttributesRelations(String keyAttribute) {
         return crossAttributesRelations.get(keyAttribute);
     }
 
@@ -118,11 +114,11 @@ public final class MetaSchema {
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
 
-    public Stream<String> getMonoParentRelations(String keyAttribute) {
+    Stream<String> getMonoParentRelations(String keyAttribute) {
         return filterParentRelations(keyAttribute, cardinality -> !GraphModelConstants.CARDINALITY_MULTIPLE.equals(cardinality));
     }
 
-    public Optional<String> getRequiredParent(String keyAttribute) {
+    Optional<String> getRequiredParent(String keyAttribute) {
         return filterParentRelations(keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality))
                 .findFirst();
     }
@@ -137,15 +133,19 @@ public final class MetaSchema {
         return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
     }
 
-    public ImmutableSet<String> getParentScopes(String keyAttribute) {
-        return ImmutableSet.copyOf(
-                getMonoParentRelations(keyAttribute)
-                        .filter(scopeTypes::contains)
-                        .collect(Collectors.toSet())
-        );
+    ImmutableSet<String> getParentScopes(String keyAttribute) {
+        return ImmutableSet.copyOf(getMonoParentRelations(keyAttribute)
+                .flatMap(parent -> {
+                    if (scopeTypes.contains(parent)) {
+                        return Stream.of(parent);
+                    } else {
+                        return getParentScopes(parent).stream();
+                    }
+                })
+                .collect(Collectors.toSet()));
     }
 
-    public boolean keyAttributeExists(String keyAttribute) {
+    boolean keyAttributeExists(String keyAttribute) {
         return parentRelations.get(keyAttribute) != null;
     }
 }

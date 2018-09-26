@@ -27,24 +27,26 @@ public final class LineMappingStrategy {
                 .orElseThrow(() -> new IllegalStateException(String.format("Unable to found a scope in the line to import '%s'.", keyAttribute)));
     }
 
-    Optional<Scope> tryToGuessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
+    String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {
         ImmutableSet<String> parentScopes = metaSchema.getParentScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
-            String parentScopeAttribute = guessScopeAttribute(keyAttribute, metaSchema.scopeTypes, false);
-            return readScopeFromLine(parentScopeAttribute);
+            return guessScopeAttribute(keyAttribute, metaSchema.scopeTypes, false);
         } else {
             if (parentScopes.isEmpty()) {
-                return Optional.of(GLOBAL_SCOPE);
+                return GLOBAL_SCOPE.attribute;
             } else {
                 if (parentScopes.size() == 1) {
-                    String parentScopeAttribute = parentScopes.iterator().next();
-                    return readScopeFromLine(parentScopeAttribute);
+                    return parentScopes.iterator().next();
                 } else {
-                    String parentScopeAttribute = guessScopeAttribute(keyAttribute, parentScopes, true);
-                    return readScopeFromLine(parentScopeAttribute);
+                    return guessScopeAttribute(keyAttribute, parentScopes, true);
                 }
             }
         }
+    }
+
+    Optional<Scope> tryToGuessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
+        String scopeAttribute = guessScopeAttributeInLine(metaSchema, keyAttribute);
+        return readScopeFromLine(scopeAttribute);
     }
 
     private String guessScopeAttribute(String keyAttribute, ImmutableSet<String> parentScopes, boolean required) {
