@@ -388,12 +388,14 @@ public final class CsvTopologyLoader {
 
             boolean isOverridable = metaSchema.isOverridable(elementKeyType);
 
+            Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
             UniqueEntity<Node> uniqueEntity;
             if (isOverridable) {
-                Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
+                LOGGER.debug("Create Element scope: '" + scope.tag + "' tag: '" + tag + "'");
             } else {
                 uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
+                LOGGER.debug("Create NetworkElement scope: '" + scope.tag + "' tag: '" + tag + "'");
             }
 
             Iterable<String> schemasToApply = getSchemasToApply(lineStrategy.strategy, line, elementKeyType);
@@ -487,6 +489,7 @@ public final class CsvTopologyLoader {
 
         Node node = graphDb.findNode(Labels.NETWORK_ELEMENT, GraphModelConstants.TAG, tag);
         if (node != null) {
+            LOGGER.debug("Update NetworkElement scope: '" + scope.tag + "' tag: '" + tag + "'");
             persistElementProperties(line, elementHeaders, node);
             return Optional.of(UniqueEntity.existing(node));
         } else {

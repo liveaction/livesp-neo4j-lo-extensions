@@ -134,15 +134,19 @@ final class MetaSchema {
     }
 
     ImmutableSet<String> getParentScopes(String keyAttribute) {
-        return ImmutableSet.copyOf(getMonoParentRelations(keyAttribute)
-                .flatMap(parent -> {
-                    if (scopeTypes.contains(parent)) {
-                        return Stream.of(parent);
-                    } else {
-                        return getParentScopes(parent).stream();
-                    }
-                })
-                .collect(Collectors.toSet()));
+        if (scopeTypes.contains(keyAttribute)) {
+            return ImmutableSet.of(keyAttribute);
+        } else {
+            return ImmutableSet.copyOf(getMonoParentRelations(keyAttribute)
+                    .flatMap(parent -> {
+                        if (scopeTypes.contains(parent)) {
+                            return Stream.of(parent);
+                        } else {
+                            return getParentScopes(parent).stream();
+                        }
+                    })
+                    .collect(Collectors.toSet()));
+        }
     }
 
     boolean keyAttributeExists(String keyAttribute) {
