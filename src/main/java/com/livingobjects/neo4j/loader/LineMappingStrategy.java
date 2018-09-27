@@ -24,7 +24,7 @@ public final class LineMappingStrategy {
 
     Scope guessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
         return tryToGuessElementScopeInLine(metaSchema, keyAttribute)
-                .orElseThrow(() -> new IllegalStateException(String.format("Unable to found a scope in the line to import '%s'.", keyAttribute)));
+                .orElseThrow(() -> new IllegalStateException(String.format("Unable to find a scope in the line to import '%s'.", keyAttribute)));
     }
 
     String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {

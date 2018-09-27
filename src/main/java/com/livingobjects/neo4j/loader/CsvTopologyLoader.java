@@ -388,14 +388,15 @@ public final class CsvTopologyLoader {
 
             boolean isOverridable = metaSchema.isOverridable(elementKeyType);
 
-            Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
             UniqueEntity<Node> uniqueEntity;
             if (isOverridable) {
+                Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
                 LOGGER.debug("Create Element scope: '" + scope.tag + "' tag: '" + tag + "'");
             } else {
+                Optional<Scope> scope = lineStrategy.tryToGuessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
-                LOGGER.debug("Create NetworkElement scope: '" + scope.tag + "' tag: '" + tag + "'");
+                LOGGER.debug("Create NetworkElement scope: '" + scope.map(s -> s.tag).orElse("<from database>") + "' tag: '" + tag + "'");
             }
 
             Iterable<String> schemasToApply = getSchemasToApply(lineStrategy.strategy, line, elementKeyType);
