@@ -28,17 +28,17 @@ public final class LineMappingStrategy {
     }
 
     String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {
-        ImmutableSet<String> parentScopes = metaSchema.getParentScopes(keyAttribute);
+        ImmutableSet<String> authorizedScopes = metaSchema.getAuthorizedScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
             return guessScopeAttribute(keyAttribute, metaSchema.scopeTypes, false);
         } else {
-            if (parentScopes.isEmpty()) {
+            if (authorizedScopes.isEmpty()) {
                 return GLOBAL_SCOPE.attribute;
             } else {
-                if (parentScopes.size() == 1) {
-                    return parentScopes.iterator().next();
+                if (authorizedScopes.size() == 1) {
+                    return authorizedScopes.iterator().next();
                 } else {
-                    return guessScopeAttribute(keyAttribute, parentScopes, true);
+                    return guessScopeAttribute(keyAttribute, authorizedScopes, true);
                 }
             }
         }

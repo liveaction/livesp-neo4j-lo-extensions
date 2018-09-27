@@ -58,7 +58,6 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
@@ -106,11 +105,8 @@ public final class CsvTopologyLoader {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
         CsvMappingStrategy strategy = CsvMappingStrategy.captureHeader(reader);
 
-        try (Transaction ignore = graphDb.beginTx()) {
-            checkKeyAttributesExist(strategy);
-            checkRequiredScopeColumns(strategy);
-            checkCrossAttributeDefinitionExists(strategy);
-        }
+        checkKeyAttributesExist(strategy);
+        checkCrossAttributeDefinitionExists(strategy);
 
         String[] nextLine;
 
@@ -162,16 +158,6 @@ public final class CsvTopologyLoader {
         for (String keyAttribute : strategy.getAllElementsType()) {
             if (!metaSchema.keyAttributeExists(keyAttribute)) {
                 throw new IOException(String.format("Column '%s' is not a known keyAttribute.", keyAttribute));
-            }
-        }
-    }
-
-    private void checkRequiredScopeColumns(CsvMappingStrategy strategy) throws IOException {
-        for (String keyAttribute : strategy.getAllElementsType()) {
-            if (metaSchema.getParentScopes(keyAttribute).size() > 1) {
-                if (!strategy.tryColumnIndex(keyAttribute, SCOPE).isPresent()) {
-                    throw new IOException(String.format("Column '%s.%s' is required.", keyAttribute, SCOPE));
-                }
             }
         }
     }

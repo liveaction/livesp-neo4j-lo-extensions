@@ -133,7 +133,7 @@ final class MetaSchema {
         return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
     }
 
-    ImmutableSet<String> getParentScopes(String keyAttribute) {
+    ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
         if (scopeTypes.contains(keyAttribute)) {
             return ImmutableSet.of(keyAttribute);
         } else {
@@ -142,7 +142,7 @@ final class MetaSchema {
                         if (scopeTypes.contains(parent)) {
                             return Stream.of(parent);
                         } else {
-                            return getParentScopes(parent).stream();
+                            return getAuthorizedScopes(parent).stream();
                         }
                     })
                     .collect(Collectors.toSet()));
