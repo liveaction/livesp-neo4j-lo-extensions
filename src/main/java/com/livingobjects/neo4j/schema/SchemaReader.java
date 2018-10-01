@@ -66,7 +66,7 @@ public class SchemaReader {
     static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
         Integer topCount = null;
-        if(segment.hasProperty("topCount")) {
+        if (segment.hasProperty("topCount")) {
             topCount = Integer.parseInt(segment.getProperty("topCount").toString());
         }
 
@@ -91,17 +91,17 @@ public class SchemaReader {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty(ID)) return;
 
-            String id = counterNode.getProperty(ID).toString();
+            String name = counterNode.getProperty(NAME).toString();
             CounterNode counter = readCounter(counterNode);
             Boolean managed = isManaged(counterNode);
             if (onlyUnamanagedCounters) {
                 if (!managed) {
-                    counters.add(id);
-                    countersDefinitionBuilder.add(id, counter, managed);
+                    counters.add(name);
+                    countersDefinitionBuilder.add(name, counter, managed);
                 }
             } else {
-                counters.add(id);
-                countersDefinitionBuilder.add(id, counter, managed);
+                counters.add(name);
+                countersDefinitionBuilder.add(name, counter, managed);
             }
         });
         return ImmutableList.copyOf(counters);
