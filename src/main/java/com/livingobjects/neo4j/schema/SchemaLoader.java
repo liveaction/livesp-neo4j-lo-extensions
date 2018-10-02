@@ -168,7 +168,7 @@ public final class SchemaLoader {
             Object existingPath = segmentNode.getProperty(PATH);
 
             if (existingPath.equals(managedRealm.memdexPath.segment)) {
-                return new RealmNode(managedRealm.name, managedRealm.attributes, mergeManagedWithUnmanagedMemdexPath(managedRealm.memdexPath, unmanagedRealm, countersDefinitionBuilder));
+                return new RealmNode(managedRealm.name, managedRealm.attributes, mergeManagedWithUnmanagedMemdexPath(managedRealm.memdexPath, segmentNode, countersDefinitionBuilder));
             } else {
                 Optional<MemdexPathNode> previousMemdexPath = SchemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
                 if (previousMemdexPath.isPresent()) {
@@ -202,6 +202,9 @@ public final class SchemaLoader {
                         SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
                                 .ifPresent(mergedChildren::add);
                     }
+                } else {
+                    SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                            .ifPresent(mergedChildren::add);
                 }
             }
         }
@@ -716,7 +719,7 @@ public final class SchemaLoader {
         }
 
         if (relationship == null) {
-           counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
+            counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
             modified = true;
         }
 
@@ -744,9 +747,7 @@ public final class SchemaLoader {
             counterNodeEntity.entity.setProperty(NAME, counterNode.name);
             counterNodeEntity.entity.setProperty(CONTEXT, realmTemplate);
             counterNodeEntity.entity.setProperty("_type", "counter");
-            if (managedSchema.counters.isManaged(counter)) {
-                counterNodeEntity.entity.setProperty(MANAGED, true);
-            }
+            counterNodeEntity.entity.setProperty(MANAGED, managedSchema.counters.isManaged(counter));
             counterNodeEntity.entity.setProperty("defaultAggregation", counterNode.defaultAggregation);
             if (counterNode.defaultValue == null) {
                 counterNodeEntity.entity.removeProperty("defaultValue");
