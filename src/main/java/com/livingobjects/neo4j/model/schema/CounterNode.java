@@ -1,12 +1,12 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
+import com.livingobjects.neo4j.model.schema.type.type.CounterType;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import javax.annotation.Nullable;
 import java.util.Objects;
-import java.util.Optional;
 
 @JsonIgnoreProperties(value = "label")
 public final class CounterNode {
@@ -16,8 +16,7 @@ public final class CounterNode {
     public final String defaultAggregation;
     public final String valueType;
     public final String name;
-    public final String type;
-    public final String count;
+    public final CounterType counterType;
 
     @Nullable
     public final String description;
@@ -27,16 +26,14 @@ public final class CounterNode {
                        @JsonProperty("defaultAggregation") String defaultAggregation,
                        @JsonProperty("valueType") String valueType,
                        @JsonProperty("name") String name,
-                       @JsonProperty("type") @Nullable String type,
-                       @JsonProperty("count") @Nullable String count,
+                       @JsonProperty("counterType") @Nullable CounterType counterType,
                        @JsonProperty("description") @Nullable String description) {
         this.unit = unit;
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;
         this.valueType = valueType;
         this.name = name;
-        this.type = type;
-        this.count = count;
+        this.counterType = counterType;
         this.description = description;
     }
 
@@ -50,15 +47,14 @@ public final class CounterNode {
                 Objects.equals(defaultAggregation, that.defaultAggregation) &&
                 Objects.equals(valueType, that.valueType) &&
                 Objects.equals(name, that.name) &&
-                Objects.equals(type, that.type) &&
-                Objects.equals(count, that.count) &&
+                Objects.equals(counterType, that.counterType) &&
                 Objects.equals(description, that.description);
     }
 
     @Override
     public int hashCode() {
 
-        return Objects.hash(unit, defaultValue, defaultAggregation, valueType, name, type, count, description);
+        return Objects.hash(unit, defaultValue, defaultAggregation, valueType, name, counterType, description);
     }
 
     @Override
@@ -69,8 +65,7 @@ public final class CounterNode {
                 .add("defaultAggregation", defaultAggregation)
                 .add("valueType", valueType)
                 .add("name", name)
-                .add("type", type)
-                .add("count", count)
+                .add("type", counterType)
                 .add("description", description)
                 .toString();
     }

@@ -28,6 +28,7 @@ import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import com.livingobjects.neo4j.model.schema.managed.ManagedSchema;
 import com.livingobjects.neo4j.model.schema.planet.PlanetNode;
 import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
+import com.livingobjects.neo4j.model.schema.type.type.CounterType;
 import com.livingobjects.neo4j.model.schema.update.SchemaUpdate;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -60,6 +61,7 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
+import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
 import static com.livingobjects.neo4j.schema.SchemaReader.isManaged;
 import static com.livingobjects.neo4j.schema.SchemaReader.readRealm;
 import static java.util.stream.Collectors.toList;
@@ -759,15 +761,15 @@ public final class SchemaLoader {
             }
             counterNodeEntity.entity.setProperty("valueType", counterNode.valueType);
             counterNodeEntity.entity.setProperty("unit", counterNode.unit);
-            if (counterNode.type == null) {
+            if (counterNode.counterType == null) {
                 counterNodeEntity.entity.removeProperty("type");
+                counterNodeEntity.entity.removeProperty("countType");
             } else {
-                counterNodeEntity.entity.setProperty("type", counterNode.type);
-            }
-            if (counterNode.count == null) {
-                counterNodeEntity.entity.removeProperty("count");
-            } else {
-                counterNodeEntity.entity.setProperty("count", counterNode.count);
+                counterNode.counterType.visit((CounterType.Visitor<Void>) countCounterType -> {
+                    counterNodeEntity.entity.setProperty("type", COUNT);
+                    counterNodeEntity.entity.setProperty("countType", countCounterType);
+                    return null;
+                });
             }
 
             Relationship relationshipTo = existingRelationships.remove(counterNode.name);
