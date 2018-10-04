@@ -46,13 +46,23 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
-import static com.livingobjects.neo4j.schema.SchemaReader.isManaged;
-import static com.livingobjects.neo4j.schema.SchemaReader.readRealm;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
@@ -200,7 +210,7 @@ public final class SchemaLoader {
                                 .ifPresent(mergedChildren::add);
                     }
                 } else {
-                    SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                    schemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
                             .ifPresent(mergedChildren::add);
                 }
             }
