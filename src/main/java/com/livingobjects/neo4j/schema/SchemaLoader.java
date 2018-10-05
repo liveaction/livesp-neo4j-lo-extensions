@@ -767,7 +767,7 @@ public final class SchemaLoader {
             } else {
                 counterNode.counterType.visit((CounterType.Visitor<Void>) countCounterType -> {
                     counterNodeEntity.entity.setProperty("type", COUNT);
-                    counterNodeEntity.entity.setProperty("countType", countCounterType);
+                    counterNodeEntity.entity.setProperty("countType", countCounterType.countType);
                     return null;
                 });
             }
