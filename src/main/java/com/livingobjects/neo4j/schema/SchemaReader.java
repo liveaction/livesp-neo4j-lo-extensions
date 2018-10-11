@@ -88,7 +88,7 @@ public class SchemaReader {
         return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
-    private static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
