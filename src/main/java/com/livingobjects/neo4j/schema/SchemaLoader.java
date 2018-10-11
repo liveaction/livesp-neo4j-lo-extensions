@@ -189,6 +189,9 @@ public final class SchemaLoader {
         Map<String, MemdexPathNode> children = managedMemdexPath.children.stream()
                 .collect(toMap(m -> m.segment, m -> m));
 
+        List<String> counters = SchemaReader.readAllCounters(unmanagedRealm, true, countersDefinitionBuilder);
+        mergedCounters.addAll(counters);
+
         Set<String> notFound = Sets.newLinkedHashSet(children.keySet());
         for (Relationship relationship : unmanagedRealm.getRelationships(OUTGOING, MEMDEXPATH)) {
             Node segmentNode = relationship.getEndNode();
