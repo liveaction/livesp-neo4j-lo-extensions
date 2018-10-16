@@ -30,7 +30,7 @@ public final class LineMappingStrategy {
     String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {
         ImmutableSet<String> authorizedScopes = metaSchema.getAuthorizedScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
-            return guessScopeAttribute(keyAttribute, metaSchema.scopeTypes, false);
+            return guessScopeAttribute(keyAttribute, metaSchema.scopeTypes);
         } else {
             if (authorizedScopes.isEmpty()) {
                 return GLOBAL_SCOPE.attribute;
@@ -38,7 +38,7 @@ public final class LineMappingStrategy {
                 if (authorizedScopes.size() == 1) {
                     return authorizedScopes.iterator().next();
                 } else {
-                    return guessScopeAttribute(keyAttribute, authorizedScopes, true);
+                    return guessScopeAttribute(keyAttribute, authorizedScopes);
                 }
             }
         }
@@ -49,15 +49,11 @@ public final class LineMappingStrategy {
         return readScopeFromLine(scopeAttribute);
     }
 
-    private String guessScopeAttribute(String keyAttribute, ImmutableSet<String> parentScopes, boolean required) {
+    private String guessScopeAttribute(String keyAttribute, ImmutableSet<String> parentScopes) {
         Optional<Integer> scopeColumnIndex = strategy.tryColumnIndex(keyAttribute, SCOPE);
         String parentScopeName;
         if (!scopeColumnIndex.isPresent()) {
-            if (required) {
-                throw new IllegalStateException(String.format("Column '%s.%s' is required to import '%s'.", keyAttribute, SCOPE, keyAttribute));
-            } else {
-                parentScopeName = "global";
-            }
+            throw new IllegalStateException(String.format("Column '%s.%s' is required to import '%s'.", keyAttribute, SCOPE, keyAttribute));
         } else {
             String scopeNameInLine = line[scopeColumnIndex.get()];
             parentScopeName = Strings.isNullOrEmpty(scopeNameInLine) ? "global" : scopeNameInLine;
