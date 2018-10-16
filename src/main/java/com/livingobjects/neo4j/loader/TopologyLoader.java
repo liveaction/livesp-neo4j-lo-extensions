@@ -17,6 +17,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -59,12 +60,12 @@ public final class TopologyLoader {
         this.graphDb = graphDb;
     }
 
-    public void loadRelationships(List<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer) {
+    public void loadRelationships(List<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer, boolean updateOnly) {
         try (Transaction tx = graphDb.beginTx()) {
             List<RelationshipStatus> statuses = Lists.newArrayList();
             for (Relationship relationship : relationships) {
                 try {
-                    loadRelationship(relationship);
+                    loadRelationship(relationship, updateOnly);
                     statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, true, null));
                 } catch (Throwable e) {
                     statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, e.getMessage()));
@@ -78,7 +79,7 @@ public final class TopologyLoader {
         }
     }
 
-    private void loadRelationship(Relationship relationship) {
+    private void loadRelationship(Relationship relationship, boolean updateOnly) {
         ImportRelationship relationshipType = ImportRelationship.of(relationship.type);
         if (relationshipType != null) {
             if (relationship.from.equals(relationship.to)) {
@@ -94,13 +95,18 @@ public final class TopologyLoader {
             }
             String fromType = from.getProperty(GraphModelConstants._TYPE).toString();
             String toType = to.getProperty(GraphModelConstants._TYPE).toString();
+
             ImmutableSet<String> authorizedRels = crossAttributeRelationships.get(fromType);
+
             if (authorizedRels != null && authorizedRels.contains(toType)) {
                 if (nodeScopesAreEqualOrGlobal(from, to)) {
-                    org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType);
+
+                    org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType, updateOnly);
+
                     for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
                         r.setProperty(e.getKey(), PropertyConverter.checkPropertyValue(e.getValue()));
                     }
+
                     relationship.attributes.forEach((key, value) -> {
                         Object checkedValue = PropertyConverter.checkPropertyValue(value);
                         if (checkedValue != null) {
@@ -109,6 +115,8 @@ public final class TopologyLoader {
                             r.removeProperty(key);
                         }
                     });
+
+                    r.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
                 } else {
                     throw new IllegalArgumentException(
                             String.format("Relationship %s is not allowed from '%s' to '%s' : elements should have the same scope or one element should have the global scope",
@@ -132,16 +140,26 @@ public final class TopologyLoader {
         return scopeAreEqual || oneScopeIsGlobal;
     }
 
-    private org.neo4j.graphdb.Relationship mergeRelationship(Node from, Node to, ImportRelationship relationshipType) {
+    private org.neo4j.graphdb.Relationship mergeRelationship(Node from, Node to, ImportRelationship relationshipType, boolean updateOnly) {
         org.neo4j.graphdb.Relationship existingRelationship = null;
+
         for (org.neo4j.graphdb.Relationship r : from.getRelationships(relationshipType.relationshipType, Direction.OUTGOING)) {
             if (r.getEndNode().equals(to)) {
                 existingRelationship = r;
             }
         }
+
         if (existingRelationship == null) {
+            if (updateOnly) {
+                throw new IllegalArgumentException(
+                        String.format("Update of relationship %s from node(id='%s') to node(id='%s') not allowed : the relationship doesn't exist, it needs to be created first",
+                                relationshipType, from.getId(), to.getId()));
+            }
+
             existingRelationship = from.createRelationshipTo(to, relationshipType.relationshipType);
+            existingRelationship.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         }
+
         return existingRelationship;
     }
 

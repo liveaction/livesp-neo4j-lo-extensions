@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 @Path("/load-relationships")
@@ -34,6 +35,7 @@ public final class LoadRelationshipsExtension {
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadRelationshipsExtension.class);
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private static final String PARAM_UPDATE_ONLY = "updateOnly";
 
     private final TopologyLoader topologyLoader;
 
@@ -46,6 +48,10 @@ public final class LoadRelationshipsExtension {
     public Response load(@Context HttpServletRequest request) throws IOException {
         try {
             Iterable<Relationship> relationships = readRelationships(request.getInputStream());
+            boolean updateOnly = Optional.ofNullable(request.getParameter(PARAM_UPDATE_ONLY))
+                    .map(Boolean::parseBoolean)
+                    .orElse(false);
+
             StreamingOutput stream = outputStream -> {
                 load(relationships, relationshipStatus -> {
                     try {
@@ -55,7 +61,7 @@ public final class LoadRelationshipsExtension {
                         LOGGER.error("load-relationships extension : error streaming result", e);
                         throw new IllegalStateException(e);
                     }
-                });
+                }, updateOnly);
                 outputStream.close();
             };
             return Response.ok().entity(stream)
@@ -107,9 +113,9 @@ public final class LoadRelationshipsExtension {
         };
     }
 
-    private void load(Iterable<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer) {
+    private void load(Iterable<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer, boolean updateOnly) {
         for (List<Relationship> batch : Lists.partition(ImmutableList.copyOf(relationships), 10000)) {
-            topologyLoader.loadRelationships(batch, relationshipStatusConsumer);
+            topologyLoader.loadRelationships(batch, relationshipStatusConsumer, updateOnly);
         }
     }
 
