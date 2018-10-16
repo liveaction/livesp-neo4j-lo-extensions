@@ -150,9 +150,7 @@ public final class TopologyLoader {
 
         if (existingRelationship == null) {
             if (updateOnly) {
-                throw new IllegalArgumentException(
-                        String.format("Update of relationship %s from node(id='%s') to node(id='%s') not allowed : the relationship doesn't exist, it needs to be created first",
-                                relationshipType, from.getId(), to.getId()));
+                throw new IllegalArgumentException("Unable to update the relationship : it must be created first.");
             }
 
             existingRelationship = from.createRelationshipTo(to, relationshipType.relationshipType);
