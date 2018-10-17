@@ -35,6 +35,5 @@ public final class GraphModelConstants {
     public static final String UPDATED_AT = "updatedAt";
     public static final String _OVERRIDABLE = "_overridable";
     public static final String OVERRIDE = "override";
-    public static final String _SCOPE = "scope";
     public static final String CONTEXT = "context";
 }

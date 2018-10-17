@@ -18,8 +18,8 @@ import java.util.Optional;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.OVERRIDE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._SCOPE;
 
 public final class OverridableElementFactory {
 
@@ -78,7 +78,7 @@ public final class OverridableElementFactory {
         if (planetRelationship == null) {
             throw new IllegalArgumentException(String.format("%s %s=%s is not linked to a planet", keyLabel, keyProperty, keyValue));
         }
-        return planetRelationship.getEndNode().getProperty(_SCOPE).toString();
+        return planetRelationship.getEndNode().getProperty(SCOPE).toString();
     }
 
     private UniqueEntity<Node> ensureExtendRelation(UniqueEntity<Node> node, Node extendedNode) {
@@ -100,7 +100,7 @@ public final class OverridableElementFactory {
     private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope) {
         created.addLabel(keyLabel);
         created.setProperty(keyProperty, keyValue);
-        created.setProperty(_SCOPE, scope.tag);
+        created.setProperty(SCOPE, scope.tag);
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         return created;
     }

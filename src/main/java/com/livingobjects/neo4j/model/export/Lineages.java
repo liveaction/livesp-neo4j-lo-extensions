@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.PropertyType;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
@@ -29,20 +30,30 @@ public final class Lineages {
 
     private final Set<String> propertiesToIgnore;
 
-    public Lineages(ImmutableList<String> attributesToExport, boolean exportTags) {
+    public Lineages(ImmutableList<String> attributesToExport, MetaSchema metaSchema, boolean exportTags) {
         lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
         allTags = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
         propertiesToIgnore = exportTags ? IGNORE : IGNORE_WITH_TAGS;
+        addScopeColumn(attributesToExport, metaSchema);
+    }
+
+    private void addScopeColumn(ImmutableList<String> attributesToExport, MetaSchema metaSchema) {
+        for (String keyAttribute : attributesToExport) {
+            if (metaSchema.isMultiScope(keyAttribute)) {
+                SortedMap<String, String> keyAttributeProperties = getKeyAttributeProperties(keyAttribute);
+                keyAttributeProperties.put(GraphModelConstants.SCOPE, "STRING");
+            }
+        }
     }
 
     public boolean dejaVu(Node leaf) {
         return allTags.contains(leaf.getProperty(GraphModelConstants.TAG).toString());
     }
 
-    public void markAsVisited(String nodeTag, String type, Node node) {
+    public void markAsVisited(String nodeTag, String keyAttribute, Node node) {
         allTags.add(nodeTag);
-        SortedMap<String, String> properties = propertiesTypeByType.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+        SortedMap<String, String> properties = getKeyAttributeProperties(keyAttribute);
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
             if (!name.startsWith("_") && !propertiesToIgnore.contains(name)) {
@@ -73,6 +84,10 @@ public final class Lineages {
         } else {
             return PropertyType.STRING.name();
         }
+    }
+
+    private SortedMap<String, String> getKeyAttributeProperties(String keyAttribute) {
+        return propertiesTypeByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
     }
 
 }
