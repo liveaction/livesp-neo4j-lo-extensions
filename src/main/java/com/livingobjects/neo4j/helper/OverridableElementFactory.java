@@ -7,7 +7,6 @@ import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import jline.internal.Nullable;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
@@ -19,8 +18,8 @@ import java.util.Optional;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.OVERRIDE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._SCOPE;
 
 public final class OverridableElementFactory {
 
@@ -34,18 +33,13 @@ public final class OverridableElementFactory {
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
-    public UniqueEntity<Node> getOrOverride(@Nullable Scope nullableScope, String keyProperty, Object keyValue) {
-        Scope scope = (nullableScope != null) ? nullableScope : GLOBAL_SCOPE;
+    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue) {
         ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
         graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
-            Iterable<Relationship> relationships = node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
-            if (relationships.iterator().hasNext()) {
-                Relationship only = relationships.iterator().next();
-                String nodeScope = only.getEndNode().getProperty(_SCOPE).toString();
-                expandsBldr.put(nodeScope, node);
-            }
+            String nodeScope = getElementScopeFromPlanet(keyProperty, keyValue, node);
+            expandsBldr.put(nodeScope, node);
         });
         ImmutableMap<String, Node> expands = expandsBldr.build();
 
@@ -79,6 +73,14 @@ public final class OverridableElementFactory {
         }
     }
 
+    private String getElementScopeFromPlanet(String keyProperty, Object keyValue, Node node) {
+        Relationship planetRelationship = node.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+        if (planetRelationship == null) {
+            throw new IllegalArgumentException(String.format("%s %s=%s is not linked to a planet", keyLabel, keyProperty, keyValue));
+        }
+        return planetRelationship.getEndNode().getProperty(SCOPE).toString();
+    }
+
     private UniqueEntity<Node> ensureExtendRelation(UniqueEntity<Node> node, Node extendedNode) {
         Relationship rel = node.entity.getSingleRelationship(RelationshipTypes.EXTEND, Direction.OUTGOING);
         if (rel != null) {
@@ -98,7 +100,7 @@ public final class OverridableElementFactory {
     private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope) {
         created.addLabel(keyLabel);
         created.setProperty(keyProperty, keyValue);
-        created.setProperty(_SCOPE, scope.tag);
+        created.setProperty(SCOPE, scope.tag);
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         return created;
     }

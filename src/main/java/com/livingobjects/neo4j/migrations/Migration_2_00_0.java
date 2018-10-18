@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 
 public final class Migration_2_00_0 {
     private static final Logger LOGGER = LoggerFactory.getLogger(Migration_2_00_0.class);
@@ -259,7 +259,7 @@ public final class Migration_2_00_0 {
             Node globalApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/global/application/cisco");
             Node spApp = graphDb.findNode(Labels.PLANET, NAME, "iwan/sp/application/cisco");
             graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, "neType:application").forEachRemaining(appNode -> {
-                String scope = appNode.getProperty(_SCOPE, "class=scope,scope=global").toString();
+                String scope = appNode.getProperty(SCOPE, "class=scope,scope=global").toString();
                 switch (scope) {
                     case "class=scope,scope=global":
                         appNode.createRelationshipTo(globalApp, RelationshipTypes.ATTRIBUTE);

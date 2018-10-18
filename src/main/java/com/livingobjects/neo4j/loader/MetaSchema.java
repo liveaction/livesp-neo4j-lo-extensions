@@ -3,6 +3,7 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -14,11 +15,14 @@ import org.neo4j.graphdb.Relationship;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -28,14 +32,14 @@ public final class MetaSchema {
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
 
-    public final ImmutableSet<String> scopeTypes;
+    final ImmutableSet<String> scopeTypes;
 
-    public final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
-    public final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
-    public final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
-    public final ImmutableMap<String, String> scopeByKeyTypes;
+    final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
+    final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
+    final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
+    private final ImmutableMap<String, String> scopeByKeyTypes;
 
-    MetaSchema(GraphDatabaseService graphDb) {
+    public MetaSchema(GraphDatabaseService graphDb) {
         this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
         Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
 
@@ -60,7 +64,7 @@ public final class MetaSchema {
                 ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
                 n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
                 n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
-                ImmutableSet<String> crossAttributes = IWanLoaderHelper.getCrossAttributes(n);
+                ImmutableSet<String> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
                 if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
@@ -84,9 +88,12 @@ public final class MetaSchema {
         }
         this.scopeByKeyTypes = scopeByKeyTypesBldr.build();
 
-        this.scopeTypes = ImmutableSet.<String>builder()
-                .addAll(scopes.values())
-                .build();
+        Set<String> scopeTypes = Sets.newHashSet();
+        scopeTypes.addAll(scopes.values());
+        scopeTypes.add(SP_SCOPE.attribute);
+        scopeTypes.add(GLOBAL_SCOPE.attribute);
+        this.scopeTypes = ImmutableSet.copyOf(scopeTypes);
+
     }
 
     public Node getTheGlobalScopeNode() {
@@ -106,7 +113,7 @@ public final class MetaSchema {
     }
 
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
-        return IWanLoaderHelper.getParent(attributeNode)
+        return CsvLoaderHelper.getParent(attributeNode)
                 .map(node -> getScopeContext(scopes, node))
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
@@ -130,4 +137,27 @@ public final class MetaSchema {
         return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
     }
 
+    public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
+        if (scopeTypes.contains(keyAttribute)) {
+            return ImmutableSet.of(keyAttribute);
+        } else {
+            return ImmutableSet.copyOf(getMonoParentRelations(keyAttribute)
+                    .flatMap(parent -> {
+                        if (scopeTypes.contains(parent)) {
+                            return Stream.of(parent);
+                        } else {
+                            return getAuthorizedScopes(parent).stream();
+                        }
+                    })
+                    .collect(Collectors.toSet()));
+        }
+    }
+
+    public boolean keyAttributeExists(String keyAttribute) {
+        return parentRelations.get(keyAttribute) != null;
+    }
+
+    public boolean isMultiScope(String keyAttribute) {
+        return getAuthorizedScopes(keyAttribute).size() > 1;
+    }
 }
