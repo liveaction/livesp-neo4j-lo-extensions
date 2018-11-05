@@ -337,7 +337,7 @@ public final class CsvTopologyLoader {
                     String cardinality = relationship.getProperty(GraphModelConstants.CARDINALITY, GraphModelConstants.CARDINALITY_UNIQUE_PARENT).toString();
                     if (keyTypeNode.wasCreated && GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality)) {
                         Object tagProperty = keyTypeNode.entity.getProperty(TAG);
-                        throw new MissingElementException(String.format("Unable to update '%s' because the element does not exist : '%s'. Line is ignored.", keyType, tagProperty));
+                        throw new MissingElementException(String.format("Unable to import '%s' because its required parent of type '%s' is not found. Line is ignored.", tagProperty, toKeytype));
                     } else {
                         continue;
                     }
