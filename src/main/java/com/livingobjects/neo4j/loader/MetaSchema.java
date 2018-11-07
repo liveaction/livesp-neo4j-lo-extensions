@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -12,6 +13,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
+import java.lang.reflect.Array;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -31,13 +33,13 @@ public final class MetaSchema {
 
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
+    private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
 
     final ImmutableSet<String> scopeTypes;
 
     final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
     final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
-    private final ImmutableMap<String, String> scopeByKeyTypes;
 
     public MetaSchema(GraphDatabaseService graphDb) {
         this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
@@ -48,11 +50,18 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
+        ImmutableMap.Builder<String, ImmutableSet<String>> requiredPropertiesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
             String keytype = n.getProperty(GraphModelConstants._TYPE).toString();
             String key = keytype + GraphModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
+
+            Object requiredProperties = n.getProperty("requiredProperties", new String[0]);
+            if (requiredProperties instanceof String[]) {
+                requiredPropertiesBldr.put(key, ImmutableSet.copyOf((String[]) requiredProperties));
+            }
+
             boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
             if (isOverride) overrideBldr.add(key);
 
@@ -86,7 +95,6 @@ public final class MetaSchema {
             getScopeContext(scopes, attributeNode)
                     .ifPresent(scope -> scopeByKeyTypesBldr.put(keyType, scope));
         }
-        this.scopeByKeyTypes = scopeByKeyTypesBldr.build();
 
         Set<String> scopeTypes = Sets.newHashSet();
         scopeTypes.addAll(scopes.values());
@@ -94,6 +102,7 @@ public final class MetaSchema {
         scopeTypes.add(GLOBAL_SCOPE.attribute);
         this.scopeTypes = ImmutableSet.copyOf(scopeTypes);
 
+        this.requiredProperties = requiredPropertiesBldr.build();
     }
 
     public Node getTheGlobalScopeNode() {
@@ -106,6 +115,10 @@ public final class MetaSchema {
 
     public boolean isScope(String elementKeyType) {
         return scopeTypes.contains(elementKeyType);
+    }
+
+    public final ImmutableSet<String> getRequiredProperties(String keyAttribute) {
+        return requiredProperties.get(keyAttribute);
     }
 
     public ImmutableSet<String> getCrossAttributesRelations(String keyAttribute) {
@@ -123,8 +136,12 @@ public final class MetaSchema {
     }
 
     public Optional<String> getRequiredParent(String keyAttribute) {
-        return filterParentRelations(keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality))
+        return getRequiredParents(keyAttribute)
                 .findFirst();
+    }
+
+    public Stream<String> getRequiredParents(String keyAttribute) {
+        return filterParentRelations(keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality));
     }
 
     private Stream<String> filterParentRelations(String keyAttribute, Function<String, Boolean> cardinalityFilter) {

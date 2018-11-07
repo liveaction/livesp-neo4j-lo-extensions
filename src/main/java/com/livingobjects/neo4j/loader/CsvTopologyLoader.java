@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -65,6 +66,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static java.util.Optional.ofNullable;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -194,12 +196,41 @@ public final class CsvTopologyLoader {
 
             ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes = ImmutableMap.copyOf(nodesBuilder);
 
+            checkRequiredProperties(nodes);
+
             createCrossAttributeLinks(line, strategy, nodes);
 
             createConnectLink(lineStrategy, nodes);
 
             return createOrUpdatePlanetLink(lineStrategy, nodes);
         }
+    }
+
+    private void checkRequiredProperties(ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
+        for (Entry<String, Optional<UniqueEntity<Node>>> nodeEntry : nodes.entrySet()) {
+            String keyAttribute = nodeEntry.getKey();
+            Optional<UniqueEntity<Node>> node = nodeEntry.getValue();
+            ImmutableSet<String> requiredProperties = metaSchema.getRequiredProperties(keyAttribute);
+            for (String requiredProperty : requiredProperties) {
+                node.ifPresent(entity -> {
+                    Object value = inferValueFromParent(keyAttribute, requiredProperty, nodes);
+                    if (value == null) {
+                        throw new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be infered from parents neither. Line not imported.", keyAttribute, requiredProperty));
+                    }else {
+                        entity.entity.setProperty(requiredProperty, value);
+                    }
+                });
+            }
+        }
+    }
+
+    private Object inferValueFromParent(String keyAttribute, String requiredProperty, ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
+        return nodes.get(keyAttribute)
+                .flatMap(node -> ofNullable(node.entity.getProperty(requiredProperty, null)))
+                .orElseGet(() -> metaSchema.getRequiredParents(keyAttribute)
+                        .map(parentKeyAttribute -> inferValueFromParent(parentKeyAttribute, requiredProperty, nodes))
+                        .filter(Objects::nonNull)
+                        .findFirst().orElse(null));
     }
 
     private void createCrossAttributeLinks(String[] line, CsvMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
@@ -484,7 +515,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private static void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
+    private void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
                 .filter(h -> !GraphModelConstants.TAG.equals(h.propertyName) && !GraphModelConstants.SCOPE.equals(h.propertyName))
                 .forEach(h -> h.visit(new Visitor<Void>() {
