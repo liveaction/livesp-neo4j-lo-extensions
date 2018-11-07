@@ -91,7 +91,7 @@ public class SchemaReader {
         return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
-    private ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    public static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
@@ -113,7 +113,7 @@ public class SchemaReader {
         return ImmutableList.copyOf(counters);
     }
 
-    private CounterNode readCounter(Node node) {
+    private static CounterNode readCounter(Node node) {
         String unit = node.getProperty("unit").toString();
         String defaultValue = Optional.ofNullable(node.getProperty("defaultValue", null)).map(Object::toString).orElse(null);
         String defaultAggregation = node.getProperty("defaultAggregation").toString();
@@ -139,7 +139,7 @@ public class SchemaReader {
         return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, counterType, description);
     }
 
-    Boolean isManaged(Node counterNode) {
+    static Boolean isManaged(Node counterNode) {
         return Optional.ofNullable(counterNode.getProperty(MANAGED, ""))
                 .map(Object::toString)
                 .map(Boolean::parseBoolean)
