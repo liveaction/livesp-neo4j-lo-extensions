@@ -66,7 +66,6 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
-import static java.util.Optional.ofNullable;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -196,11 +195,12 @@ public final class CsvTopologyLoader {
 
             ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes = ImmutableMap.copyOf(nodesBuilder);
 
-            checkRequiredProperties(nodes);
 
             createCrossAttributeLinks(line, strategy, nodes);
 
             createConnectLink(lineStrategy, nodes);
+
+            checkRequiredProperties(nodes);
 
             return createOrUpdatePlanetLink(lineStrategy, nodes);
         }
@@ -216,7 +216,7 @@ public final class CsvTopologyLoader {
                     Object value = inferValueFromParent(keyAttribute, requiredProperty, nodes);
                     if (value == null) {
                         throw new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be infered from parents neither. Line not imported.", keyAttribute, requiredProperty));
-                    }else {
+                    } else {
                         entity.entity.setProperty(requiredProperty, value);
                     }
                 });
@@ -225,8 +225,8 @@ public final class CsvTopologyLoader {
     }
 
     private Object inferValueFromParent(String keyAttribute, String requiredProperty, ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
-        return nodes.get(keyAttribute)
-                .flatMap(node -> ofNullable(node.entity.getProperty(requiredProperty, null)))
+        return nodes.getOrDefault(keyAttribute, Optional.empty())
+                .flatMap(node -> Optional.ofNullable(node.entity.getProperty(requiredProperty, null)))
                 .orElseGet(() -> metaSchema.getRequiredParents(keyAttribute)
                         .map(parentKeyAttribute -> inferValueFromParent(parentKeyAttribute, requiredProperty, nodes))
                         .filter(Objects::nonNull)
