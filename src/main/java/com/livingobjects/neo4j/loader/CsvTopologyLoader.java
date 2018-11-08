@@ -59,6 +59,7 @@ import java.util.stream.Collectors;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.RESERVED_PROPERTIES;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
@@ -517,7 +518,7 @@ public final class CsvTopologyLoader {
 
     private void persistElementProperties(String[] line, ImmutableCollection<HeaderElement> elementHeaders, Node elementNode) {
         elementHeaders.stream()
-                .filter(h -> !GraphModelConstants.TAG.equals(h.propertyName) && !GraphModelConstants.SCOPE.equals(h.propertyName))
+                .filter(h -> !RESERVED_PROPERTIES.contains(h.propertyName))
                 .forEach(h -> h.visit(new Visitor<Void>() {
                     @Override
                     public Void visitSimple(SimpleElementHeader header) {
