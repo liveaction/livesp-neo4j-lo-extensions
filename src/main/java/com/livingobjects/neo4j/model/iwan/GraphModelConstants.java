@@ -37,6 +37,6 @@ public final class GraphModelConstants {
     public static final String OVERRIDE = "override";
     public static final String CONTEXT = "context";
 
-    public static final ImmutableSet<String> RESERVED_PROPERTIES = ImmutableSet.of(TAG, _TYPE, CREATED_AT, UPDATED_AT);
+    public static final ImmutableSet<String> RESERVED_PROPERTIES = ImmutableSet.of(TAG, SCOPE, _TYPE, CREATED_AT, UPDATED_AT);
 
 }
