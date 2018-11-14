@@ -19,11 +19,9 @@ import static java.util.Objects.requireNonNull;
 
 public final class TopologyLoaderUtils {
 
-    private final MetaSchema metaSchema;
     private final UniqueElementFactory scopeElementFactory;
 
-    public TopologyLoaderUtils(MetaSchema metaSchema, UniqueElementFactory scopeElementFactory) {
-        this.metaSchema = requireNonNull(metaSchema);
+    public TopologyLoaderUtils(UniqueElementFactory scopeElementFactory) {
         this.scopeElementFactory = requireNonNull(scopeElementFactory);
     }
 

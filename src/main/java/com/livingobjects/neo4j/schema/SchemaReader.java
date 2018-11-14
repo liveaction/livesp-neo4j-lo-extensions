@@ -9,6 +9,8 @@ import com.livingobjects.neo4j.model.schema.CounterNode;
 import com.livingobjects.neo4j.model.schema.MemdexPathNode;
 import com.livingobjects.neo4j.model.schema.RealmNode;
 import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
+import com.livingobjects.neo4j.model.schema.type.type.CountCounterType;
+import com.livingobjects.neo4j.model.schema.type.type.CounterType;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
@@ -28,6 +30,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_S
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
 
 public class SchemaReader {
 
@@ -65,6 +68,10 @@ public class SchemaReader {
 
     static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
+        Integer topCount = null;
+        if (segment.hasProperty("topCount")) {
+            topCount = Integer.parseInt(segment.getProperty("topCount").toString());
+        }
 
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
@@ -78,7 +85,7 @@ public class SchemaReader {
         if (counters.isEmpty() && children.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children));
+        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
     static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
@@ -109,8 +116,24 @@ public class SchemaReader {
         String defaultAggregation = node.getProperty("defaultAggregation").toString();
         String name = node.getProperty(NAME).toString();
         String valueType = node.getProperty("valueType").toString();
+
         String description = Optional.ofNullable(node.getProperty(DESCRIPTION, null)).map(Object::toString).orElse(null);
-        return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, description);
+
+        CounterType counterType = Optional.ofNullable(node.getProperty("type", null))
+                .map(Object::toString)
+                .flatMap(type -> {
+                    switch (type) {
+                        case COUNT:
+                            return Optional.ofNullable(node.getProperty("countType", null))
+                                    .map(Object::toString)
+                                    .map(CountCounterType::new);
+                        default:
+                            return Optional.empty();
+                    }
+                })
+                .orElse(null);
+
+        return new CounterNode(unit, defaultValue, defaultAggregation, valueType, name, counterType, description);
     }
 
     static Boolean isManaged(Node counterNode) {

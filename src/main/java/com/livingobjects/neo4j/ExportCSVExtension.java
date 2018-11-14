@@ -9,6 +9,7 @@ import com.davfx.ninio.csv.CsvWriter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
@@ -43,6 +44,11 @@ import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_SP_TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
@@ -67,8 +73,13 @@ public final class ExportCSVExtension {
             .convertDurationsTo(TimeUnit.MILLISECONDS)
             .build();
 
+    private final MetaSchema metaSchema;
+
     public ExportCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
+        try (Transaction ignore = graphDb.beginTx()) {
+            this.metaSchema = new MetaSchema(graphDb);
+        }
         if (PACKAGE_LOGGER.isDebugEnabled()) {
             this.reporter.start(5, TimeUnit.MINUTES);
         }
@@ -111,7 +122,7 @@ public final class ExportCSVExtension {
     private long export(Request request, OutputStream outputStream) {
         ImmutableList<String> attributesToExport = ImmutableList.copyOf(request.attributesToExport);
         try (Transaction ignored = graphDb.beginTx()) {
-            Lineages lineages = new Lineages(attributesToExport, request.exportTags);
+            Lineages lineages = new Lineages(attributesToExport, metaSchema, request.exportTags);
             if (!attributesToExport.isEmpty()) {
                 for (int index = attributesToExport.size() - 1; index >= 0; index--) {
                     String leafAttribute = attributesToExport.get(index);
@@ -196,7 +207,12 @@ public final class ExportCSVExtension {
                 }
             } else if (properties != null) {
                 for (String property : properties.keySet()) {
-                    Object propertyValue = node.getProperty(property, null);
+                    Object propertyValue;
+                    if (property.equals(SCOPE)) {
+                        propertyValue = getElementScopeFromPlanet(node);
+                    } else {
+                        propertyValue = node.getProperty(property, null);
+                    }
                     if (propertyValue != null) {
                         if (propertyValue.getClass().isArray()) {
                             values.add(json.writeValueAsString(propertyValue));
@@ -212,6 +228,29 @@ public final class ExportCSVExtension {
         return Optional.of(values);
     }
 
+    private String getElementScopeFromPlanet(Node node) {
+        Relationship planetRelationship = node.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+        if (planetRelationship == null) {
+            String tag = node.getProperty(TAG, "").toString();
+            throw new IllegalArgumentException(String.format("%s %s=%s is not linked to a planet", Labels.NETWORK_ELEMENT, TAG, tag));
+        }
+        String scopeTag = planetRelationship.getEndNode().getProperty(SCOPE).toString();
+        switch (scopeTag) {
+            case SCOPE_GLOBAL_TAG:
+                return GLOBAL_SCOPE.id;
+            case SCOPE_SP_TAG:
+                return SP_SCOPE.id;
+            default:
+                Node scopeNode = graphDb.findNode(Labels.NETWORK_ELEMENT, TAG, scopeTag);
+                if (scopeNode != null) {
+                    String[] split = scopeNode.getProperty(_TYPE, ":").toString().split(":");
+                    return split[1];
+                } else {
+                    throw new IllegalArgumentException(String.format("Scope %s=%s cannot be found", TAG, scopeTag));
+                }
+        }
+    }
+
     private String[] generateCSVHeader(ImmutableList<String> attributesToExport, Lineages lineages) {
         List<String> header = Lists.newArrayList();
         for (String attribute : attributesToExport) {
@@ -222,7 +261,7 @@ public final class ExportCSVExtension {
                 }
             }
         }
-        return header.toArray(new String[header.size()]);
+        return header.toArray(new String[0]);
     }
 
     private Response errorResponse(Throwable cause) throws IOException {
@@ -233,9 +272,9 @@ public final class ExportCSVExtension {
     }
 
     private static final class Request {
-        public final List<String> attributesToExport;
+        final List<String> attributesToExport;
         public final List<String> requiredAttributes;
-        public boolean exportTags;
+        boolean exportTags;
 
         public Request(
                 @JsonProperty("attributesToExport") List<String> attributesToExport,

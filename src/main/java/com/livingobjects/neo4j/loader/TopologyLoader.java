@@ -54,7 +54,7 @@ public final class TopologyLoader {
             UniqueElementFactory scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
             MetaSchema metaSchema = new MetaSchema(graphDb);
 
-            this.topologyLoaderUtils = new TopologyLoaderUtils(metaSchema, scopeElementFactory);
+            this.topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
         }
 
         this.graphDb = graphDb;
@@ -100,7 +100,6 @@ public final class TopologyLoader {
 
             if (authorizedRels != null && authorizedRels.contains(toType)) {
                 if (nodeScopesAreEqualOrGlobal(from, to)) {
-
                     org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType, updateOnly);
 
                     for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
@@ -151,9 +150,7 @@ public final class TopologyLoader {
 
         if (existingRelationship == null) {
             if (updateOnly) {
-                throw new IllegalArgumentException(
-                        String.format("Update of relationship %s from node(id='%s') to node(id='%s') not allowed : the relationship doesn't exist, it needs to be created first",
-                                relationshipType, from.getId(), to.getId()));
+                throw new IllegalArgumentException("Unable to update the relationship : it must be created first.");
             }
 
             existingRelationship = from.createRelationshipTo(to, relationshipType.relationshipType);

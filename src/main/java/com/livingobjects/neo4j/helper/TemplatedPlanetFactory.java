@@ -23,7 +23,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public class TemplatedPlanetFactory {
-    public static final String PLACEHOLDER = "{:scopeId}";
+    static final String PLACEHOLDER = "{:scopeId}";
 
     private final PlanetFactory planetFactory;
 
@@ -48,30 +48,19 @@ public class TemplatedPlanetFactory {
     public static String localizePlanetForElement(Node element, PlanetByContext planetByContext) {
         String keyType = element.getProperty(_TYPE).toString();
 
-        String planetTemplateName;
-        Set<String> specificContext = Sets.union(findMoreSpecificContext(element).entrySet().stream()
-                .filter(en -> !en.getKey().startsWith("_"))
-                .map(en -> en.getKey() + ':' + en.getValue())
-                .collect(Collectors.toSet()), ImmutableSet.of(keyType));
+        Set<String> specificContext = Sets.union(getProperties(element), ImmutableSet.of(keyType));
         try {
-            planetTemplateName = planetByContext.bestMatchingContext(specificContext);
-        } catch (InsufficientContextException ignored) {
-            throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, ignored.missingAttributesToChoose));
+            return planetByContext.bestMatchingContext(specificContext);
+        } catch (InsufficientContextException e) {
+            throw new IllegalStateException(String.format("Unable to create '%s'. Missing attribute to determine context : '%s'. Line is ignored.", keyType, e.missingAttributesToChoose));
         }
-        return planetTemplateName;
     }
 
-    private static ImmutableMap<String, String> findMoreSpecificContext(Node element) {
-        Map<String, Object> properties = element.getAllProperties();
-        Map<String, String> specificContext = Maps.newHashMapWithExpectedSize(properties.size());
-        for (Relationship rel : element.getRelationships(RelationshipTypes.CONNECT, Direction.OUTGOING)) {
-            Node parent = rel.getEndNode();
-            ImmutableMap<String, String> context = findMoreSpecificContext(parent);
-            specificContext.putAll(context);
-        }
-        specificContext.putAll(Maps.transformValues(properties, Object::toString));
-
-        return ImmutableMap.copyOf(specificContext);
+    private static Set<String> getProperties(Node element) {
+        return element.getAllProperties().entrySet().stream()
+                .filter(en -> !en.getKey().startsWith("_"))
+                .map(en -> en.getKey() + ':' + en.getValue())
+                .collect(Collectors.toSet());
     }
 
     private ImmutableMap<String, PlanetByContext> loadPlanetTemplateName(GraphDatabaseService graphDb) {

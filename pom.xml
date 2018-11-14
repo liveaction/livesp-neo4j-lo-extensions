@@ -15,7 +15,7 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.12.5</version>
+    <version>1.13</version>
 
     <packaging>bundle</packaging>
 
@@ -175,6 +175,9 @@
     <profiles>
         <profile>
             <id>lo</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <distributionManagement>
                 <repository>
                     <id>nexus</id>

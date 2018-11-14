@@ -29,20 +29,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-
-class IwanMappingStrategy {
-    private static final Logger LOGGER = LoggerFactory.getLogger(IwanMappingStrategy.class);
+class CsvMappingStrategy {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvMappingStrategy.class);
 
     private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
 
-    IwanMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
+    CsvMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
         this.columnIndexes = columnIndexes;
         this.mapping = mapping;
     }
 
-    static IwanMappingStrategy captureHeader(CSVReader reader) throws IOException {
+    static CsvMappingStrategy captureHeader(CSVReader reader) throws IOException {
         String[] headers = reader.readNext();
         ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
@@ -58,29 +56,9 @@ class IwanMappingStrategy {
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
-        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[mapping.keySet().size()])));
+        LOGGER.debug(Arrays.toString(mapping.keySet().toArray(new String[0])));
 
-
-        return new IwanMappingStrategy(columnIndexesBldr.build(), mapping);
-    }
-
-    LineMappingStrategy reduceStrategyForLine(Set<String> scopesTypes, String[] line) {
-        ImmutableMap.Builder<String, Integer> newIndex = ImmutableMap.builder();
-        ImmutableMultimap.Builder<String, HeaderElement> newMapping = ImmutableMultimap.builder();
-        ImmutableSet.Builder<String> empties = ImmutableSet.builder();
-        mapping.values().forEach(he -> {
-            String value = line[he.index];
-            if (value != null && !value.trim().isEmpty()) {
-                newIndex.put(he.columnIdentifier(), he.index);
-                newMapping.put(he.elementName, he);
-            } else if (TAG.equals(he.propertyName)) {
-                empties.add(he.elementName);
-            }
-        });
-
-        Scope scope = IWanLoaderHelper.findScopeValue(this, scopesTypes, line).orElse(null);
-
-        return new LineMappingStrategy(scope, newIndex.build(), newMapping.build(), empties.build());
+        return new CsvMappingStrategy(columnIndexesBldr.build(), mapping);
     }
 
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {
@@ -114,15 +92,14 @@ class IwanMappingStrategy {
 
     ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Map<String, ? extends List<Relationship>> children) {
         Map<String, Set<String>> collect = Maps.newHashMap();
-        scopeKeyTypes.forEach(s ->
-                collect.putAll(addChildrenAttribute(s, collect, children)));
+
+        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, children));
 
         if (collect.isEmpty()) {
-            collect.putAll(addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children));
+            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children);
         }
-        mapping.keySet().stream()
-                .filter(k -> !collect.keySet().contains(k))
-                .forEach(k -> collect.putAll(addChildrenAttribute(k, collect, children)));
+        mapping.keySet()
+                .forEach(k -> addChildrenAttribute(k, collect, children));
 
         return ImmutableMap.copyOf(collect);
     }

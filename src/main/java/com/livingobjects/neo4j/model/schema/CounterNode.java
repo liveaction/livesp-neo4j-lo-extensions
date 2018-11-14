@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.base.MoreObjects;
+import com.livingobjects.neo4j.model.schema.type.type.CounterType;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -15,6 +16,7 @@ public final class CounterNode {
     public final String defaultAggregation;
     public final String valueType;
     public final String name;
+    public final CounterType counterType;
 
     @Nullable
     public final String description;
@@ -24,12 +26,14 @@ public final class CounterNode {
                        @JsonProperty("defaultAggregation") String defaultAggregation,
                        @JsonProperty("valueType") String valueType,
                        @JsonProperty("name") String name,
+                       @JsonProperty("counterType") @Nullable CounterType counterType,
                        @JsonProperty("description") @Nullable String description) {
         this.unit = unit;
         this.defaultValue = defaultValue;
         this.defaultAggregation = defaultAggregation;
         this.valueType = valueType;
         this.name = name;
+        this.counterType = counterType;
         this.description = description;
     }
 
@@ -43,13 +47,14 @@ public final class CounterNode {
                 Objects.equals(defaultAggregation, that.defaultAggregation) &&
                 Objects.equals(valueType, that.valueType) &&
                 Objects.equals(name, that.name) &&
+                Objects.equals(counterType, that.counterType) &&
                 Objects.equals(description, that.description);
     }
 
     @Override
     public int hashCode() {
 
-        return Objects.hash(unit, defaultValue, defaultAggregation, valueType, name, description);
+        return Objects.hash(unit, defaultValue, defaultAggregation, valueType, name, counterType, description);
     }
 
     @Override
@@ -60,6 +65,7 @@ public final class CounterNode {
                 .add("defaultAggregation", defaultAggregation)
                 .add("valueType", valueType)
                 .add("name", name)
+                .add("type", counterType)
                 .add("description", description)
                 .toString();
     }
