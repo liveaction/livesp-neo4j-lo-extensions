@@ -492,7 +492,7 @@ public final class SchemaLoader {
         Node oldPlanetNode = oldNodeOpt.get();
 
         ImmutableSet<PlanetNode> newPlanets = planetUpdate.newPlanets;
-        if (newPlanets.size() == 1) {
+        if (newPlanets.size() == 1 && planetUpdate.planetUpdateStatus == DELETE) {
             PlanetNode newPlanet = Iterables.getOnlyElement(newPlanets);
             // Move all ne from old planets to new one
             Node newPlanetNode = planetFactory.getOrCreate(newPlanet.name, scope).entity;
