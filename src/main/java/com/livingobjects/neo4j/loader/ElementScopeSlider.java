@@ -51,7 +51,7 @@ final class ElementScopeSlider {
         if (logger.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
-            logger.debug("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
+            logger.debug("Create link between (%s)-[:Attribute]->(%s) !", tag, planetName);
         }
         element.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
         return oldScopesBldr.build();
@@ -78,7 +78,7 @@ final class ElementScopeSlider {
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
             if (logger.isDebugEnabled()) {
                 String tag = childNode.getProperty(TAG).toString();
-                logger.debug("child slide {} !", tag);
+                logger.debug("child slide %s !", tag);
             }
             slide(childNode, toScope);
         });

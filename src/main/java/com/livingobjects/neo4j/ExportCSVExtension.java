@@ -96,7 +96,7 @@ public final class ExportCSVExtension {
             }
 
         } finally {
-            logger.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            logger.info("Export in %d ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
@@ -117,7 +117,7 @@ public final class ExportCSVExtension {
                                 rewindLineage(leaf, lineageAttributes, lineage, lineages);
                                 lineages.add(lineage);
                             } catch (LineageCardinalityException e) {
-                                logger.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
+                                logger.warn("Unable to export lineage %s!=%s in %s", e.existingNode, e.parentNode, e.lineage);
                             }
                         }
                     }

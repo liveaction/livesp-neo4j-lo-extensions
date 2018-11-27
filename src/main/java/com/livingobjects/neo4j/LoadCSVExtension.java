@@ -79,7 +79,7 @@ public final class LoadCSVExtension {
             return errorResponse(e);
 
         } finally {
-            logger.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
+            logger.info("Import %s element(s) in %s ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 

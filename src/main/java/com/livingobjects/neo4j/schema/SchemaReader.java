@@ -47,7 +47,7 @@ public class SchemaReader {
                 Node segment = firstMemdexPath.getEndNode();
                 Optional<MemdexPathNode> memdexPathNode = readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
                 if (!memdexPathNode.isPresent()) {
-                    logger.warn("No counter for realm '{}'. Realm is ignored.", name);
+                    logger.warn("No counter for realm '%s'. Realm is ignored.", name);
                 }
                 return memdexPathNode
                         .map(n -> {
@@ -61,7 +61,7 @@ public class SchemaReader {
                             return new RealmNode(name, attributes, n);
                         });
             } else {
-                logger.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
+                logger.warn("Empty RealmTemplate '%s' : no MdxPath relationship found. Ignoring it", name);
                 return Optional.empty();
             }
         } catch (NotFoundException e) {

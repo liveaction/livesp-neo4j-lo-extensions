@@ -136,7 +136,7 @@ public class SchemaTemplateExtension {
                     try {
                         jg.writeObjectField(key, value);
                     } catch (IOException e) {
-                        logger.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        logger.error("%s: %s", e.getClass(), e.getLocalizedMessage());
                         if (logger.isDebugEnabled()) {
                             logger.debug("STACKTRACE", e);
                         }
@@ -151,7 +151,7 @@ public class SchemaTemplateExtension {
                         jg.writeObjectField(key, value);
                         jg.flush();
                     } catch (IOException e) {
-                        logger.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        logger.error("%s: %s", e.getClass(), e.getLocalizedMessage());
                         if (logger.isDebugEnabled()) {
                             logger.debug("STACKTRACE", e);
                         }
@@ -162,7 +162,7 @@ public class SchemaTemplateExtension {
                 jg.writeEndObject();
                 jg.flush();
             } catch (Throwable e) {
-                logger.error("Unable to load schema '{}'", schemaId, e);
+                logger.error("Unable to load schema '%s'", schemaId, e);
             }
         };
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
