@@ -694,7 +694,6 @@ public final class SchemaLoader {
     }
 
     private boolean appendCounterToSegment(String realmTemplate, CounterNode counter, Node segmentNode) {
-        boolean modified = false;
         Relationship relationship = null;
         for (Relationship existingRelationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
             Node counterNode = existingRelationship.getStartNode();
@@ -708,30 +707,28 @@ public final class SchemaLoader {
         UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
         counterEntity.entity.setProperty(NAME, counter.name);
         counterEntity.entity.setProperty(CONTEXT, realmTemplate);
-        if (counterEntity.wasCreated) {
-            modified = true;
+        counterEntity.entity.setProperty(_TYPE, "counter");
+
+        if (counter.description == null) {
+            counterEntity.entity.removeProperty(DESCRIPTION);
+        } else {
             counterEntity.entity.setProperty(_TYPE, "counter");
-            if (counter.description == null) {
-                counterEntity.entity.removeProperty(DESCRIPTION);
-            } else {
-                counterEntity.entity.setProperty(_TYPE, "counter");
-            }
-            counterEntity.entity.setProperty("defaultAggregation", counter.defaultAggregation);
-            if (counter.defaultValue == null) {
-                counterEntity.entity.removeProperty("defaultValue");
-            } else {
-                counterEntity.entity.setProperty("defaultValue", counter.defaultValue);
-            }
-            counterEntity.entity.setProperty("valueType", counter.valueType);
-            counterEntity.entity.setProperty("unit", counter.unit);
         }
+        counterEntity.entity.setProperty("defaultAggregation", counter.defaultAggregation);
+        if (counter.defaultValue == null) {
+            counterEntity.entity.removeProperty("defaultValue");
+        } else {
+            counterEntity.entity.setProperty("defaultValue", counter.defaultValue);
+        }
+
+        counterEntity.entity.setProperty("valueType", counter.valueType);
+        counterEntity.entity.setProperty("unit", counter.unit);
 
         if (relationship == null) {
             counterEntity.entity.createRelationshipTo(segmentNode, PROVIDED);
-            modified = true;
         }
 
-        return modified;
+        return true;
     }
 
     private void updateCountersRelationships(String realmTemplate,
