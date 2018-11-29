@@ -10,7 +10,9 @@
         <dependencySet>
             <useProjectArtifact>true</useProjectArtifact>
             <outputDirectory></outputDirectory>
-            <outputFileNameMapping>${artifact.groupId}.${artifact.artifactId}-${artifact.version}${dashClassifier?}.${artifact.extension}</outputFileNameMapping>
+            <outputFileNameMapping>
+                ${artifact.groupId}.${artifact.artifactId}-${artifact.version}${dashClassifier?}.${artifact.extension}
+            </outputFileNameMapping>
             <scope>runtime</scope>
         </dependencySet>
     </dependencySets>

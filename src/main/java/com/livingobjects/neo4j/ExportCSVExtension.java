@@ -23,7 +23,8 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -52,18 +53,16 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 @Path("/export")
 public final class ExportCSVExtension {
 
-    private final Log logger;
-
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExportCSVExtension.class);
 
     private final ObjectMapper json = new ObjectMapper();
 
     private final GraphDatabaseService graphDb;
     private final MetaSchema metaSchema;
 
-    public ExportCSVExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
-        this.logger = log;
+    public ExportCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(graphDb);
@@ -83,12 +82,12 @@ public final class ExportCSVExtension {
             return Response.ok().entity(stream).type(TEXT_CSV_MEDIATYPE).build();
 
         } catch (IllegalArgumentException e) {
-            logger.error("export-csv extension : ", e);
+            LOGGER.error("export-csv extension : ", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
 
         } catch (Exception e) {
-            logger.error("export-csv extension : ", e);
+            LOGGER.error("export-csv extension : ", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {
@@ -96,7 +95,7 @@ public final class ExportCSVExtension {
             }
 
         } finally {
-            logger.info("Export in %d ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            LOGGER.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
@@ -117,7 +116,7 @@ public final class ExportCSVExtension {
                                 rewindLineage(leaf, lineageAttributes, lineage, lineages);
                                 lineages.add(lineage);
                             } catch (LineageCardinalityException e) {
-                                logger.warn("Unable to export lineage %s!=%s in %s", e.existingNode, e.parentNode, e.lineage);
+                                LOGGER.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
                             }
                         }
                     }
@@ -146,7 +145,7 @@ public final class ExportCSVExtension {
             }
 
         } catch (Exception e) {
-            logger.error("export-csv extension : ", e);
+            LOGGER.error("export-csv extension : ", e);
             throw new RuntimeException(e);
         }
     }

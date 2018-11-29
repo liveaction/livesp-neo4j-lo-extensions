@@ -8,23 +8,25 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 /**
  * See <a href="http://redmine.livingobjects.com/issues/12069">Redmine #12069</a>
  */
 final class ElementScopeSlider {
-    private final Log logger;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ElementScopeSlider.class);
     private final TemplatedPlanetFactory templatedPlanetFactory;
 
-    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory, Log logger) {
+    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory) {
         this.templatedPlanetFactory = templatedPlanetFactory;
-        this.logger = logger;
     }
 
     Node slide(Node element, Scope toScope) {
@@ -48,10 +50,10 @@ final class ElementScopeSlider {
         }
 
         UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element);
-        if (logger.isDebugEnabled()) {
+        if (LOGGER.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
-            logger.debug("Create link between (%s)-[:Attribute]->(%s) !", tag, planetName);
+            LOGGER.debug("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
         }
         element.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
         return oldScopesBldr.build();
@@ -76,9 +78,9 @@ final class ElementScopeSlider {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
-            if (logger.isDebugEnabled()) {
+            if (LOGGER.isDebugEnabled()) {
                 String tag = childNode.getProperty(TAG).toString();
-                logger.debug("child slide %s !", tag);
+                LOGGER.debug("child slide {} !", tag);
             }
             slide(childNode, toScope);
         });

@@ -35,7 +35,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.logging.Log;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -89,7 +88,7 @@ public final class SchemaLoader {
 
     private final SchemaReader schemaReader;
 
-    public SchemaLoader(GraphDatabaseService graphDb, Log logger) {
+    public SchemaLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
         this.planetTemplateFactory = new UniqueElementFactory(graphDb, Labels.PLANET_TEMPLATE, Optional.empty());
@@ -97,7 +96,7 @@ public final class SchemaLoader {
         this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
-        this.schemaReader = new SchemaReader(logger);
+        this.schemaReader = new SchemaReader();
     }
 
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {

@@ -15,7 +15,8 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -33,11 +34,7 @@ import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
 
 public class SchemaReader {
 
-    private final Log logger;
-
-    public SchemaReader(Log logger) {
-        this.logger = logger;
-    }
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaReader.class);
 
     public Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String name = realmTemplateNode.getProperty(NAME).toString();
@@ -47,7 +44,7 @@ public class SchemaReader {
                 Node segment = firstMemdexPath.getEndNode();
                 Optional<MemdexPathNode> memdexPathNode = readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
                 if (!memdexPathNode.isPresent()) {
-                    logger.warn("No counter for realm '%s'. Realm is ignored.", name);
+                    LOGGER.warn("No counter for realm '{}'. Realm is ignored.", name);
                 }
                 return memdexPathNode
                         .map(n -> {
@@ -61,7 +58,7 @@ public class SchemaReader {
                             return new RealmNode(name, attributes, n);
                         });
             } else {
-                logger.warn("Empty RealmTemplate '%s' : no MdxPath relationship found. Ignoring it", name);
+                LOGGER.warn("Empty RealmTemplate '{}' : no MdxPath relationship found. Ignoring it", name);
                 return Optional.empty();
             }
         } catch (NotFoundException e) {

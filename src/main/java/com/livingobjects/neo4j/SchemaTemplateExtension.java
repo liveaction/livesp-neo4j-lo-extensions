@@ -18,7 +18,8 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -44,16 +45,15 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
 @Path("/schema")
 public class SchemaTemplateExtension {
 
-    private final Log logger;
+    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaTemplateExtension.class);
 
     private final GraphDatabaseService graphDb;
     private final ObjectMapper json = new ObjectMapper();
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    public SchemaTemplateExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
+    public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        this.logger = log;
     }
 
     @POST
@@ -61,12 +61,12 @@ public class SchemaTemplateExtension {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response loadSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
-            SchemaLoader schemaLoader = new SchemaLoader(graphDb, logger);
+            SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             SchemaAndPlanets schema = jsonParser.readValueAs(SchemaAndPlanets.class);
             boolean updated = schemaLoader.load(schema);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            logger.error("Unable to load schema", e);
+            LOGGER.error("Unable to load schema", e);
             return errorResponse(e);
         }
     }
@@ -76,12 +76,12 @@ public class SchemaTemplateExtension {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response updateSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
-            SchemaLoader schemaLoader = new SchemaLoader(graphDb, logger);
+            SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             SchemaAndPlanetsUpdate schemaAndPlanetsUpdate = jsonParser.readValueAs(SchemaAndPlanetsUpdate.class);
             boolean updated = schemaLoader.update(schemaAndPlanetsUpdate);
             return Response.ok().entity('"' + String.valueOf(updated) + '"').type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            logger.error("Unable to load schema", e);
+            LOGGER.error("Unable to load schema", e);
             return errorResponse(e);
         }
     }
@@ -90,7 +90,7 @@ public class SchemaTemplateExtension {
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
-        SchemaReader schemaReader = new SchemaReader(logger);
+        SchemaReader schemaReader = new SchemaReader();
         try (Transaction ignore = graphDb.beginTx()) {
             Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
 
@@ -136,9 +136,9 @@ public class SchemaTemplateExtension {
                     try {
                         jg.writeObjectField(key, value);
                     } catch (IOException e) {
-                        logger.error("%s: %s", e.getClass(), e.getLocalizedMessage());
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("STACKTRACE", e);
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
                         }
                     }
                 });
@@ -151,9 +151,9 @@ public class SchemaTemplateExtension {
                         jg.writeObjectField(key, value);
                         jg.flush();
                     } catch (IOException e) {
-                        logger.error("%s: %s", e.getClass(), e.getLocalizedMessage());
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("STACKTRACE", e);
+                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                        if (LOGGER.isDebugEnabled()) {
+                            LOGGER.debug("STACKTRACE", e);
                         }
                     }
                 });
@@ -162,7 +162,7 @@ public class SchemaTemplateExtension {
                 jg.writeEndObject();
                 jg.flush();
             } catch (Throwable e) {
-                logger.error("Unable to load schema '%s'", schemaId, e);
+                LOGGER.error("Unable to load schema '{}'", schemaId, e);
             }
         };
         return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();

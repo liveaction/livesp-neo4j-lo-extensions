@@ -9,7 +9,8 @@ import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.sun.jersey.multipart.MultiPart;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
@@ -27,18 +28,16 @@ import java.util.concurrent.TimeUnit;
 @Path("/load-csv")
 public final class LoadCSVExtension {
 
-    private final Log logger;
-
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    public static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
 
     private final GraphDatabaseService graphDb;
 
     private final MetricRegistry metrics = new MetricRegistry();
 
-    public LoadCSVExtension(@Context GraphDatabaseService graphDb, @Context Log log) {
+    public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        this.logger = log;
     }
 
     @POST
@@ -54,13 +53,13 @@ public final class LoadCSVExtension {
                     .orElseThrow(IllegalArgumentException::new);
 
             try (InputStream is = new FileInputStream(csv)) {
-                Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics, logger).loadFromStream(is);
+                Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is);
                 importedElementsCounter = result.importedElementsByScope.values().size();
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
             } catch (Throwable e) {
-                logger.error("load-csv extension : unable to execute query", e);
+                LOGGER.error("load-csv extension : unable to execute query", e);
                 if (e.getCause() != null) {
                     return errorResponse(e.getCause());
                 } else {
@@ -79,7 +78,7 @@ public final class LoadCSVExtension {
             return errorResponse(e);
 
         } finally {
-            logger.info("Import %s element(s) in %s ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
+            LOGGER.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 

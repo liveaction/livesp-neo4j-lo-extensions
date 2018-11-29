@@ -38,7 +38,8 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.neo4j.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,8 +73,8 @@ import static org.neo4j.graphdb.Direction.OUTGOING;
 public final class CsvTopologyLoader {
 
     private static final int MAX_TRANSACTION_COUNT = 500;
+    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
 
-    private final Log logger;
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
     private final TemplatedPlanetFactory planetFactory;
@@ -84,9 +85,8 @@ public final class CsvTopologyLoader {
     private final MetaSchema metaSchema;
     private final TopologyLoaderUtils topologyLoaderUtils;
 
-    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics, Log logger) {
+    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
         this.metrics = metrics;
-        this.logger = logger;
         this.graphDb = graphDb;
         this.txManager = new TransactionManager(graphDb);
 
@@ -96,7 +96,7 @@ public final class CsvTopologyLoader {
             this.overridableElementFactory = OverridableElementFactory.networkElementFactory(graphDb);
 
             this.planetFactory = new TemplatedPlanetFactory(graphDb);
-            this.elementScopeSlider = new ElementScopeSlider(planetFactory, logger);
+            this.elementScopeSlider = new ElementScopeSlider(planetFactory);
             this.metaSchema = new MetaSchema(graphDb);
 
             topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
@@ -136,15 +136,15 @@ public final class CsvTopologyLoader {
             } catch (ImportException e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                logger.debug(e.getLocalizedMessage());
-                logger.debug(Arrays.toString(nextLine));
+                LOGGER.debug(e.getLocalizedMessage());
+                LOGGER.debug(Arrays.toString(nextLine));
             } catch (Exception e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
-                logger.error(e.getLocalizedMessage());
-                if (logger.isDebugEnabled()) {
-                    logger.debug("STACKTRACE", e);
-                    logger.debug(Arrays.toString(nextLine));
+                LOGGER.error(e.getLocalizedMessage());
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("STACKTRACE", e);
+                    LOGGER.debug(Arrays.toString(nextLine));
                 }
             }
             lineIndex++;
