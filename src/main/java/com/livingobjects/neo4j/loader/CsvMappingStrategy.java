@@ -82,16 +82,16 @@ class CsvMappingStrategy {
         return ImmutableSet.copyOf(scopeKeyTypes);
     }
 
-    ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Map<String, ? extends List<Relationship>> children) {
+    ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, MetaSchema metaSchema) {
         Map<String, Set<String>> collect = Maps.newHashMap();
 
-        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, children));
+        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, metaSchema));
 
         if (collect.isEmpty()) {
-            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, children);
+            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, metaSchema);
         }
         mapping.keySet()
-                .forEach(k -> addChildrenAttribute(k, collect, children));
+                .forEach(k -> addChildrenAttribute(k, collect, metaSchema));
 
         return ImmutableMap.copyOf(collect);
     }
@@ -118,10 +118,9 @@ class CsvMappingStrategy {
     }
 
     private Map<String, Set<String>> addChildrenAttribute(
-            String current, Map<String, Set<String>> collect, Map<String, ? extends List<Relationship>> children) {
+            String current, Map<String, Set<String>> collect, MetaSchema metaSchema) {
 
-        Collection<Relationship> relationships = children.get(current);
-        if (relationships == null) return ImmutableMap.of();
+        Collection<Relationship> relationships = metaSchema.getChildren(current);
 
         if (!relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
@@ -133,7 +132,7 @@ class CsvMappingStrategy {
                 String key = type + GraphModelConstants.KEYTYPE_SEPARATOR + name;
                 if (mapping.keySet().contains(key)) {
                     p.add(key);
-                    addChildrenAttribute(key, collect, children).forEach((k, v) -> {
+                    addChildrenAttribute(key, collect, metaSchema).forEach((k, v) -> {
                         Set<String> values = collect.computeIfAbsent(k, k1 -> Sets.newHashSet());
                         values.addAll(v);
                     });

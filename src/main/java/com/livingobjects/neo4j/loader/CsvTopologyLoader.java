@@ -121,7 +121,7 @@ public final class CsvTopologyLoader {
         Transaction tx = graphDb.beginTx();
         while ((nextLine = reader.readNext()) != null) {
             try {
-                ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.scopeTypes, nextLine);
+                ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), nextLine);
                 ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy);
                 for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                     Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
@@ -165,7 +165,7 @@ public final class CsvTopologyLoader {
 
     private Transaction renewTransaction(CsvMappingStrategy strategy, List<String[]> currentTransaction, Transaction tx) {
         tx = txManager.properlyRenewTransaction(tx, currentTransaction, ct -> {
-            ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.scopeTypes, ct);
+            ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), ct);
             importLine(ct, scopeKeyTypes, strategy);
         });
         return tx;
@@ -173,7 +173,7 @@ public final class CsvTopologyLoader {
 
     private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, CsvMappingStrategy strategy) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
-            ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, metaSchema.childrenRelations);
+            ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, metaSchema);
             LineMappingStrategy lineStrategy = new LineMappingStrategy(strategy, line);
 
             // Update the elements in the CSV line that cannot be created in any case (because required parent are missing in the CSV line)
@@ -253,7 +253,7 @@ public final class CsvTopologyLoader {
     private void checkCrossAttributeDefinitionExists(CsvMappingStrategy strategy) throws InvalidSchemaException {
         for (MultiElementHeader meHeader : strategy.getMultiElementHeader()) {
             ImmutableSet<String> crossAttributesLinks = metaSchema.getCrossAttributesRelations(meHeader.elementName);
-            if (crossAttributesLinks == null || !crossAttributesLinks.contains(meHeader.targetElementName)) {
+            if (!crossAttributesLinks.contains(meHeader.targetElementName)) {
                 throw new InvalidSchemaException("Schema does not allow to create cross attribute between '" +
                         meHeader.elementName + "' and '" + meHeader.targetElementName + "'. Import aborted.");
             }
@@ -262,7 +262,7 @@ public final class CsvTopologyLoader {
 
     private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         Map<String, Relationship> multiElementLinks = Maps.newHashMap();
-        for (Entry<String, ImmutableSet<String>> rel : metaSchema.crossAttributesRelations.entrySet()) {
+        for (Entry<String, ImmutableSet<String>> rel : metaSchema.getCrossAttributesRelations().entrySet()) {
             String keyType = rel.getKey();
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
@@ -347,7 +347,7 @@ public final class CsvTopologyLoader {
 
     private void linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-linkToParents").time()) {
-            ImmutableList<Relationship> relationships = metaSchema.parentRelations.get(keyType);
+            ImmutableList<Relationship> relationships = metaSchema.getParentRelations().get(keyType);
             if (relationships == null || relationships.isEmpty()) {
                 return;
             }

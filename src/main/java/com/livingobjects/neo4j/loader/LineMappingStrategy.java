@@ -30,7 +30,7 @@ public final class LineMappingStrategy {
     String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {
         ImmutableSet<String> authorizedScopes = metaSchema.getAuthorizedScopes(keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
-            return guessScopeAttribute(keyAttribute, metaSchema.scopeTypes);
+            return guessScopeAttribute(keyAttribute, metaSchema.getScopeTypes());
         } else {
             if (authorizedScopes.isEmpty()) {
                 return GLOBAL_SCOPE.attribute;
