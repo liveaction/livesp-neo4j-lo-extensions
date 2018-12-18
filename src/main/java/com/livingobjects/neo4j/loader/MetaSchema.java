@@ -4,16 +4,15 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
+import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
-import java.lang.reflect.Array;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,11 +34,11 @@ public final class MetaSchema {
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
 
-    final ImmutableSet<String> scopeTypes;
+    private final ImmutableSet<String> scopeTypes;
 
-    final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
-    final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
-    final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
+    private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
+    private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
+    private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
 
     public MetaSchema(GraphDatabaseService graphDb) {
         this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
@@ -105,6 +104,10 @@ public final class MetaSchema {
         this.requiredProperties = requiredPropertiesBldr.build();
     }
 
+    public ImmutableSet<String> getScopeTypes() {
+        return scopeTypes;
+    }
+
     public Node getTheGlobalScopeNode() {
         return theGlobalNode;
     }
@@ -118,11 +121,19 @@ public final class MetaSchema {
     }
 
     public final ImmutableSet<String> getRequiredProperties(String keyAttribute) {
-        return requiredProperties.get(keyAttribute);
+        return requiredProperties.getOrDefault(keyAttribute, ImmutableSet.of());
+    }
+
+    public ImmutableMap<String, ImmutableSet<String>> getCrossAttributesRelations() {
+        return crossAttributesRelations;
     }
 
     public ImmutableSet<String> getCrossAttributesRelations(String keyAttribute) {
-        return crossAttributesRelations.get(keyAttribute);
+        return crossAttributesRelations.getOrDefault(keyAttribute, ImmutableSet.of());
+    }
+
+    public ImmutableList<Relationship> getChildren(String current) {
+        return childrenRelations.getOrDefault(current, ImmutableList.of());
     }
 
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
@@ -138,6 +149,10 @@ public final class MetaSchema {
     public Optional<String> getRequiredParent(String keyAttribute) {
         return getRequiredParents(keyAttribute)
                 .findFirst();
+    }
+
+    public ImmutableMap<String, ImmutableList<Relationship>> getParentRelations() {
+        return parentRelations;
     }
 
     public Stream<String> getRequiredParents(String keyAttribute) {
@@ -177,4 +192,5 @@ public final class MetaSchema {
     public boolean isMultiScope(String keyAttribute) {
         return getAuthorizedScopes(keyAttribute).size() > 1;
     }
+
 }
