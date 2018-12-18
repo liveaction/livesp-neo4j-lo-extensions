@@ -7,7 +7,6 @@ import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -59,6 +58,8 @@ public final class MetaSchema {
             Object requiredProperties = n.getProperty("requiredProperties", new String[0]);
             if (requiredProperties instanceof String[]) {
                 requiredPropertiesBldr.put(key, ImmutableSet.copyOf((String[]) requiredProperties));
+            } else {
+                requiredPropertiesBldr.put(key, ImmutableSet.of(requiredProperties.toString()));
             }
 
             boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
