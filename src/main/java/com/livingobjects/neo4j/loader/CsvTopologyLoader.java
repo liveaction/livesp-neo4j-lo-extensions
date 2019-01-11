@@ -60,7 +60,6 @@ import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationsh
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.RESERVED_PROPERTIES;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_CLASS;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
@@ -179,7 +178,6 @@ public final class CsvTopologyLoader {
             // Update the elements in the CSV line that cannot be created in any case (because required parent are missing in the CSV line)
             Map<String, Optional<UniqueEntity<Node>>> elementsWithoutParents = strategy.getAllElementsType().stream()
                     .filter(key -> !lineage.keySet().contains(key))
-                    .filter(key -> !SCOPE_CLASS.equals(key))
                     .map(key -> Maps.immutableEntry(key, updateElement(lineStrategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 

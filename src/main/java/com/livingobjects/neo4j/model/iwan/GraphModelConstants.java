@@ -6,7 +6,6 @@ import com.livingobjects.neo4j.loader.Scope;
 public final class GraphModelConstants {
     public static final String LINK_PROP_SPECIALIZER = "specializer";
 
-    public static final String SCOPE_CLASS = "class:scope";
     public static final String SCOPE_GLOBAL_ATTRIBUTE = "scope:global";
     public static final String SCOPE_GLOBAL_TAG = "class=scope,scope=global";
     public static final String SCOPE_SP_TAG = "class=scope,scope=sp";

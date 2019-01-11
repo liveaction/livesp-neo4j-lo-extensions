@@ -69,8 +69,6 @@ public final class LineMappingStrategy {
     private Optional<Scope> readScopeFromLine(String parentScopeAttribute) {
         if (parentScopeAttribute.equals(SP_SCOPE.attribute)) {
             return Optional.of(SP_SCOPE);
-        } else if (parentScopeAttribute.equals(GLOBAL_SCOPE.attribute)) {
-            return Optional.of(GLOBAL_SCOPE);
         } else if (strategy.hasKeyType(parentScopeAttribute)) {
             String tag = line[strategy.getColumnIndex(parentScopeAttribute, TAG)];
             if (tag != null && !tag.isEmpty()) {
