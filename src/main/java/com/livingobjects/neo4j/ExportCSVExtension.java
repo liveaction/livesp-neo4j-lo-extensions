@@ -50,7 +50,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
-@Path("/export")
+@Path("/export-csv")
 public final class ExportCSVExtension {
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
@@ -73,11 +73,11 @@ public final class ExportCSVExtension {
     public Response exportCSV(InputStream in) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
-        Request request = json.readValue(in, new TypeReference<Request>() {
-        });
-
         AtomicLong lineCounter = new AtomicLong();
         try {
+
+            Request request = json.readValue(in, new TypeReference<Request>() {
+            });
             StreamingOutput stream = outputStream -> lineCounter.set(export(request, outputStream));
             return Response.ok().entity(stream).type(TEXT_CSV_MEDIATYPE).build();
 

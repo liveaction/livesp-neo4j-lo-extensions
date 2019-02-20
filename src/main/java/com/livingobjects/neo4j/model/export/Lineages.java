@@ -24,13 +24,15 @@ public final class Lineages {
 
     public final Set<Lineage> lineages;
 
-    public final Set<String> allTags;
+    public final Set<Node> allTags;
 
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
 
     private final Set<String> propertiesToIgnore;
+    public final ImmutableList<String> attributesToExport;
 
     public Lineages(ImmutableList<String> attributesToExport, MetaSchema metaSchema, boolean exportTags) {
+        this.attributesToExport = attributesToExport;
         lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
         allTags = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
@@ -48,11 +50,11 @@ public final class Lineages {
     }
 
     public boolean dejaVu(Node leaf) {
-        return allTags.contains(leaf.getProperty(GraphModelConstants.TAG).toString());
+        return allTags.contains(leaf);
     }
 
     public void markAsVisited(String nodeTag, String keyAttribute, Node node) {
-        allTags.add(nodeTag);
+        allTags.add(node);
         SortedMap<String, String> properties = getKeyAttributeProperties(keyAttribute);
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
