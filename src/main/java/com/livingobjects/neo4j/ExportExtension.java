@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j;
 
-
 import com.davfx.ninio.csv.AutoCloseableCsvWriter;
 import com.davfx.ninio.csv.Csv;
 import com.davfx.ninio.csv.CsvWriter;
@@ -116,13 +115,12 @@ public final class ExportExtension {
     }
 
     private long exportAsCsv(ExportQuery exportQuery, OutputStream outputStream) {
-        ImmutableList<String> attributesToExport = ImmutableList.copyOf(Sets.union(exportQuery.requiredAttributes, exportQuery.parentAttributes));
         try (Transaction ignored = graphDb.beginTx()) {
             Lineages lineages = exportLineages(exportQuery);
             try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
                 long lines = 0;
                 try (CsvWriter.Line headerLine = csv.line()) {
-                    for (String h : generateCSVHeader(attributesToExport, lineages)) {
+                    for (String h : generateCSVHeader(lineages)) {
                         headerLine.append(h);
                     }
                 }
@@ -234,27 +232,27 @@ public final class ExportExtension {
     private boolean writeCSVLine(ExportQuery exportQuery, Lineages lineages, Lineage lineage, AutoCloseableCsvWriter csv) {
         return filterLineage(exportQuery, lineages, lineage)
                 .map(stringMapMap -> {
-                            stringMapMap.values()
-                                    .forEach(properties -> {
-                                        try (CsvWriter.Line line = csv.line()) {
-                                            properties.values().forEach(value -> {
+                            try (CsvWriter.Line line = csv.line()) {
+                                stringMapMap.values()
+                                        .forEach(properties -> properties.values().forEach(value -> {
+                                            try {
                                                 if (value != null) {
-                                                    try {
-                                                        if (value.getClass().isArray()) {
-                                                            line.append(json.writeValueAsString(value));
-                                                        } else {
-                                                            line.append(value.toString());
-                                                        }
-                                                    } catch (IOException e) {
-                                                        throw Throwables.propagate(e);
+                                                    if (value.getClass().isArray()) {
+                                                        line.append(json.writeValueAsString(value));
+                                                    } else {
+                                                        line.append(value.toString());
                                                     }
+                                                } else {
+                                                    line.append(null);
                                                 }
-                                            });
-                                        } catch (IOException e) {
-                                            throw Throwables.propagate(e);
-                                        }
-                                    });
-                            return true;
+                                            } catch (IOException e) {
+                                                throw Throwables.propagate(e);
+                                            }
+                                        }));
+                                return true;
+                            } catch (IOException e) {
+                                throw Throwables.propagate(e);
+                            }
                         }
                 ).orElse(false);
     }
@@ -324,9 +322,9 @@ public final class ExportExtension {
         }
     }
 
-    private String[] generateCSVHeader(ImmutableList<String> attributesToExport, Lineages lineages) {
+    private String[] generateCSVHeader(Lineages lineages) {
         List<String> header = Lists.newArrayList();
-        for (String attribute : attributesToExport) {
+        for (String attribute : lineages.attributesToExport) {
             SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
             if (properties != null) {
                 for (Map.Entry<String, String> property : properties.entrySet()) {
