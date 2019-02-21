@@ -119,9 +119,12 @@ public final class ExportExtension {
             Lineages lineages = exportLineages(exportQuery);
             try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
                 long lines = 0;
-                try (CsvWriter.Line headerLine = csv.line()) {
-                    for (String h : generateCSVHeader(lineages)) {
-                        headerLine.append(h);
+                String[] headers = generateCSVHeader(lineages);
+                if (headers.length > 0) {
+                    try (CsvWriter.Line headerLine = csv.line()) {
+                        for (String h : headers) {
+                            headerLine.append(h);
+                        }
                     }
                 }
                 for (Lineage lineage : lineages.lineages) {
