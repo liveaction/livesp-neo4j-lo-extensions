@@ -7,6 +7,7 @@ import com.davfx.ninio.csv.CsvWriter;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -347,33 +348,22 @@ public final class ExportExtension {
 
         public final ImmutableSet<String> requiredAttributes;
         public final ImmutableSet<String> parentAttributes;
-        public final Map<String, Set<String>> columns;
-        public final Map<String, Map<String, Object>> filter;
+        public final ImmutableMap<String, Set<String>> columns;
+        public final ImmutableMap<String, Map<String, Object>> filter;
         public final boolean includeTag;
-        public final boolean includeScope;
 
         public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                            @JsonProperty("parentAttributes") List<String> parentAttributes,
                            @JsonProperty("columns") Map<String, Set<String>> columns,
                            @JsonProperty("filter") Map<String, Map<String, Object>> filter,
-                           @JsonProperty("includeTag") boolean includeTag,
-                           @JsonProperty("includeScope") boolean includeScope) {
+                           @JsonProperty("includeTag") boolean includeTag) {
             this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
             this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
-            this.columns = columns;
-            this.filter = filter;
+            this.columns = ImmutableMap.copyOf(columns);
+            this.filter = ImmutableMap.copyOf(filter);
             this.includeTag = includeTag;
-            this.includeScope = includeScope;
         }
 
-    }
-
-    private ImmutableList<String> difference(ImmutableList<String> attributes, String attributeToRemove) {
-        ImmutableList.Builder<String> builder = ImmutableList.builder();
-        attributes.stream()
-                .filter(attribute -> !attribute.equals(attributeToRemove))
-                .forEach(builder::add);
-        return builder.build();
     }
 
 }
