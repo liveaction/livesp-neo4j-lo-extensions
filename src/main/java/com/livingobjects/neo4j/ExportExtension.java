@@ -99,7 +99,7 @@ public final class ExportExtension {
                 mediatype = MediaType.APPLICATION_JSON_TYPE;
             }
             return Response.ok()
-                    .header("Content-Range", lineages.start() + '-' + lineages.end() + '/' + lineages.total())
+                    .header("Content-Range", "" + lineages.start() + '-' + lineages.end() + '/' + lineages.total())
                     .entity(stream)
                     .type(mediatype)
                     .build();
