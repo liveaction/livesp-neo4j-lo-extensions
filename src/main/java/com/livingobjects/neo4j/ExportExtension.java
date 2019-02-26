@@ -3,22 +3,23 @@ package com.livingobjects.neo4j;
 import com.davfx.ninio.csv.AutoCloseableCsvWriter;
 import com.davfx.ninio.csv.Csv;
 import com.davfx.ninio.csv.CsvWriter;
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
+import com.livingobjects.neo4j.model.export.query.ExportQuery;
+import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.Direction;
@@ -43,11 +44,12 @@ import java.io.OutputStream;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Charsets.UTF_8;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
@@ -81,20 +83,26 @@ public final class ExportExtension {
     public Response export(InputStream in, @HeaderParam("accept") String accept) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
-        AtomicLong lineCounter = new AtomicLong();
         try {
-
             ExportQuery exportQuery = json.readValue(in, new TypeReference<ExportQuery>() {
             });
-            if (TEXT_CSV_MEDIATYPE.equals(MediaType.valueOf(accept))) {
-                StreamingOutput stream = outputStream -> lineCounter.set(exportAsCsv(exportQuery, outputStream));
-                return Response.ok().entity(stream).type(TEXT_CSV_MEDIATYPE).build();
-            } else if (MediaType.APPLICATION_JSON_TYPE.equals(MediaType.valueOf(accept))) {
-                StreamingOutput stream = outputStream -> lineCounter.set(exportAsJson(exportQuery, outputStream));
-                return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON_TYPE).build();
+            boolean csv = checkAcceptHeader(accept);
+
+            PaginatedLineages lineages = extract(exportQuery);
+            StreamingOutput stream;
+            MediaType mediatype;
+            if (csv) {
+                stream = outputStream -> exportAsCsv(lineages, outputStream);
+                mediatype = TEXT_CSV_MEDIATYPE;
             } else {
-                throw new IllegalArgumentException("'" + accept + "' content type is not supported. Use 'text/csv' or 'application/json'");
+                stream = outputStream -> exportAsJson(lineages, outputStream);
+                mediatype = MediaType.APPLICATION_JSON_TYPE;
             }
+            return Response.ok()
+                    .header("Content-Range", lineages.start() + '-' + lineages.end() + '/' + lineages.total())
+                    .entity(stream)
+                    .type(mediatype)
+                    .build();
 
         } catch (IllegalArgumentException e) {
             LOGGER.error("export extension : ", e);
@@ -114,50 +122,102 @@ public final class ExportExtension {
         }
     }
 
-    private long exportAsCsv(ExportQuery exportQuery, OutputStream outputStream) {
+    private boolean checkAcceptHeader(@HeaderParam("accept") String accept) {
+        boolean csv;
+        if (TEXT_CSV_MEDIATYPE.equals(MediaType.valueOf(accept))) {
+            csv = true;
+        } else if (MediaType.APPLICATION_JSON_TYPE.equals(MediaType.valueOf(accept))) {
+            csv = false;
+        } else {
+            throw new IllegalArgumentException("'" + accept + "' content type is not supported. Use 'text/csv' or 'application/json'");
+        }
+        return csv;
+    }
+
+    private PaginatedLineages paginate(Lineages lineages, List<FilteredLineage> filteredLineages, Optional<Pagination> pagination) {
+        int end = pagination
+                .map(p -> Math.min(p.offset + p.limit, filteredLineages.size()))
+                .orElse(filteredLineages.size());
+        return new PaginatedLineages() {
+
+            @Override
+            public ImmutableList<String> attributesToExport() {
+                return lineages.attributesToExport;
+            }
+
+            @Override
+            public Map<String, SortedMap<String, String>> header() {
+                return lineages.propertiesTypeByType;
+            }
+
+            @Override
+            public List<FilteredLineage> lineages() {
+                return pagination
+                        .map(p -> filteredLineages.subList(p.offset, end))
+                        .orElse(filteredLineages);
+            }
+
+            @Override
+            public int start() {
+                return pagination
+                        .map(p -> p.offset)
+                        .orElse(0);
+            }
+
+            @Override
+            public int end() {
+                return end;
+            }
+
+            @Override
+            public int total() {
+                return filteredLineages.size();
+            }
+        };
+    }
+
+    private PaginatedLineages extract(ExportQuery exportQuery) {
         try (Transaction ignored = graphDb.beginTx()) {
             Lineages lineages = exportLineages(exportQuery);
-            try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
-                long lines = 0;
-                String[] headers = generateCSVHeader(lineages);
-                if (headers.length > 0) {
-                    try (CsvWriter.Line headerLine = csv.line()) {
-                        for (String h : headers) {
-                            headerLine.append(h);
-                        }
-                    }
-                }
-                for (Lineage lineage : lineages.lineages) {
-                    if (writeCSVLine(exportQuery, lineages, lineage, csv)) {
-                        lines++;
-                    }
-                }
-                return lines;
-            }
-        } catch (Exception e) {
-            LOGGER.error("export extension : ", e);
-            throw new RuntimeException(e);
+            List<FilteredLineage> filteredLineages = filter(exportQuery, lineages);
+            return paginate(lineages, filteredLineages, exportQuery.pagination);
         }
     }
 
-    private long exportAsJson(ExportQuery exportQuery, OutputStream outputStream) {
-        try (Transaction ignored = graphDb.beginTx()) {
-            AtomicLong count = new AtomicLong(0);
-            Lineages lineages = exportLineages(exportQuery);
-            for (Lineage lineage : lineages.lineages) {
-                filterLineage(exportQuery, lineages, lineage)
-                        .ifPresent(map -> {
-                            try {
-                                String s = JSON_MAPPER.writeValueAsString(map);
-                                outputStream.write(s.getBytes(UTF_8));
-                                outputStream.write('\n');
-                            } catch (IOException e) {
-                                throw Throwables.propagate(e);
-                            }
-                            count.incrementAndGet();
-                        });
+    private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
+        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
+            String[] headers = generateCSVHeader(paginatedLineages);
+            if (headers.length > 0) {
+                try (CsvWriter.Line headerLine = csv.line()) {
+                    for (String h : headers) {
+                        headerLine.append(h);
+                    }
+                }
             }
-            return count.get();
+            for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
+                writeCSVLine(filteredLineage, csv);
+            }
+        } catch (IOException e) {
+            Throwables.propagate(e);
+        }
+    }
+
+    private List<FilteredLineage> filter(ExportQuery exportQuery, Lineages lineages) {
+        return ImmutableList.copyOf(lineages.lineages.stream()
+                .map(lineage -> filterLineage(exportQuery, lineages, lineage))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(FilteredLineage::new)
+                .collect(Collectors.toList()));
+    }
+
+    private void exportAsJson(PaginatedLineages paginatedLineages, OutputStream outputStream) {
+        try {
+            for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
+                String s = JSON_MAPPER.writeValueAsString(filteredLineage.properties);
+                outputStream.write(s.getBytes(UTF_8));
+                outputStream.write('\n');
+            }
         } catch (Throwable e) {
             LOGGER.error("export extension : ", e);
             throw new RuntimeException(e);
@@ -232,35 +292,30 @@ public final class ExportExtension {
         }
     }
 
-    private boolean writeCSVLine(ExportQuery exportQuery, Lineages lineages, Lineage lineage, AutoCloseableCsvWriter csv) {
-        return filterLineage(exportQuery, lineages, lineage)
-                .map(stringMapMap -> {
-                            try (CsvWriter.Line line = csv.line()) {
-                                stringMapMap.values()
-                                        .forEach(properties -> properties.values().forEach(value -> {
-                                            try {
-                                                if (value != null) {
-                                                    if (value.getClass().isArray()) {
-                                                        line.append(json.writeValueAsString(value));
-                                                    } else {
-                                                        line.append(value.toString());
-                                                    }
-                                                } else {
-                                                    line.append(null);
-                                                }
-                                            } catch (IOException e) {
-                                                throw Throwables.propagate(e);
-                                            }
-                                        }));
-                                return true;
-                            } catch (IOException e) {
-                                throw Throwables.propagate(e);
+    private void writeCSVLine(FilteredLineage filteredLineage, AutoCloseableCsvWriter csv) {
+        try (CsvWriter.Line line = csv.line()) {
+            filteredLineage.properties.values()
+                    .forEach(properties -> properties.values().forEach(value -> {
+                        try {
+                            if (value != null) {
+                                if (value.getClass().isArray()) {
+                                    line.append(json.writeValueAsString(value));
+                                } else {
+                                    line.append(value.toString());
+                                }
+                            } else {
+                                line.append(null);
                             }
+                        } catch (IOException e) {
+                            throw Throwables.propagate(e);
                         }
-                ).orElse(false);
+                    }));
+        } catch (IOException e) {
+            throw Throwables.propagate(e);
+        }
     }
 
-    private Optional<Map<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
+    private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         Map<String, Map<String, Object>> map = Maps.newTreeMap(Comparator.comparingInt(lineages.attributesToExport::indexOf));
         for (String attribute : lineages.attributesToExport) {
             Map<String, Object> values = Maps.newLinkedHashMap();
@@ -299,7 +354,7 @@ public final class ExportExtension {
             }
             map.put(attribute, values);
         }
-        return Optional.of(map);
+        return Optional.of(ImmutableMap.copyOf(map));
     }
 
     private String getElementScopeFromPlanet(Node node) {
@@ -325,10 +380,10 @@ public final class ExportExtension {
         }
     }
 
-    private String[] generateCSVHeader(Lineages lineages) {
+    private String[] generateCSVHeader(PaginatedLineages lineages) {
         List<String> header = Lists.newArrayList();
-        for (String attribute : lineages.attributesToExport) {
-            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+        for (String attribute : lineages.attributesToExport()) {
+            SortedMap<String, String> properties = lineages.header().get(attribute);
             if (properties != null) {
                 String[] split = attribute.split(":");
                 String attributeName = split[1];
@@ -347,26 +402,48 @@ public final class ExportExtension {
         return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
 
-    private static final class ExportQuery {
+    public interface PaginatedLineages {
 
-        public final ImmutableSet<String> requiredAttributes;
-        public final ImmutableSet<String> parentAttributes;
-        public final ImmutableMap<String, Set<String>> columns;
-        public final ImmutableMap<String, Map<String, Object>> filter;
-        public final boolean includeTag;
+        ImmutableList<String> attributesToExport();
 
-        public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
-                           @JsonProperty("parentAttributes") List<String> parentAttributes,
-                           @JsonProperty("columns") Map<String, Set<String>> columns,
-                           @JsonProperty("filter") Map<String, Map<String, Object>> filter,
-                           @JsonProperty("includeTag") boolean includeTag) {
-            this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
-            this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
-            this.columns = ImmutableMap.copyOf(columns);
-            this.filter = ImmutableMap.copyOf(filter);
-            this.includeTag = includeTag;
+        Map<String, SortedMap<String, String>> header();
+
+        List<FilteredLineage> lineages();
+
+        int start();
+
+        int end();
+
+        int total();
+
+    }
+
+    public static class FilteredLineage {
+        public final ImmutableMap<String, Map<String, Object>> properties;
+
+        public FilteredLineage(ImmutableMap<String, Map<String, Object>> properties) {
+            this.properties = properties;
         }
 
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            FilteredLineage that = (FilteredLineage) o;
+            return Objects.equals(properties, that.properties);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(properties);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                    .add("properties", properties)
+                    .toString();
+        }
     }
 
 }
