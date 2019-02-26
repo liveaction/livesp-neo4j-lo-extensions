@@ -330,8 +330,10 @@ public final class ExportExtension {
         for (String attribute : lineages.attributesToExport) {
             SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
             if (properties != null) {
+                String[] split = attribute.split(":");
+                String attributeName = split[1];
                 for (Map.Entry<String, String> property : properties.entrySet()) {
-                    header.add(attribute + '.' + property.getKey() + ':' + property.getValue());
+                    header.add(attributeName + '.' + property.getKey() + ':' + property.getValue());
                 }
             }
         }
