@@ -84,7 +84,7 @@ public final class ExportExtension {
     }
 
     @GET
-    @Path("/columns")
+    @Path("/properties")
     public Response exportProperties() throws IOException {
         try (Transaction tx = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
