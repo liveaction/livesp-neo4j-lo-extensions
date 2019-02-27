@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j.helper;
 
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.primitives.Doubles;
@@ -131,11 +132,36 @@ public final class PropertyConverter {
     private static Collection<? extends Number> convertAsDouble(String[] doubleFieldArray) {
         List<Number> doubles = new LinkedList<>();
 
-        for (int i = 0; i < doubleFieldArray.length; i++) {
-            doubles.add(Double.valueOf(doubleFieldArray[i]));
+        for (String s : doubleFieldArray) {
+            doubles.add(Double.valueOf(s));
         }
 
         return doubles;
+    }
+
+    public static String asString(Object value) {
+        try {
+            if (value != null) {
+                if (value.getClass().isArray()) {
+                    return JSON_MAPPER.writeValueAsString(value);
+                } else {
+                    return value.toString();
+                }
+            } else {
+                return null;
+            }
+        } catch (IOException e) {
+            throw Throwables.propagate(e);
+        }
+    }
+
+    public static String asNonNullString(Object value) {
+        String nullable = asString(value);
+        if (nullable != null) {
+            return nullable;
+        } else {
+            return "";
+        }
     }
 
 }

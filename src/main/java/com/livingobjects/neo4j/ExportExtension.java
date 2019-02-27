@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
@@ -295,21 +296,14 @@ public final class ExportExtension {
     private void writeCSVLine(FilteredLineage filteredLineage, AutoCloseableCsvWriter csv) {
         try (CsvWriter.Line line = csv.line()) {
             filteredLineage.properties.values()
-                    .forEach(properties -> properties.values().forEach(value -> {
-                        try {
-                            if (value != null) {
-                                if (value.getClass().isArray()) {
-                                    line.append(json.writeValueAsString(value));
-                                } else {
-                                    line.append(value.toString());
+                    .forEach(properties -> properties.values()
+                            .forEach(value -> {
+                                try {
+                                    line.append(PropertyConverter.asString(value));
+                                } catch (IOException e) {
+                                    throw Throwables.propagate(e);
                                 }
-                            } else {
-                                line.append(null);
-                            }
-                        } catch (IOException e) {
-                            throw Throwables.propagate(e);
-                        }
-                    }));
+                            }));
         } catch (IOException e) {
             throw Throwables.propagate(e);
         }

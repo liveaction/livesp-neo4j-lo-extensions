@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.export;
 
 import com.google.common.collect.ImmutableList;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.model.export.query.ColumnOrder;
 import org.neo4j.graphdb.Node;
 
@@ -23,9 +24,13 @@ public final class LineageSortComparator implements Comparator<Lineage> {
             Node node2 = l2.nodesByType.get(columnOrder.keyAttribute);
             if (node1 != null) {
                 if (node2 != null) {
-                    String value1 = node1.getProperty(columnOrder.property, "").toString();
-                    String value2 = node2.getProperty(columnOrder.property, "").toString();
-                    compare = value1.compareTo(value2);
+                    String value1 = PropertyConverter.asNonNullString(node1.getProperty(columnOrder.property, ""));
+                    String value2 = PropertyConverter.asNonNullString(node2.getProperty(columnOrder.property, ""));
+                    if (columnOrder.direction == ColumnOrder.Direction.ASC) {
+                        compare = value1.compareTo(value2);
+                    } else {
+                        compare = value2.compareTo(value1);
+                    }
                     if (compare != 0) {
                         break;
                     }
