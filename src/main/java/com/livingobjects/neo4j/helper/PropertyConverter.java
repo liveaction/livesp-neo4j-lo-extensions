@@ -164,4 +164,23 @@ public final class PropertyConverter {
         }
     }
 
+    public static String getPropertyType(Object value) {
+        Class<?> clazz = value.getClass();
+        if (clazz.isArray()) {
+            return getSimpleType(clazz.getComponentType()) + "[]";
+        } else {
+            return getSimpleType(clazz);
+        }
+    }
+
+    public static String getSimpleType(Class<?> clazz) {
+        if (Number.class.isAssignableFrom(clazz)) {
+            return PropertyType.NUMBER.name();
+        } else if (Boolean.class.isAssignableFrom(clazz)) {
+            return PropertyType.BOOLEAN.name();
+        } else {
+            return PropertyType.STRING.name();
+        }
+    }
+
 }

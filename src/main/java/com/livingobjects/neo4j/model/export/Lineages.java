@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.PropertyType;
 import com.livingobjects.neo4j.model.export.query.ColumnOrder;
@@ -62,7 +63,7 @@ public final class Lineages {
         for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
             String name = property.getKey();
             if (!name.startsWith("_") && !propertiesToIgnore.contains(name)) {
-                String propertyType = getPropertyType(property.getValue());
+                String propertyType = PropertyConverter.getPropertyType(property.getValue());
                 properties.put(name, propertyType);
             }
         }
@@ -70,25 +71,6 @@ public final class Lineages {
 
     public void add(Lineage lineage) {
         lineages.add(lineage);
-    }
-
-    public static String getPropertyType(Object value) {
-        Class<?> clazz = value.getClass();
-        if (clazz.isArray()) {
-            return getSimpleType(clazz.getComponentType()) + "[]";
-        } else {
-            return getSimpleType(clazz);
-        }
-    }
-
-    public static String getSimpleType(Class<?> clazz) {
-        if (Number.class.isAssignableFrom(clazz)) {
-            return PropertyType.NUMBER.name();
-        } else if (Boolean.class.isAssignableFrom(clazz)) {
-            return PropertyType.BOOLEAN.name();
-        } else {
-            return PropertyType.STRING.name();
-        }
     }
 
     private SortedMap<String, String> getKeyAttributeProperties(String keyAttribute) {

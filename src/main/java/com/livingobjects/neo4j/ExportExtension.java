@@ -8,6 +8,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -15,6 +16,7 @@ import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
+import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
@@ -32,6 +34,7 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -80,6 +83,34 @@ public final class ExportExtension {
         }
     }
 
+    @GET
+    @Path("/columns")
+    public Response exportProperties() throws IOException {
+        try (Transaction tx = graphDb.beginTx()) {
+            Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
+            graphDb.findNodes(Labels.ELEMENT)
+                    .forEachRemaining(node -> {
+                        String type = node.getProperty(_TYPE).toString();
+                        Map<String, PropertyDefinition> properties = allProperties.computeIfAbsent(type, k -> Maps.newHashMap());
+                        node.getAllProperties()
+                                .forEach((name, value) -> {
+                                    if (!name.startsWith("_") && !properties.containsKey(name)) {
+                                        boolean required = isRequired(type, name);
+                                        properties.put(name, new PropertyDefinition(PropertyConverter.getPropertyType(value), required));
+                                    }
+                                });
+                    });
+            return Response.ok()
+                    .entity(JSON_MAPPER.writeValueAsString(allProperties))
+                    .type(MediaType.APPLICATION_JSON_TYPE)
+                    .build();
+        } catch (Throwable e) {
+            LOGGER.error("export properties extension : ", e);
+            String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
+            return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
+        }
+    }
+
     @POST
     public Response export(InputStream in, @HeaderParam("accept") String accept) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
@@ -120,6 +151,14 @@ public final class ExportExtension {
 
         } finally {
             LOGGER.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+        }
+    }
+
+    private boolean isRequired(String type, String s) {
+        if (ImmutableSet.of("tag", "id").contains(s)) {
+            return true;
+        } else {
+            return metaSchema.getRequiredProperties(type).contains(s);
         }
     }
 
