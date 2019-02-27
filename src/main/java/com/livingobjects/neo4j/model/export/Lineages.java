@@ -35,12 +35,7 @@ public final class Lineages {
 
     public Lineages(ImmutableList<String> attributesToExport, MetaSchema metaSchema, boolean exportTags, ImmutableList<ColumnOrder> sort) {
         this.attributesToExport = attributesToExport;
-        Comparator<Lineage> comparator;
-        if (sort.isEmpty()) {
-            comparator = new LineageNaturalComparator(attributesToExport);
-        } else {
-            comparator = new LineageSortComparator(sort);
-        }
+        Comparator<Lineage> comparator = new LineageSortComparator(sort, new LineageNaturalComparator(attributesToExport));
         lineages = Sets.newTreeSet(comparator);
         allTags = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();

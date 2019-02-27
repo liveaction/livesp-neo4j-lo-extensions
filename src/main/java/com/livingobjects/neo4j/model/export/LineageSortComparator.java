@@ -8,12 +8,11 @@ import java.util.Comparator;
 
 public final class LineageSortComparator implements Comparator<Lineage> {
     private final ImmutableList<ColumnOrder> sort;
+    private final Comparator<Lineage> comparator;
 
-    public LineageSortComparator(ImmutableList<ColumnOrder> sort) {
-        if (sort.isEmpty()) {
-            throw new IllegalArgumentException("Sort list must not be empty");
-        }
+    public LineageSortComparator(ImmutableList<ColumnOrder> sort, Comparator<Lineage> comparator) {
         this.sort = sort;
+        this.comparator = comparator;
     }
 
     @Override
@@ -43,6 +42,9 @@ public final class LineageSortComparator implements Comparator<Lineage> {
             if (compare != 0) {
                 return compare;
             }
+        }
+        if (compare == 0) {
+            compare = comparator.compare(l1, l2);
         }
         return compare;
     }
