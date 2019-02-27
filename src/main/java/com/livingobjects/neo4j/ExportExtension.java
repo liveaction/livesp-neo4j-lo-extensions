@@ -264,7 +264,7 @@ public final class ExportExtension {
         });
         attributesToExport.addAll(exportQuery.parentAttributes);
         attributesToExport.addAll(exportQuery.requiredAttributes);
-        return new Lineages(ImmutableList.copyOf(attributesToExport), metaSchema, exportQuery.includeTag);
+        return new Lineages(ImmutableList.copyOf(attributesToExport), metaSchema, exportQuery.includeTag, exportQuery.sort);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {

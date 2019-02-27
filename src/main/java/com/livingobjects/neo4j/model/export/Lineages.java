@@ -6,9 +6,11 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.PropertyType;
+import com.livingobjects.neo4j.model.export.query.ColumnOrder;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
@@ -31,9 +33,15 @@ public final class Lineages {
     private final Set<String> propertiesToIgnore;
     public final ImmutableList<String> attributesToExport;
 
-    public Lineages(ImmutableList<String> attributesToExport, MetaSchema metaSchema, boolean exportTags) {
+    public Lineages(ImmutableList<String> attributesToExport, MetaSchema metaSchema, boolean exportTags, ImmutableList<ColumnOrder> sort) {
         this.attributesToExport = attributesToExport;
-        lineages = Sets.newTreeSet(new LineageComparator(attributesToExport));
+        Comparator<Lineage> comparator;
+        if (sort.isEmpty()) {
+            comparator = new LineageNaturalComparator(attributesToExport);
+        } else {
+            comparator = new LineageSortComparator(sort);
+        }
+        lineages = Sets.newTreeSet(comparator);
         allTags = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
         propertiesToIgnore = exportTags ? IGNORE : IGNORE_WITH_TAGS;

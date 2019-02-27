@@ -6,10 +6,10 @@ import org.neo4j.graphdb.Node;
 
 import java.util.Comparator;
 
-public final class LineageComparator implements Comparator<Lineage> {
+public final class LineageNaturalComparator implements Comparator<Lineage> {
     private final ImmutableList<String> attributesOrdering;
 
-    public LineageComparator(ImmutableList<String> attributesOrdering) {
+    public LineageNaturalComparator(ImmutableList<String> attributesOrdering) {
         this.attributesOrdering = attributesOrdering;
     }
 
