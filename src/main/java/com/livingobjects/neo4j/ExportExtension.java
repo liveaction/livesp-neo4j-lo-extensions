@@ -19,6 +19,7 @@ import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
+import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -371,16 +372,12 @@ public final class ExportExtension {
                     values.put(property, propertyValue);
                 }
             }
-            Map<String, Object> filter = exportQuery.filter.get(attribute);
+            Map<String, ValueFilter> filter = exportQuery.filter.get(attribute);
             if (filter != null) {
-                for (Map.Entry<String, Object> filterEntry : filter.entrySet()) {
+                for (Map.Entry<String, ValueFilter> filterEntry : filter.entrySet()) {
                     Object value = values.get(filterEntry.getKey());
-                    Object filterValue = filterEntry.getValue();
-                    if (value == null) {
-                        if (filterValue != null) {
-                            return Optional.empty();
-                        }
-                    } else if (!value.equals(filterValue)) {
+                    ValueFilter valueFilter = filterEntry.getValue();
+                    if (!valueFilter.test(value)) {
                         return Optional.empty();
                     }
                 }

@@ -4,6 +4,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import javax.annotation.Nullable;
@@ -18,7 +19,7 @@ public final class ExportQuery {
     public final ImmutableSet<String> requiredAttributes;
     public final ImmutableSet<String> parentAttributes;
     public final ImmutableMap<String, Set<String>> columns;
-    public final ImmutableMap<String, Map<String, Object>> filter;
+    public final ImmutableMap<String, Map<String, ValueFilter>> filter;
     public final boolean includeTag;
     public final ImmutableList<ColumnOrder> sort;
     public final Optional<Pagination> pagination;
@@ -26,7 +27,7 @@ public final class ExportQuery {
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                        @JsonProperty("parentAttributes") List<String> parentAttributes,
                        @JsonProperty("columns") Map<String, Set<String>> columns,
-                       @JsonProperty("filter") Map<String, Map<String, Object>> filter,
+                       @JsonProperty("filter") Map<String, Map<String, ValueFilter>> filter,
                        @JsonProperty("includeTag") boolean includeTag,
                        @JsonProperty("sort") List<ColumnOrder> sort,
                        @JsonProperty("pagination") @Nullable Pagination pagination) {
