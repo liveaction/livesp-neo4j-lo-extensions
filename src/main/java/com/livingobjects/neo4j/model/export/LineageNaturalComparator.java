@@ -1,15 +1,15 @@
 package com.livingobjects.neo4j.model.export;
 
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
 import java.util.Comparator;
 
 public final class LineageNaturalComparator implements Comparator<Lineage> {
-    private final ImmutableList<String> attributesOrdering;
+    private final ImmutableSet<String> attributesOrdering;
 
-    public LineageNaturalComparator(ImmutableList<String> attributesOrdering) {
+    public LineageNaturalComparator(ImmutableSet<String> attributesOrdering) {
         this.attributesOrdering = attributesOrdering;
     }
 

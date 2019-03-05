@@ -11,7 +11,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
@@ -46,12 +45,10 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -87,7 +84,7 @@ public final class ExportExtension {
     @GET
     @Path("/properties")
     public Response exportProperties() throws IOException {
-        try (Transaction tx = graphDb.beginTx()) {
+        try (Transaction ignored = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
             graphDb.findNodes(Labels.ELEMENT)
                     .forEachRemaining(node -> {
@@ -182,7 +179,7 @@ public final class ExportExtension {
         return new PaginatedLineages() {
 
             @Override
-            public ImmutableList<String> attributesToExport() {
+            public ImmutableSet<String> attributesToExport() {
                 return lineages.attributesToExport;
             }
 
@@ -273,8 +270,7 @@ public final class ExportExtension {
     private Lineages exportLineages(ExportQuery exportQuery) {
         Lineages lineages = initLineages(exportQuery);
         if (!lineages.attributesToExport.isEmpty()) {
-            for (int index = lineages.attributesToExport.size() - 1; index >= 0; index--) {
-                String leafAttribute = lineages.attributesToExport.get(index);
+            for (String leafAttribute : lineages.orderedRequiredAttributes) {
                 ResourceIterator<Node> leaves = graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute);
                 while (leaves.hasNext()) {
                     Node leaf = leaves.next();
@@ -294,27 +290,15 @@ public final class ExportExtension {
     }
 
     private Lineages initLineages(ExportQuery exportQuery) {
-        Set<String> attributesToExport = Sets.newTreeSet((o1, o2) -> {
-            if (metaSchema.getMonoParentRelations(o1).anyMatch(o2::equals)) {
-                return 1;
-            } else if (metaSchema.getMonoParentRelations(o2).anyMatch(o1::equals)) {
-                return -1;
-            } else {
-                return o1.compareTo(o2);
-            }
-        });
-        attributesToExport.addAll(exportQuery.parentAttributes);
-        attributesToExport.addAll(exportQuery.requiredAttributes);
-        return new Lineages(ImmutableList.copyOf(attributesToExport), metaSchema, exportQuery.includeTag, exportQuery.sort);
+        return new Lineages(metaSchema, exportQuery);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {
-        String tag = currentNode.getProperty(TAG).toString();
         String type = currentNode.getProperty(_TYPE, "").toString();
         if (lineages.attributesToExport.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
         }
-        lineages.markAsVisited(tag, type, currentNode);
+        lineages.markAsVisited(type, currentNode);
         Iterable<Relationship> parentRelationships = currentNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
@@ -350,15 +334,20 @@ public final class ExportExtension {
     }
 
     private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
-        Map<String, Map<String, Object>> map = Maps.newTreeMap(Comparator.comparingInt(lineages.attributesToExport::indexOf));
+        Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
+        int missingRequired = 0;
         for (String attribute : lineages.attributesToExport) {
             Map<String, Object> values = Maps.newLinkedHashMap();
             Node node = lineage.nodesByType.get(attribute);
             SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
             if (node == null) {
                 if (exportQuery.requiredAttributes.contains(attribute)) {
-                    return Optional.empty();
-                } else if (properties != null) {
+                    missingRequired++;
+                    if (missingRequired == exportQuery.requiredAttributes.size()) {
+                        return Optional.empty();
+                    }
+                }
+                if (properties != null) {
                     properties.keySet().forEach(property -> values.put(property, null));
                 }
             } else if (properties != null) {
@@ -434,7 +423,7 @@ public final class ExportExtension {
 
     public interface PaginatedLineages {
 
-        ImmutableList<String> attributesToExport();
+        ImmutableSet<String> attributesToExport();
 
         Map<String, SortedMap<String, String>> header();
 
