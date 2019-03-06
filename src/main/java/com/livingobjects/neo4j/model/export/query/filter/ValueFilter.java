@@ -20,10 +20,14 @@ public final class ValueFilter {
                         @JsonProperty("value") Object value) {
         this.not = not;
         this.operator = operator;
-        if (value instanceof Comparable) {
-            this.value = (Comparable) value;
+        if (value != null) {
+            if (value instanceof Comparable) {
+                this.value = (Comparable) value;
+            } else {
+                throw new IllegalArgumentException("Value must be a comparable : " + value);
+            }
         } else {
-            throw new IllegalArgumentException("Value must be a comparable : " + value);
+            this.value = null;
         }
     }
 
