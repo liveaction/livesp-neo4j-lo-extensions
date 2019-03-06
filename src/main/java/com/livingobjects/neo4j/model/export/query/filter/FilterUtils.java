@@ -33,6 +33,9 @@ public class FilterUtils {
             case is_null:
                 return value == null;
             case contains:
+                if (value == null) {
+                    return false;
+                }
                 if (value.getClass().isArray()) {
                     Object[] array = (Object[]) value;
                     return ImmutableSet.copyOf(array).contains(valueFilter.value);
@@ -40,7 +43,7 @@ public class FilterUtils {
                     Iterable iterable = (Iterable) value;
                     return ImmutableSet.copyOf(iterable).contains(valueFilter.value);
                 } else {
-                    return false;
+                    return asNonNullString(value).contains(valueFilter.value.toString());
                 }
             default:
                 throw new IllegalArgumentException("Unsupported operator '" + valueFilter.operator + "'. Must be one of : " + Arrays.toString(ValueFilter.Operator.values()));
