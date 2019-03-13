@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class Lineage {
+
     public final Map<String, Node> nodesByType;
 
     public Lineage() {
@@ -18,4 +19,5 @@ public final class Lineage {
     public String toString() {
         return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(GraphModelConstants.TAG).toString()).collect(Collectors.joining(" - "));
     }
+
 }

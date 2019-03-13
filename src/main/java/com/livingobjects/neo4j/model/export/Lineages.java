@@ -27,12 +27,13 @@ public final class Lineages {
 
     public final Set<Lineage> lineages;
 
-    public final Set<Node> allTags;
+    public final Set<Node> visitedNodes;
 
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
 
+    public final ImmutableSet<String> attributesToExtract;
     public final ImmutableSet<String> attributesToExport;
-    public final ImmutableSet<String> orderedRequiredAttributes;
+    public final ImmutableSet<String> orderedLeafAttributes;
 
     private final Set<String> propertiesToIgnore;
     private final ImmutableMap<String, Set<String>> columns;
@@ -53,13 +54,20 @@ public final class Lineages {
         attributesToExport.addAll(exportQuery.requiredAttributes);
         this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
 
-        Set<String> orderedRequiredAttributes = Sets.newTreeSet((o1, o2) -> -lineageComparator.compare(o1, o2));
-        orderedRequiredAttributes.addAll(exportQuery.requiredAttributes);
-        this.orderedRequiredAttributes = ImmutableSet.copyOf(orderedRequiredAttributes);
+        Set<String> attributesToExtract = Sets.newTreeSet(lineageComparator);
+        attributesToExtract.addAll(exportQuery.parentAttributes);
+        attributesToExtract.addAll(exportQuery.requiredAttributes);
+        attributesToExtract.addAll(exportQuery.filter.keySet());
+        this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
+
+        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -lineageComparator.compare(o1, o2));
+        orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
+        orderedLeafAttributes.addAll(exportQuery.filter.keySet());
+        this.orderedLeafAttributes = ImmutableSet.copyOf(orderedLeafAttributes);
 
         Comparator<Lineage> comparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(this.attributesToExport));
         lineages = Sets.newTreeSet(comparator);
-        allTags = Sets.newHashSet();
+        visitedNodes = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
         propertiesToIgnore = exportQuery.includeTag ? IGNORE : IGNORE_WITH_TAGS;
         columns = exportQuery.columns;
@@ -76,12 +84,12 @@ public final class Lineages {
     }
 
     public boolean dejaVu(Node leaf) {
-        return allTags.contains(leaf);
+        return visitedNodes.contains(leaf);
     }
 
     public void markAsVisited(String keyAttribute, Node node) {
-        allTags.add(node);
-        if (attributesToExport.contains(keyAttribute)) {
+        visitedNodes.add(node);
+        if (attributesToExtract.contains(keyAttribute)) {
             SortedMap<String, String> properties = getKeyAttributeProperties(keyAttribute);
             for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
                 String name = property.getKey();

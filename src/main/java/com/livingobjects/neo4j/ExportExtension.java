@@ -270,7 +270,7 @@ public final class ExportExtension {
     private Lineages exportLineages(ExportQuery exportQuery) {
         Lineages lineages = initLineages(exportQuery);
         if (!lineages.attributesToExport.isEmpty()) {
-            for (String leafAttribute : lineages.orderedRequiredAttributes) {
+            for (String leafAttribute : lineages.orderedLeafAttributes) {
                 ResourceIterator<Node> leaves = graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute);
                 while (leaves.hasNext()) {
                     Node leaf = leaves.next();
@@ -295,7 +295,7 @@ public final class ExportExtension {
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {
         String type = currentNode.getProperty(_TYPE, "").toString();
-        if (lineages.attributesToExport.contains(type)) {
+        if (lineages.attributesToExtract.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
         }
         lineages.markAsVisited(type, currentNode);
@@ -336,10 +336,21 @@ public final class ExportExtension {
     private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         int missingRequired = 0;
-        for (String attribute : lineages.attributesToExport) {
-            Map<String, Object> values = Maps.newLinkedHashMap();
+        for (Map.Entry<String, Map<String, ValueFilter>> filterEntry : exportQuery.filter.entrySet()) {
+            String attribute = filterEntry.getKey();
             Node node = lineage.nodesByType.get(attribute);
-            SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+            Map<String, Object> values = getProperties(lineages, node, attribute);
+            Map<String, ValueFilter> filter = filterEntry.getValue();
+            for (Map.Entry<String, ValueFilter> valueFilterEntry : filter.entrySet()) {
+                Object value = values.get(valueFilterEntry.getKey());
+                ValueFilter valueFilter = valueFilterEntry.getValue();
+                if (!valueFilter.test(value)) {
+                    return Optional.empty();
+                }
+            }
+        }
+        for (String attribute : lineages.attributesToExport) {
+            Node node = lineage.nodesByType.get(attribute);
             if (node == null) {
                 if (exportQuery.requiredAttributes.contains(attribute)) {
                     missingRequired++;
@@ -347,31 +358,8 @@ public final class ExportExtension {
                         return Optional.empty();
                     }
                 }
-                if (properties != null) {
-                    properties.keySet().forEach(property -> values.put(property, null));
-                }
-            } else if (properties != null) {
-                for (String property : properties.keySet()) {
-                    Object propertyValue;
-                    if (property.equals(SCOPE)) {
-                        propertyValue = getElementScopeFromPlanet(node);
-                    } else {
-                        propertyValue = node.getProperty(property, null);
-                    }
-                    values.put(property, propertyValue);
-                }
             }
-            Map<String, ValueFilter> filter = exportQuery.filter.get(attribute);
-            if (filter != null) {
-                for (Map.Entry<String, ValueFilter> filterEntry : filter.entrySet()) {
-                    Object value = values.get(filterEntry.getKey());
-                    ValueFilter valueFilter = filterEntry.getValue();
-                    if (!valueFilter.test(value)) {
-                        return Optional.empty();
-                    }
-                }
-            }
-            map.put(attribute, values);
+            map.put(attribute, getProperties(lineages, node, attribute));
         }
         return Optional.of(ImmutableMap.copyOf(map));
     }
@@ -463,6 +451,27 @@ public final class ExportExtension {
                     .add("properties", properties)
                     .toString();
         }
+    }
+
+    private Map<String, Object> getProperties(Lineages lineages, Node node, String attribute) {
+        Map<String, Object> values = Maps.newLinkedHashMap();
+        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
+        if (node == null) {
+            if (properties != null) {
+                properties.keySet().forEach(property -> values.put(property, null));
+            }
+        } else if (properties != null) {
+            for (String property : properties.keySet()) {
+                Object propertyValue;
+                if (property.equals(SCOPE)) {
+                    propertyValue = getElementScopeFromPlanet(node);
+                } else {
+                    propertyValue = node.getProperty(property, null);
+                }
+                values.put(property, propertyValue);
+            }
+        }
+        return values;
     }
 
 }
