@@ -18,7 +18,6 @@ import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
-import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -54,11 +53,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Charsets.UTF_8;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_SP_TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
@@ -276,7 +270,7 @@ public final class ExportExtension {
                     Node leaf = leaves.next();
                     if (!lineages.dejaVu(leaf)) {
                         try {
-                            Lineage lineage = new Lineage();
+                            Lineage lineage = new Lineage(graphDb, lineages);
                             rewindLineage(leaf, lineage, lineages);
                             lineages.add(lineage);
                         } catch (LineageCardinalityException e) {
@@ -336,18 +330,16 @@ public final class ExportExtension {
     private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         int missingRequired = 0;
-        for (Map.Entry<String, Map<String, ValueFilter>> filterEntry : exportQuery.filter.entrySet()) {
-            String attribute = filterEntry.getKey();
-            Node node = lineage.nodesByType.get(attribute);
-            Map<String, Object> values = getProperties(lineages, node, attribute);
-            Map<String, ValueFilter> filter = filterEntry.getValue();
-            for (Map.Entry<String, ValueFilter> valueFilterEntry : filter.entrySet()) {
-                Object value = values.get(valueFilterEntry.getKey());
-                ValueFilter valueFilter = valueFilterEntry.getValue();
-                if (!valueFilter.test(value)) {
-                    return Optional.empty();
-                }
+        boolean filtered = exportQuery.filter.test(column -> {
+            Map<String, Object> properties = lineage.getProperties(column.keyAttribute);
+            if (properties != null) {
+                return properties.get(column.property);
+            } else {
+                return null;
             }
+        });
+        if (!filtered) {
+            return Optional.empty();
         }
         for (String attribute : lineages.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
@@ -359,32 +351,9 @@ public final class ExportExtension {
                     }
                 }
             }
-            map.put(attribute, getProperties(lineages, node, attribute));
+            map.put(attribute, lineage.getProperties(attribute));
         }
         return Optional.of(ImmutableMap.copyOf(map));
-    }
-
-    private String getElementScopeFromPlanet(Node node) {
-        Relationship planetRelationship = node.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
-        if (planetRelationship == null) {
-            String tag = node.getProperty(TAG, "").toString();
-            throw new IllegalArgumentException(String.format("%s %s=%s is not linked to a planet", Labels.NETWORK_ELEMENT, TAG, tag));
-        }
-        String scopeTag = planetRelationship.getEndNode().getProperty(SCOPE).toString();
-        switch (scopeTag) {
-            case SCOPE_GLOBAL_TAG:
-                return GLOBAL_SCOPE.id;
-            case SCOPE_SP_TAG:
-                return SP_SCOPE.id;
-            default:
-                Node scopeNode = graphDb.findNode(Labels.NETWORK_ELEMENT, TAG, scopeTag);
-                if (scopeNode != null) {
-                    String[] split = scopeNode.getProperty(_TYPE, ":").toString().split(":");
-                    return split[1];
-                } else {
-                    throw new IllegalArgumentException(String.format("Scope %s=%s cannot be found", TAG, scopeTag));
-                }
-        }
     }
 
     private String[] generateCSVHeader(PaginatedLineages lineages) {
@@ -451,27 +420,6 @@ public final class ExportExtension {
                     .add("properties", properties)
                     .toString();
         }
-    }
-
-    private Map<String, Object> getProperties(Lineages lineages, Node node, String attribute) {
-        Map<String, Object> values = Maps.newLinkedHashMap();
-        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(attribute);
-        if (node == null) {
-            if (properties != null) {
-                properties.keySet().forEach(property -> values.put(property, null));
-            }
-        } else if (properties != null) {
-            for (String property : properties.keySet()) {
-                Object propertyValue;
-                if (property.equals(SCOPE)) {
-                    propertyValue = getElementScopeFromPlanet(node);
-                } else {
-                    propertyValue = node.getProperty(property, null);
-                }
-                values.put(property, propertyValue);
-            }
-        }
-        return values;
     }
 
 }

@@ -20,12 +20,12 @@ public final class LineageSortComparator implements Comparator<Lineage> {
     public int compare(Lineage l1, Lineage l2) {
         int compare = 0;
         for (ColumnOrder columnOrder : sort) {
-            Node node1 = l1.nodesByType.get(columnOrder.keyAttribute);
-            Node node2 = l2.nodesByType.get(columnOrder.keyAttribute);
+            Node node1 = l1.nodesByType.get(columnOrder.column.keyAttribute);
+            Node node2 = l2.nodesByType.get(columnOrder.column.keyAttribute);
             if (node1 != null) {
                 if (node2 != null) {
-                    String value1 = PropertyConverter.asNonNullString(node1.getProperty(columnOrder.property, ""));
-                    String value2 = PropertyConverter.asNonNullString(node2.getProperty(columnOrder.property, ""));
+                    String value1 = PropertyConverter.asNonNullString(node1.getProperty(columnOrder.column.property, ""));
+                    String value2 = PropertyConverter.asNonNullString(node2.getProperty(columnOrder.column.property, ""));
                     if (columnOrder.direction == ColumnOrder.Direction.ASC) {
                         compare = value1.compareTo(value2);
                     } else {

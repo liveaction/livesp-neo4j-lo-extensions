@@ -11,17 +11,13 @@ public final class ColumnOrder {
         ASC, DESC
     }
 
-    public final String keyAttribute;
-
-    public final String property;
+    public final Column column;
 
     public final Direction direction;
 
-    public ColumnOrder(@JsonProperty("keyAttribute") String keyAttribute,
-                       @JsonProperty("property") String property,
+    public ColumnOrder(@JsonProperty("column") Column column,
                        @JsonProperty("direction") Direction direction) {
-        this.keyAttribute = keyAttribute;
-        this.property = property;
+        this.column = column;
         this.direction = direction;
     }
 
@@ -30,21 +26,19 @@ public final class ColumnOrder {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ColumnOrder that = (ColumnOrder) o;
-        return Objects.equals(keyAttribute, that.keyAttribute) &&
-                Objects.equals(property, that.property) &&
+        return Objects.equals(column, that.column) &&
                 direction == that.direction;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(keyAttribute, property, direction);
+        return Objects.hash(column, direction);
     }
 
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
-                .add("keyAttribute", keyAttribute)
-                .add("property", property)
+                .add("column", column)
                 .add("direction", direction)
                 .toString();
     }

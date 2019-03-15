@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.stream.Collectors;
 
 public final class Lineages {
 
@@ -54,15 +55,20 @@ public final class Lineages {
         attributesToExport.addAll(exportQuery.requiredAttributes);
         this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
 
+        Set<String> filterKeyAttributes = exportQuery.filter.columns()
+                .stream()
+                .map(c -> c.keyAttribute)
+                .collect(Collectors.toSet());
+
         Set<String> attributesToExtract = Sets.newTreeSet(lineageComparator);
         attributesToExtract.addAll(exportQuery.parentAttributes);
         attributesToExtract.addAll(exportQuery.requiredAttributes);
-        attributesToExtract.addAll(exportQuery.filter.keySet());
+        attributesToExtract.addAll(filterKeyAttributes);
         this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
 
         Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -lineageComparator.compare(o1, o2));
         orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
-        orderedLeafAttributes.addAll(exportQuery.filter.keySet());
+        orderedLeafAttributes.addAll(filterKeyAttributes);
         this.orderedLeafAttributes = ImmutableSet.copyOf(orderedLeafAttributes);
 
         Comparator<Lineage> comparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(this.attributesToExport));
