@@ -12,7 +12,6 @@ import org.neo4j.graphdb.Node;
 
 import java.util.Comparator;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
@@ -36,8 +35,8 @@ public final class Lineages {
     public final ImmutableSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
 
+    private final ImmutableMap<String, Set<String>> columnsToExport;
     private final Set<String> propertiesToIgnore;
-    private final ImmutableMap<String, Set<String>> columns;
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery) {
         Comparator<String> lineageComparator = (o1, o2) -> {
@@ -76,7 +75,8 @@ public final class Lineages {
         visitedNodes = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
         propertiesToIgnore = exportQuery.includeTag ? IGNORE : IGNORE_WITH_TAGS;
-        columns = exportQuery.columns;
+        columnsToExport = exportQuery.columns;
+
         addScopeColumn(this.attributesToExport, metaSchema);
     }
 
@@ -108,9 +108,11 @@ public final class Lineages {
     }
 
     private boolean filterColumn(String keyAttribute, String name) {
-        return Optional.ofNullable(columns.get(keyAttribute))
-                .map(c -> c.contains(name))
-                .orElse(true);
+        Set<String> toExport = columnsToExport.get(keyAttribute);
+        if (toExport != null) {
+            return toExport.contains(name);
+        }
+        return true;
     }
 
     public void add(Lineage lineage) {

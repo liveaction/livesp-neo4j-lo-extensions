@@ -24,6 +24,9 @@ public final class LineageNaturalComparator implements Comparator<Lineage> {
                     String tag1 = node1.getProperty(GraphModelConstants.TAG).toString();
                     String tag2 = node2.getProperty(GraphModelConstants.TAG).toString();
                     compare = tag1.compareTo(tag2);
+                    if (compare == 0) {
+                        compare = (int) (node1.getId() - node2.getId());
+                    }
                 } else {
                     compare = -1;
                 }

@@ -270,7 +270,7 @@ public final class ExportExtension {
                     Node leaf = leaves.next();
                     if (!lineages.dejaVu(leaf)) {
                         try {
-                            Lineage lineage = new Lineage(graphDb, lineages);
+                            Lineage lineage = new Lineage(graphDb);
                             rewindLineage(leaf, lineage, lineages);
                             lineages.add(lineage);
                         } catch (LineageCardinalityException e) {
@@ -328,19 +328,16 @@ public final class ExportExtension {
     }
 
     private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
-        Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         int missingRequired = 0;
-        boolean filtered = exportQuery.filter.test(column -> {
-            Map<String, Object> properties = lineage.getProperties(column.keyAttribute);
-            if (properties != null) {
-                return properties.get(column.property);
-            } else {
-                return null;
-            }
-        });
+        boolean filtered = exportQuery.filter
+                .test(column -> {
+                    Node node = lineage.nodesByType.get(column.keyAttribute);
+                    return node != null ? node.getProperty(column.property, null) : null;
+                });
         if (!filtered) {
             return Optional.empty();
         }
+        Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         for (String attribute : lineages.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
             if (node == null) {
@@ -351,9 +348,25 @@ public final class ExportExtension {
                     }
                 }
             }
-            map.put(attribute, lineage.getProperties(attribute));
+            map.put(attribute, getProperties(lineages, lineage, node, attribute));
         }
         return Optional.of(ImmutableMap.copyOf(map));
+    }
+
+    private Map<String, Object> getProperties(Lineages lineages, Lineage lineage, Node node, String keyAttribute) {
+        Map<String, Object> values = Maps.newLinkedHashMap();
+        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(keyAttribute);
+        if (node == null) {
+            if (properties != null) {
+                properties.keySet().forEach(property -> values.put(property, null));
+            }
+        } else if (properties != null) {
+            for (String property : properties.keySet()) {
+                Object propertyValue = lineage.getProperty(node, property);
+                values.put(property, propertyValue);
+            }
+        }
+        return values;
     }
 
     private String[] generateCSVHeader(PaginatedLineages lineages) {

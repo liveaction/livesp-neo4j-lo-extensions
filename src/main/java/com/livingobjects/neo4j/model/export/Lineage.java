@@ -10,7 +10,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
 import java.util.Map;
-import java.util.SortedMap;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
@@ -23,47 +22,33 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public final class Lineage {
 
-    private final GraphDatabaseService graphDb;
-    private final Lineages lineages;
-
-    private final Map<String, Map<String, Object>> properties = Maps.newConcurrentMap();
-
     public final Map<String, Node> nodesByType = Maps.newHashMap();
 
-    public Lineage(GraphDatabaseService graphDb, Lineages lineages) {
+    public final GraphDatabaseService graphDb;
+
+    public Lineage(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        this.lineages = lineages;
     }
 
     @Override
     public String toString() {
-        return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(GraphModelConstants.TAG).toString()).collect(Collectors.joining(" - "));
+        return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
     }
 
-    public Map<String, Object> getProperties(String keyAttribute) {
-        return properties.computeIfAbsent(keyAttribute, k -> buildProperties(keyAttribute));
+    public Object getProperty(String keyAttribute, String property) {
+        return getProperty(nodesByType.get(keyAttribute), property);
     }
 
-    private Map<String, Object> buildProperties(String keyAttribute) {
-        Node node = nodesByType.get(keyAttribute);
-        Map<String, Object> values = Maps.newLinkedHashMap();
-        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(keyAttribute);
-        if (node == null) {
-            if (properties != null) {
-                properties.keySet().forEach(property -> values.put(property, null));
+    public Object getProperty(Node node, String property) {
+        if (node != null) {
+            if (GraphModelConstants.SCOPE.equals(property)) {
+                return getElementScopeFromPlanet(node);
+            } else {
+                return node.getProperty(property, null);
             }
-        } else if (properties != null) {
-            for (String property : properties.keySet()) {
-                Object propertyValue;
-                if (property.equals(SCOPE)) {
-                    propertyValue = getElementScopeFromPlanet(node);
-                } else {
-                    propertyValue = node.getProperty(property, null);
-                }
-                values.put(property, propertyValue);
-            }
+        } else {
+            return null;
         }
-        return values;
     }
 
     private String getElementScopeFromPlanet(Node node) {
