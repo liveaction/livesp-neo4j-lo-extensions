@@ -183,47 +183,14 @@
         </plugins>
     </build>
 
-    <profiles>
-        <profile>
-            <id>lo</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <distributionManagement>
-                <repository>
-                    <id>nexus</id>
-                    <url>http://nexus.livingobjects.com/repository/releases</url>
-                </repository>
-                <snapshotRepository>
-                    <id>nexus</id>
-                    <url>http://nexus.livingobjects.com/repository/snapshots</url>
-                </snapshotRepository>
-            </distributionManagement>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>none</phase>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
     <distributionManagement>
         <repository>
             <id>nexus</id>
-            <url>http://nexus.livingobjects.com/repository/releases</url>
+            <url>https://nexus.liveaction.com/repository/releases</url>
         </repository>
         <snapshotRepository>
             <id>nexus</id>
-            <url>http://nexus.livingobjects.com/repository/snapshots</url>
+            <url>https://nexus.liveaction.com/repository/snapshots</url>
         </snapshotRepository>
     </distributionManagement>
 
