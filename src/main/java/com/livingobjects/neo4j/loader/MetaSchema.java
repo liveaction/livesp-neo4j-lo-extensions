@@ -20,11 +20,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY;
 import static org.neo4j.graphdb.Direction.INCOMING;
 
 public final class MetaSchema {
@@ -136,6 +133,14 @@ public final class MetaSchema {
     public ImmutableList<Relationship> getChildren(String current) {
         return childrenRelations.getOrDefault(current, ImmutableList.of());
     }
+    public ImmutableList<String> getStrongChildren(String current) {
+        return ImmutableList.copyOf(getChildren(current).stream()
+                .filter(r -> CARDINALITY_UNIQUE_PARENT.equals(r.getProperty(CARDINALITY, "")))
+                .map(Relationship::getStartNode)
+                .map(this::getKeyAttribute)
+                .flatMap(child -> Stream.concat(Stream.of(child), getStrongChildren(child).stream()))
+                .collect(Collectors.toList()));
+    }
 
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
         return CsvLoaderHelper.getParent(attributeNode)
@@ -163,11 +168,12 @@ public final class MetaSchema {
     private Stream<String> filterParentRelations(String keyAttribute, Function<String, Boolean> cardinalityFilter) {
         return parentRelations.get(keyAttribute).stream()
                 .filter(r -> cardinalityFilter.apply(r.getProperty(GraphModelConstants.CARDINALITY, "").toString()))
+                .map(Relationship::getEndNode)
                 .map(this::getKeyAttribute);
     }
 
-    private String getKeyAttribute(Relationship r) {
-        return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
+    private String getKeyAttribute(Node node) {
+        return node.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
     public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {

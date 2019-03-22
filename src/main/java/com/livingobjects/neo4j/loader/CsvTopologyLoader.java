@@ -45,25 +45,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.RESERVED_PROPERTIES;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
 import static org.neo4j.graphdb.Direction.INCOMING;
@@ -175,20 +164,48 @@ public final class CsvTopologyLoader {
             ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, metaSchema);
             LineMappingStrategy lineStrategy = new LineMappingStrategy(strategy, line);
 
+            Set<String> markedToDelete = strategy.getAllElementsType().stream()
+                    .filter(keyType -> lineStrategy.strategy.tryColumnIndex(keyType, Status.STATUS_HEADER)
+                            .map(statusIndex -> line[statusIndex])
+                            .flatMap(Status::fromString)
+                            .map(status -> status == Status.DELETE)
+                            .orElse(false))
+                    .collect(Collectors.toSet());
+
+            // Only high level elements will be deleted
+            Set<String> elementsToDelete = Sets.newHashSet(markedToDelete);
+            markedToDelete.stream()
+                    .map(metaSchema::getStrongChildren)
+                    .forEach(elementsToDelete::removeAll);
+
+            Set<String> lineageToDelete = elementsToDelete.stream()
+                    .flatMap(key -> Stream.concat(lineage.getOrDefault(key, ImmutableSet.of()).stream(), Stream.of(key)))
+                    .collect(Collectors.toSet());
+
             // Update the elements in the CSV line that cannot be created in any case (because required parent are missing in the CSV line)
-            Map<String, Optional<UniqueEntity<Node>>> elementsWithoutParents = strategy.getAllElementsType().stream()
-                    .filter(key -> !lineage.keySet().contains(key))
+            Map<String, Optional<UniqueEntity<Node>>> elementsWithoutParents = Sets.difference(strategy.getAllElementsType(), lineage.keySet()).stream()
+                    .filter(key -> !lineageToDelete.contains(key))
                     .map(key -> Maps.immutableEntry(key, updateElement(lineStrategy, line, key)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
             // Create elements
             Map<String, Optional<UniqueEntity<Node>>> elementsWithParents = lineage.keySet().stream()
+                    .filter(key -> !lineageToDelete.contains(key))
                     .map(key -> Maps.immutableEntry(key, createElement(lineStrategy, line, key)))
+                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+
+            // Delete elements
+            Map<String, Optional<UniqueEntity<Node>>> deletedElement = elementsToDelete.stream()
+                    .map(key -> {
+                        deleteElement(lineStrategy, line, key);
+                        return Maps.immutableEntry(key, Optional.<UniqueEntity<Node>>empty());
+                    })
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
             Map<String, Optional<UniqueEntity<Node>>> nodesBuilder = Maps.newHashMap();
             nodesBuilder.putAll(elementsWithoutParents);
             nodesBuilder.putAll(elementsWithParents);
+            nodesBuilder.putAll(deletedElement);
             nodesBuilder.put(SCOPE_GLOBAL_ATTRIBUTE, Optional.of(UniqueEntity.existing(metaSchema.getTheGlobalScopeNode())));
 
             ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes = ImmutableMap.copyOf(nodesBuilder);
@@ -408,7 +425,6 @@ public final class CsvTopologyLoader {
                 Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
             } else {
-                Optional<Scope> scope = lineStrategy.tryToGuessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
             }
 
@@ -452,6 +468,29 @@ public final class CsvTopologyLoader {
 
             return Optional.of(uniqueEntity);
         }
+    }
+
+    private void deleteElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType) {
+        int tagIndex = lineStrategy.strategy.getColumnIndex(elementKeyType, GraphModelConstants.TAG);
+        if (tagIndex < 0) return;
+        String tag = line[tagIndex];
+        if (tag.isEmpty()) return;
+        Optional<Node> node = Optional.ofNullable(networkElementFactory.getWithOutcome(TAG, tag));
+        node.ifPresent(entity -> deleteNetworkElement(entity, elementKeyType));
+        return;
+    }
+
+    private void deleteNetworkElement(Node entity, String elementKeyType) {
+        entity.getRelationships(INCOMING, RelationshipTypes.CONNECT).forEach(relationship -> {
+            relationship.delete();
+            Node startNode = relationship.getStartNode();
+            String childType = startNode.getProperty(GraphModelConstants._TYPE, GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
+            if (metaSchema.getRequiredParent(childType).map(v -> v.equals(elementKeyType)).orElse(false)) {
+                deleteNetworkElement(startNode, childType);
+            }
+        });
+        entity.getRelationships().forEach(Relationship::delete);
+        entity.delete();
     }
 
     private void applySchema(CsvMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
