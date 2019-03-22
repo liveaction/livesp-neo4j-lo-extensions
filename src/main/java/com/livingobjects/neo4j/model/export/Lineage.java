@@ -35,10 +35,6 @@ public final class Lineage {
         return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
     }
 
-    public Object getProperty(String keyAttribute, String property) {
-        return getProperty(nodesByType.get(keyAttribute), property);
-    }
-
     public Object getProperty(Node node, String property) {
         if (node != null) {
             if (GraphModelConstants.SCOPE.equals(property)) {

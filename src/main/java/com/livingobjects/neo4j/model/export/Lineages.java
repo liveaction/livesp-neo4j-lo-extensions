@@ -82,7 +82,7 @@ public final class Lineages {
 
     private void addScopeColumn(ImmutableSet<String> attributesToExport, MetaSchema metaSchema) {
         for (String keyAttribute : attributesToExport) {
-            if (metaSchema.isMultiScope(keyAttribute)) {
+            if (metaSchema.isMultiScope(keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
                 SortedMap<String, String> keyAttributeProperties = getKeyAttributeProperties(keyAttribute);
                 keyAttributeProperties.put(GraphModelConstants.SCOPE, "STRING");
             }
@@ -108,11 +108,14 @@ public final class Lineages {
     }
 
     private boolean filterColumn(String keyAttribute, String name) {
+        if (columnsToExport.isEmpty()) {
+            return true;
+        }
         Set<String> toExport = columnsToExport.get(keyAttribute);
         if (toExport != null) {
             return toExport.contains(name);
         }
-        return true;
+        return false;
     }
 
     public void add(Lineage lineage) {
