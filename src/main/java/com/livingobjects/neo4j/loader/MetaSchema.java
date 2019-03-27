@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -133,9 +134,17 @@ public final class MetaSchema {
     public ImmutableList<Relationship> getChildren(String current) {
         return childrenRelations.getOrDefault(current, ImmutableList.of());
     }
+
+    public ImmutableList<String> getAllChildren(String current) {
+        return getChildrenOfCardinality(current, (s) -> true);
+    }
+
     public ImmutableList<String> getStrongChildren(String current) {
+        return getChildrenOfCardinality(current, CARDINALITY_UNIQUE_PARENT::equals);
+    }
+    private ImmutableList<String> getChildrenOfCardinality(String current, Predicate<String> expectedCardinaly) {
         return ImmutableList.copyOf(getChildren(current).stream()
-                .filter(r -> CARDINALITY_UNIQUE_PARENT.equals(r.getProperty(CARDINALITY, "")))
+                .filter(r -> expectedCardinaly.test(r.getProperty(CARDINALITY, "").toString()))
                 .map(Relationship::getStartNode)
                 .map(this::getKeyAttribute)
                 .flatMap(child -> Stream.concat(Stream.of(child), getStrongChildren(child).stream()))
