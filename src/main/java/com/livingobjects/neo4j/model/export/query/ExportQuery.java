@@ -15,13 +15,19 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class ExportQuery {
-
+    // attributes that will be exported (uses OR)
     public final ImmutableSet<String> requiredAttributes;
+    // Parents that will be returned with the attributes (if empty, everything will be returned)
     public final ImmutableSet<String> parentAttributes;
+    // columns required in output for required attribute and parent attributes (by default, all columns are included)
     public final ImmutableMap<String, Set<String>> columns;
+    // Filter on the attribute (required, parent, or not requested) columns (by default, all filters are linked by AND operator)
     public final Filter<Column> filter;
+    // true if you need "tag" column
     public final boolean includeTag;
+    // sort the elements
     public final ImmutableList<ColumnOrder> sort;
+    // pagination (/!\ : not the same as the Pagination in longback-commons)
     public final Optional<Pagination> pagination;
 
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
