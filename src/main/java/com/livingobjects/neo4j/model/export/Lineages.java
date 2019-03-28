@@ -18,12 +18,7 @@ import java.util.stream.Collectors;
 
 public final class Lineages {
 
-    private static final Set<String> IGNORE = ImmutableSet.of("createdAt", "updatedAt", "createdBy", "updatedBy");
-
-    private static final Set<String> IGNORE_WITH_TAGS = ImmutableSet.<String>builder()
-            .addAll(IGNORE)
-            .add("tag")
-            .build();
+    private static final Set<String> METADATA_PROPERTIES = ImmutableSet.of("tag", "createdAt", "updatedAt", "createdBy", "updatedBy");
 
     public final Set<Lineage> lineages;
 
@@ -36,7 +31,7 @@ public final class Lineages {
     public final ImmutableSet<String> orderedLeafAttributes;
 
     private final ImmutableMap<String, Set<String>> columnsToExport;
-    private final Set<String> propertiesToIgnore;
+    private final boolean includeMetadata;
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery) {
         Comparator<String> lineageComparator = (o1, o2) -> {
@@ -74,7 +69,7 @@ public final class Lineages {
         lineages = Sets.newTreeSet(comparator);
         visitedNodes = Sets.newHashSet();
         propertiesTypeByType = Maps.newHashMap();
-        propertiesToIgnore = exportQuery.includeTag ? IGNORE : IGNORE_WITH_TAGS;
+        includeMetadata = exportQuery.includeMetadata;
         columnsToExport = exportQuery.columns;
 
         addScopeColumn(this.attributesToExport, metaSchema);
@@ -99,12 +94,22 @@ public final class Lineages {
             SortedMap<String, String> properties = getKeyAttributeProperties(keyAttribute);
             for (Map.Entry<String, Object> property : node.getAllProperties().entrySet()) {
                 String name = property.getKey();
-                if (!name.startsWith("_") && !propertiesToIgnore.contains(name) && filterColumn(keyAttribute, name)) {
+                if (!name.startsWith("_") && !ignoreProperty(name) && filterColumn(keyAttribute, name)) {
                     String propertyType = PropertyConverter.getPropertyType(property.getValue());
                     properties.put(name, propertyType);
                 }
             }
         }
+    }
+
+    public boolean ignoreProperty(String name) {
+        if (name.startsWith("_")) {
+            return true;
+        }
+        if (METADATA_PROPERTIES.contains(name)) {
+            return !includeMetadata;
+        }
+        return false;
     }
 
     private boolean filterColumn(String keyAttribute, String name) {
