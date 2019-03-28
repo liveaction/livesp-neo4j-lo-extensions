@@ -36,8 +36,7 @@ import java.util.stream.Stream;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.APPLIED_TO;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -218,17 +217,15 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void deleteElements(LineMappingStrategy lineStrategy, String[] line, Set<String> keyTypes, Action next) {
-        switch (next) {
+    private void deleteElements(LineMappingStrategy lineStrategy, String[] line, Set<String> keyTypes, Action action) {
+        switch (action) {
             case DELETE_CASCADE_ALL:
-                keyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, false, true));
-                break;
             case DELETE_CASCADE:
-                keyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, true, true));
+                keyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action));
                 break;
             case DELETE_NO_CASCADE:
                 List<String> sortedKeyTypes = sortKeyTypes(keyTypes);
-                sortedKeyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, true, false));
+                sortedKeyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action));
                 break;
         }
     }
@@ -418,7 +415,6 @@ public final class CsvTopologyLoader {
                 }
                 createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT);
             }
-
         }
     }
 
@@ -498,34 +494,64 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void deleteElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType, boolean onlyStrongChild, boolean cascade) {
+    private void deleteElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType, Action action) {
         int tagIndex = lineStrategy.strategy.getColumnIndex(elementKeyType, GraphModelConstants.TAG);
         if (tagIndex < 0) return;
         String tag = line[tagIndex];
         if (tag.isEmpty()) return;
         Optional<Node> node = Optional.ofNullable(networkElementFactory.getWithOutcome(TAG, tag));
-        node.ifPresent(entity -> deleteNetworkElement(entity, elementKeyType, onlyStrongChild, cascade));
+        node.ifPresent(entity -> deleteElementRecursive(entity, elementKeyType, action));
     }
 
-    private void deleteNetworkElement(Node entity, String elementKeyType, boolean onlyStrongChild, boolean cascade) {
-        Iterable<Relationship> children = entity.getRelationships(INCOMING, RelationshipTypes.CONNECT);
-        if (cascade) {
-            children.forEach(relationship -> {
-                relationship.delete();
-                Node startNode = relationship.getStartNode();
-                String childType = startNode.getProperty(GraphModelConstants._TYPE, GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE).toString();
-                if (!onlyStrongChild || metaSchema.getRequiredParent(childType).map(v -> v.equals(elementKeyType)).orElse(false)) {
-                    deleteNetworkElement(startNode, childType, onlyStrongChild, true);
+    private void deleteElementRecursive(Node entity, String elementKeyType, Action action) {
+        Node planetEntity = entity.getSingleRelationship(ATTRIBUTE, OUTGOING).getEndNode();
+        String elementScope = planetEntity.getProperty(SCOPE).toString();
+        entity.getRelationships(INCOMING, RelationshipTypes.CONNECT).forEach(relationship -> {
+            Node child = relationship.getStartNode();
+            Node childPlanetEntity = child.getSingleRelationship(ATTRIBUTE, OUTGOING).getEndNode();
+            String childScope = childPlanetEntity.getProperty(SCOPE).toString();
+            String childType = child.getProperty(GraphModelConstants._TYPE).toString();
+            if (metaSchema.getRequiredParent(childType).map(v -> v.equals(elementKeyType)).orElse(false)) {
+                // if strong child
+                switch (action) {
+                    case DELETE_CASCADE_ALL:
+                    case DELETE_CASCADE:
+                        relationship.delete();
+                        if (metaSchema.scopeLevel(childScope) > metaSchema.scopeLevel(elementScope)) {
+                            // Do not delete elements of higher scope
+                            return;
+                        }
+                        deleteElementRecursive(child, childType, action);
+                        break;
+                    case DELETE_NO_CASCADE:
+                        String tag = entity.getProperty(TAG).toString();
+                        throw new IllegalStateException(String.format("Cannot delete %s, its children has not been deleted", tag));
+
                 }
-            });
-        } else {
-            if (children.iterator().hasNext()) {
-                String tag = entity.getProperty(TAG).toString();
-                throw new IllegalStateException(String.format("Cannot delete %s, its children has not been deleted", tag));
+            } else {
+                // if not strong child
+                relationship.delete();
+                if (action == Action.DELETE_CASCADE_ALL) { // Only CASCADE_ALL delete not strong child, the other modes will just delete relationship
+                    if (metaSchema.scopeLevel(childScope) > metaSchema.scopeLevel(elementScope)) {
+                        // Do not delete elements of higher scope
+                        return;
+                    }
+                    deleteElementRecursive(child, childType, action);
+                }
             }
-        }
+        });
+
         if (!metaSchema.isScope(elementKeyType)) {
-            entity.getRelationships().forEach(Relationship::delete);
+            entity.getRelationships(INCOMING, EXTEND).forEach(relationship -> {
+                Node startNode = relationship.getStartNode();
+                String childType = startNode.getProperty(GraphModelConstants._TYPE).toString();
+                deleteElementRecursive(relationship.getStartNode(), childType, action);
+
+            });
+            entity.getRelationships(OUTGOING, RelationshipTypes.CONNECT).forEach(Relationship::delete);
+            entity.getRelationships(OUTGOING, ATTRIBUTE).forEach(Relationship::delete);
+            entity.getRelationships(OUTGOING, EXTEND).forEach(Relationship::delete);
+            entity.getRelationships(CROSS_ATTRIBUTE).forEach(Relationship::delete);
             entity.delete();
         }
     }

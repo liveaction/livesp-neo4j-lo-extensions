@@ -151,6 +151,16 @@ public final class MetaSchema {
                 .collect(Collectors.toList()));
     }
 
+    public int scopeLevel(String scopeTag) {
+        if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
+            return 2;
+        } else if(scopeTag.equals(SP_SCOPE.tag)) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
         return CsvLoaderHelper.getParent(attributeNode)
                 .map(node -> getScopeContext(scopes, node))
