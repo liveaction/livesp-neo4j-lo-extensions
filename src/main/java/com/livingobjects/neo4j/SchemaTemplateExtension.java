@@ -90,6 +90,7 @@ public class SchemaTemplateExtension {
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
+        SchemaReader schemaReader = new SchemaReader();
         try (Transaction ignore = graphDb.beginTx()) {
             Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
 
@@ -121,7 +122,7 @@ public class SchemaTemplateExtension {
 
                 CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder();
                 Map<String, RealmNode> realms = realmNodes.stream()
-                        .map(n -> SchemaReader.readRealm(n, false, countersDefinitionBuilder))
+                        .map(n -> schemaReader.readRealm(n, false, countersDefinitionBuilder))
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));

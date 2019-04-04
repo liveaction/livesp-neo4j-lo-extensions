@@ -17,14 +17,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY;
 import static org.neo4j.graphdb.Direction.INCOMING;
 
 public final class MetaSchema {
@@ -137,6 +135,32 @@ public final class MetaSchema {
         return childrenRelations.getOrDefault(current, ImmutableList.of());
     }
 
+    public ImmutableList<String> getAllChildren(String current) {
+        return getChildrenOfCardinality(current, (s) -> true);
+    }
+
+    public ImmutableList<String> getStrongChildren(String current) {
+        return getChildrenOfCardinality(current, CARDINALITY_UNIQUE_PARENT::equals);
+    }
+    private ImmutableList<String> getChildrenOfCardinality(String current, Predicate<String> expectedCardinaly) {
+        return ImmutableList.copyOf(getChildren(current).stream()
+                .filter(r -> expectedCardinaly.test(r.getProperty(CARDINALITY, "").toString()))
+                .map(Relationship::getStartNode)
+                .map(this::getKeyAttribute)
+                .flatMap(child -> Stream.concat(Stream.of(child), getStrongChildren(child).stream()))
+                .collect(Collectors.toList()));
+    }
+
+    public int scopeLevel(String scopeTag) {
+        if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
+            return 2;
+        } else if(scopeTag.equals(SP_SCOPE.tag)) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
     private Optional<String> getScopeContext(ImmutableMap<Node, String> scopes, Node attributeNode) {
         return CsvLoaderHelper.getParent(attributeNode)
                 .map(node -> getScopeContext(scopes, node))
@@ -163,11 +187,12 @@ public final class MetaSchema {
     private Stream<String> filterParentRelations(String keyAttribute, Function<String, Boolean> cardinalityFilter) {
         return parentRelations.get(keyAttribute).stream()
                 .filter(r -> cardinalityFilter.apply(r.getProperty(GraphModelConstants.CARDINALITY, "").toString()))
+                .map(Relationship::getEndNode)
                 .map(this::getKeyAttribute);
     }
 
-    private String getKeyAttribute(Relationship r) {
-        return r.getEndNode().getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + r.getEndNode().getProperty(NAME).toString();
+    private String getKeyAttribute(Node node) {
+        return node.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
     public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.livingobjects</groupId>
@@ -15,13 +16,13 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.13.2</version>
+    <version>1.14</version>
 
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>2.3.6</neo4j.version>
-        <jersey.version>1.19</jersey.version>
+        <neo4j.version>3.4.7</neo4j.version>
+        <jersey.version>1.19.3</jersey.version>
         <jackson.version>1.9.13</jackson.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
         <metrics.version>3.1.2</metrics.version>
@@ -44,14 +45,36 @@
             <version>3.0.0</version>
         </dependency>
         <dependency>
+            <groupId>org.neo4j</groupId>
+            <artifactId>neo4j-slf4j</artifactId>
+            <version>${neo4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jcl-over-slf4j</artifactId>
+            <version>1.6.6</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <version>1.2.3</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.3</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
             <version>${metrics.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-servlets</artifactId>
-            <version>9.2.9.v20150224</version>
         </dependency>
         <dependency>
             <groupId>org.codehaus.jackson</groupId>
@@ -75,7 +98,6 @@
             <groupId>com.sun.jersey.contribs</groupId>
             <artifactId>jersey-multipart</artifactId>
             <version>${jersey.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.neo4j</groupId>
@@ -87,11 +109,6 @@
             <groupId>org.neo4j.app</groupId>
             <artifactId>neo4j-server</artifactId>
             <version>${neo4j.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
             <scope>provided</scope>
         </dependency>
 
@@ -115,12 +132,6 @@
             <groupId>org.neo4j.test</groupId>
             <artifactId>neo4j-harness</artifactId>
             <version>${neo4j.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-classic</artifactId>
-                </exclusion>
-            </exclusions>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -141,8 +152,8 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Import-Package />
-                        <Export-Package />
+                        <Import-Package/>
+                        <Export-Package/>
                     </instructions>
                 </configuration>
             </plugin>
@@ -172,47 +183,14 @@
         </plugins>
     </build>
 
-    <profiles>
-        <profile>
-            <id>lo</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <distributionManagement>
-                <repository>
-                    <id>nexus</id>
-                    <url>http://nexus.livingobjects.com/repository/releases</url>
-                </repository>
-                <snapshotRepository>
-                    <id>nexus</id>
-                    <url>http://nexus.livingobjects.com/repository/snapshots</url>
-                </snapshotRepository>
-            </distributionManagement>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>none</phase>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
     <distributionManagement>
         <repository>
             <id>nexus</id>
-            <url>http://nexus.livingobjects.com/repository/releases</url>
+            <url>https://nexus.liveaction.com/repository/releases</url>
         </repository>
         <snapshotRepository>
             <id>nexus</id>
-            <url>http://nexus.livingobjects.com/repository/snapshots</url>
+            <url>https://nexus.liveaction.com/repository/snapshots</url>
         </snapshotRepository>
     </distributionManagement>
 

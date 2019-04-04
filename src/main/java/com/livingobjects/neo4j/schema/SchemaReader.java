@@ -36,13 +36,13 @@ public class SchemaReader {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SchemaReader.class);
 
-    public static Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    public Optional<RealmNode> readRealm(Node realmTemplateNode, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String name = realmTemplateNode.getProperty(NAME).toString();
         try {
             Relationship firstMemdexPath = realmTemplateNode.getSingleRelationship(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING);
             if (firstMemdexPath != null) {
                 Node segment = firstMemdexPath.getEndNode();
-                Optional<MemdexPathNode> memdexPathNode = SchemaReader.readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
+                Optional<MemdexPathNode> memdexPathNode = readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
                 if (!memdexPathNode.isPresent()) {
                     LOGGER.warn("No counter for realm '{}'. Realm is ignored.", name);
                 }
@@ -66,7 +66,7 @@ public class SchemaReader {
         }
     }
 
-    static Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
         Integer topCount = null;
         if (segment.hasProperty("topCount")) {
@@ -88,7 +88,7 @@ public class SchemaReader {
         return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
     }
 
-    static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
+    public static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
         segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
             Node counterNode = link.getStartNode();
@@ -143,7 +143,7 @@ public class SchemaReader {
                 .orElse(false);
     }
 
-    private static String getAttribute(Node node) {
+    private String getAttribute(Node node) {
         List<String> attributes = Lists.newArrayList();
         node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
             Node attributeNode = link.getEndNode();

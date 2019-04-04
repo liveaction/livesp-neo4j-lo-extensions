@@ -62,8 +62,6 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
-import static com.livingobjects.neo4j.schema.SchemaReader.isManaged;
-import static com.livingobjects.neo4j.schema.SchemaReader.readRealm;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
@@ -88,6 +86,8 @@ public final class SchemaLoader {
 
     private final PlanetFactory planetFactory;
 
+    private final SchemaReader schemaReader;
+
     public SchemaLoader(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
@@ -96,6 +96,7 @@ public final class SchemaLoader {
         this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
+        this.schemaReader = new SchemaReader();
     }
 
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
@@ -148,7 +149,7 @@ public final class SchemaLoader {
                 if (inputRealm != null) {
                     mergedRealms.put(name, mergeManagedWithUnmanagedRealm(inputRealm, realmTemplateNode, countersDefinitionBuilder));
                 } else {
-                    readRealm(realmTemplateNode, true, countersDefinitionBuilder)
+                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder)
                             .ifPresent(r -> mergedRealms.put(r.name, r));
                 }
             }
@@ -172,7 +173,7 @@ public final class SchemaLoader {
             if (existingPath.equals(managedRealm.memdexPath.segment)) {
                 return new RealmNode(managedRealm.name, managedRealm.attributes, mergeManagedWithUnmanagedMemdexPath(managedRealm.memdexPath, segmentNode, countersDefinitionBuilder));
             } else {
-                Optional<MemdexPathNode> previousMemdexPath = SchemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
+                Optional<MemdexPathNode> previousMemdexPath = schemaReader.readMemdexPath(segmentNode, true, CountersDefinition.builder());
                 if (previousMemdexPath.isPresent()) {
                     throw new IllegalArgumentException(String.format("Realm %s can have only one root level : %s != %s", managedRealm.name, existingPath, managedRealm.memdexPath.segment));
                 } else {
@@ -204,11 +205,11 @@ public final class SchemaLoader {
                     if (managedChild != null) {
                         mergedChildren.add(mergeManagedWithUnmanagedMemdexPath(managedChild, segmentNode, countersDefinitionBuilder));
                     } else {
-                        SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                        schemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
                                 .ifPresent(mergedChildren::add);
                     }
                 } else {
-                    SchemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
+                    schemaReader.readMemdexPath(segmentNode, true, countersDefinitionBuilder)
                             .ifPresent(mergedChildren::add);
                 }
             }
@@ -337,7 +338,7 @@ public final class SchemaLoader {
     }
 
     private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
-        if (!isManaged(counterNode)) {
+        if (!schemaReader.isManaged(counterNode)) {
 
             providedRelationship.delete();
             if (!counterNode.hasRelationship(INCOMING, VAR)) {
@@ -490,7 +491,7 @@ public final class SchemaLoader {
         Node oldPlanetNode = oldNodeOpt.get();
 
         ImmutableSet<PlanetNode> newPlanets = planetUpdate.newPlanets;
-        if (newPlanets.size() == 1) {
+        if (newPlanets.size() == 1 && planetUpdate.planetUpdateStatus == DELETE) {
             PlanetNode newPlanet = Iterables.getOnlyElement(newPlanets);
             // Move all ne from old planets to new one
             Node newPlanetNode = planetFactory.getOrCreate(newPlanet.name, scope).entity;

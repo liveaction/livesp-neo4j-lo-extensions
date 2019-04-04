@@ -21,8 +21,8 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
  * See <a href="http://redmine.livingobjects.com/issues/12069">Redmine #12069</a>
  */
 final class ElementScopeSlider {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ElementScopeSlider.class);
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ElementScopeSlider.class);
     private final TemplatedPlanetFactory templatedPlanetFactory;
 
     ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory) {
@@ -50,10 +50,10 @@ final class ElementScopeSlider {
         }
 
         UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element);
-        if (LOGGER.isTraceEnabled()) {
+        if (LOGGER.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
-            LOGGER.trace("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
+            LOGGER.debug("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
         }
         element.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
         return oldScopesBldr.build();
@@ -78,9 +78,9 @@ final class ElementScopeSlider {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
-            if (LOGGER.isTraceEnabled()) {
+            if (LOGGER.isDebugEnabled()) {
                 String tag = childNode.getProperty(TAG).toString();
-                LOGGER.trace("child slide {} !", tag);
+                LOGGER.debug("child slide {} !", tag);
             }
             slide(childNode, toScope);
         });

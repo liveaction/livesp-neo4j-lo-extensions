@@ -1,8 +1,6 @@
 package com.livingobjects.neo4j;
 
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Slf4jReporter;
-import com.codahale.metrics.Slf4jReporter.LoggingLevel;
 import com.codahale.metrics.Timer;
 import com.google.common.base.Stopwatch;
 import com.livingobjects.neo4j.loader.CsvTopologyLoader;
@@ -30,27 +28,16 @@ import java.util.concurrent.TimeUnit;
 @Path("/load-csv")
 public final class LoadCSVExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
-    private static final Logger PACKAGE_LOGGER = LoggerFactory.getLogger("com.livingobjects.neo4j");
-
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    public static final Logger LOGGER = LoggerFactory.getLogger(LoadCSVExtension.class);
 
     private final GraphDatabaseService graphDb;
 
     private final MetricRegistry metrics = new MetricRegistry();
-    private final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
-            .outputTo(PACKAGE_LOGGER)
-            .withLoggingLevel(LoggingLevel.DEBUG)
-            .convertRatesTo(TimeUnit.SECONDS)
-            .convertDurationsTo(TimeUnit.MILLISECONDS)
-            .build();
 
     public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
-        if (PACKAGE_LOGGER.isDebugEnabled()) {
-            this.reporter.start(5, TimeUnit.MINUTES);
-        }
     }
 
     @POST
@@ -92,10 +79,6 @@ public final class LoadCSVExtension {
 
         } finally {
             LOGGER.info("Import {} element(s) in {} ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
-            if (PACKAGE_LOGGER.isDebugEnabled()) {
-                reporter.stop();
-                reporter.report();
-            }
         }
     }
 

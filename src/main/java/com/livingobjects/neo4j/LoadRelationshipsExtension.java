@@ -32,10 +32,9 @@ import java.util.function.Consumer;
 @Path("/load-relationships")
 public final class LoadRelationshipsExtension {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadRelationshipsExtension.class);
-
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private static final String PARAM_UPDATE_ONLY = "updateOnly";
+    private static final Logger LOGGER = LoggerFactory.getLogger(LoadRelationshipsExtension.class);
 
     private final TopologyLoader topologyLoader;
 

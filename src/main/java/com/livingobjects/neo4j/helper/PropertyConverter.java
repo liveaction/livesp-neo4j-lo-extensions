@@ -1,6 +1,8 @@
 package com.livingobjects.neo4j.helper;
 
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.google.common.primitives.Doubles;
 import com.google.common.primitives.Floats;
 import com.google.common.primitives.Ints;
@@ -10,9 +12,6 @@ import com.livingobjects.neo4j.model.PropertyType;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
-import org.neo4j.helpers.collection.Iterables;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -21,8 +20,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 public final class PropertyConverter {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(PropertyConverter.class);
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -36,7 +33,7 @@ public final class PropertyConverter {
     public static Object checkPropertyValue(Object value) {
         if (value instanceof Iterable) {
             Iterable iterable = (Iterable) value;
-            return Iterables.toArray(String.class, iterable);
+            return Iterables.toArray(iterable, String.class);
         } else {
             return value;
         }
@@ -53,7 +50,6 @@ public final class PropertyConverter {
                     return readStringField(isArray, value);
             }
         } catch (Exception ignored) {
-            LOGGER.debug("Unable to parse value " + value + " as " + propertyType + (isArray ? "[]" : ""));
             return value;
         }
     }
@@ -136,11 +132,55 @@ public final class PropertyConverter {
     private static Collection<? extends Number> convertAsDouble(String[] doubleFieldArray) {
         List<Number> doubles = new LinkedList<>();
 
-        for (int i = 0; i < doubleFieldArray.length; i++) {
-            doubles.add(Double.valueOf(doubleFieldArray[i]));
+        for (String s : doubleFieldArray) {
+            doubles.add(Double.valueOf(s));
         }
 
         return doubles;
+    }
+
+    public static String asString(Object value) {
+        try {
+            if (value != null) {
+                if (value.getClass().isArray()) {
+                    return JSON_MAPPER.writeValueAsString(value);
+                } else {
+                    return value.toString();
+                }
+            } else {
+                return null;
+            }
+        } catch (IOException e) {
+            throw Throwables.propagate(e);
+        }
+    }
+
+    public static String asNonNullString(Object value) {
+        String nullable = asString(value);
+        if (nullable != null) {
+            return nullable;
+        } else {
+            return "";
+        }
+    }
+
+    public static String getPropertyType(Object value) {
+        Class<?> clazz = value.getClass();
+        if (clazz.isArray()) {
+            return getSimpleType(clazz.getComponentType()) + "[]";
+        } else {
+            return getSimpleType(clazz);
+        }
+    }
+
+    public static String getSimpleType(Class<?> clazz) {
+        if (Number.class.isAssignableFrom(clazz)) {
+            return PropertyType.NUMBER.name();
+        } else if (Boolean.class.isAssignableFrom(clazz)) {
+            return PropertyType.BOOLEAN.name();
+        } else {
+            return PropertyType.STRING.name();
+        }
     }
 
 }
