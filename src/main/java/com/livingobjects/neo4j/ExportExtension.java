@@ -377,7 +377,7 @@ public final class ExportExtension {
                 String[] split = attribute.split(":");
                 String attributeName = split[1];
                 for (Map.Entry<String, String> property : properties.entrySet()) {
-                    header.add(attributeName + '.' + property.getKey() + ':' + property.getValue());
+                    header.add(attributeName + '.' + property.getKey());
                 }
             }
         }
