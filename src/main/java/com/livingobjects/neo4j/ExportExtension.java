@@ -16,6 +16,7 @@ import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
+import com.livingobjects.neo4j.model.export.PropertyNameComparator;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
@@ -83,7 +84,7 @@ public final class ExportExtension {
             graphDb.findNodes(Labels.ELEMENT)
                     .forEachRemaining(node -> {
                         String type = node.getProperty(_TYPE).toString();
-                        Map<String, PropertyDefinition> properties = allProperties.computeIfAbsent(type, k -> Maps.newHashMap());
+                        Map<String, PropertyDefinition> properties = allProperties.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
                         node.getAllProperties()
                                 .forEach((name, value) -> {
                                     if (!name.startsWith("_") && !properties.containsKey(name)) {
