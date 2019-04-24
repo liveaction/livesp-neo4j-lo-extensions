@@ -219,16 +219,19 @@ public final class ExportExtension {
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
-            String[] headers = generateCSVHeader(paginatedLineages);
-            if (headers.length > 0) {
-                try (CsvWriter.Line headerLine = csv.line()) {
-                    for (String h : headers) {
-                        headerLine.append(h);
+            // If there is no lineage to write, don't even write the headers
+            if (paginatedLineages.lineages().size() > 0) {
+                String[] headers = generateCSVHeader(paginatedLineages);
+                if (headers.length > 0) {
+                    try (CsvWriter.Line headerLine = csv.line()) {
+                        for (String h : headers) {
+                            headerLine.append(h);
+                        }
                     }
                 }
-            }
-            for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
-                writeCSVLine(filteredLineage, csv);
+                for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
+                    writeCSVLine(filteredLineage, csv);
+                }
             }
         } catch (IOException e) {
             Throwables.propagate(e);
