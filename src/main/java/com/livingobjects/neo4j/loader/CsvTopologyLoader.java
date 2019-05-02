@@ -112,10 +112,10 @@ public final class CsvTopologyLoader {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("STACKTRACE", e);
-                    LOGGER.debug(Arrays.toString(nextLine));
-                }
+//                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.warn("STACKTRACE", e);
+                    LOGGER.warn(Arrays.toString(nextLine));
+//                }
             }
             lineIndex++;
         }
@@ -500,14 +500,17 @@ public final class CsvTopologyLoader {
         String tag = line[tagIndex];
         if (tag.isEmpty()) return;
         Optional<Node> node = Optional.ofNullable(networkElementFactory.getWithOutcome(TAG, tag));
-        node.ifPresent(entity -> deleteElementRecursive(entity, elementKeyType, action));
+        node.ifPresent(entity -> deleteElementRecursive(entity, elementKeyType, action, Sets.newConcurrentHashSet()));
     }
 
-    private void deleteElementRecursive(Node entity, String elementKeyType, Action action) {
+    private void deleteElementRecursive(Node entity, String elementKeyType, Action action, Set<Long> deleted) {
         Node planetEntity = entity.getSingleRelationship(ATTRIBUTE, OUTGOING).getEndNode();
         String elementScope = planetEntity.getProperty(SCOPE).toString();
         entity.getRelationships(INCOMING, RelationshipTypes.CONNECT).forEach(relationship -> {
             Node child = relationship.getStartNode();
+            if (deleted.contains(child.getId())) {
+                return;
+            }
             Node childPlanetEntity = child.getSingleRelationship(ATTRIBUTE, OUTGOING).getEndNode();
             String childScope = childPlanetEntity.getProperty(SCOPE).toString();
             String childType = child.getProperty(GraphModelConstants._TYPE).toString();
@@ -521,7 +524,7 @@ public final class CsvTopologyLoader {
                             // Do not delete elements of higher scope
                             return;
                         }
-                        deleteElementRecursive(child, childType, action);
+                        deleteElementRecursive(child, childType, action, deleted);
                         break;
                     case DELETE_NO_CASCADE:
                         String tag = entity.getProperty(TAG).toString();
@@ -536,7 +539,7 @@ public final class CsvTopologyLoader {
                         // Do not delete elements of higher scope
                         return;
                     }
-                    deleteElementRecursive(child, childType, action);
+                    deleteElementRecursive(child, childType, action, deleted);
                 }
             }
         });
@@ -545,7 +548,7 @@ public final class CsvTopologyLoader {
             entity.getRelationships(INCOMING, EXTEND).forEach(relationship -> {
                 Node startNode = relationship.getStartNode();
                 String childType = startNode.getProperty(GraphModelConstants._TYPE).toString();
-                deleteElementRecursive(relationship.getStartNode(), childType, action);
+                deleteElementRecursive(relationship.getStartNode(), childType, action, deleted);
 
             });
             entity.getRelationships(OUTGOING, RelationshipTypes.CONNECT).forEach(Relationship::delete);
@@ -553,6 +556,7 @@ public final class CsvTopologyLoader {
             entity.getRelationships(OUTGOING, EXTEND).forEach(Relationship::delete);
             entity.getRelationships(CROSS_ATTRIBUTE).forEach(Relationship::delete);
             entity.delete();
+            deleted.add(entity.getId());
         }
     }
 
