@@ -6,12 +6,11 @@ import com.davfx.ninio.csv.CsvWriter;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import com.google.common.collect.*;
+import com.livingobjects.neo4j.helper.PlanetByContext;
+import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.Lineages;
@@ -19,18 +18,14 @@ import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.PropertyNameComparator;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
+import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
-import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.ResourceIterator;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,17 +40,14 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 
 @Path("/export")
 public final class ExportExtension {
@@ -68,11 +60,15 @@ public final class ExportExtension {
 
     private final GraphDatabaseService graphDb;
     private final MetaSchema metaSchema;
+    private final TemplatedPlanetFactory templatedPlanetFactory;
+    private final PlanetFactory planetFactory;
 
     public ExportExtension(@Context GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
         try (Transaction ignore = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(graphDb);
+            this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
+            this.planetFactory = new PlanetFactory(graphDb);
         }
     }
 
@@ -269,9 +265,7 @@ public final class ExportExtension {
         Lineages lineages = initLineages(exportQuery);
         if (!lineages.attributesToExport.isEmpty()) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
-                ResourceIterator<Node> leaves = graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute);
-                while (leaves.hasNext()) {
-                    Node leaf = leaves.next();
+                getNodeIterator(leafAttribute, exportQuery).forEach(leaf -> {
                     if (!lineages.dejaVu(leaf)) {
                         try {
                             Lineage lineage = new Lineage(graphDb);
@@ -281,10 +275,34 @@ public final class ExportExtension {
                             LOGGER.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
                         }
                     }
-                }
+                });
             }
         }
         return lineages;
+    }
+
+    private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
+        Set<String> scopes = exportQuery.filter.columnsFilters().stream()
+                .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
+                .filter(columnFilter -> columnFilter.column.property.equals(ID))
+                .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
+                        !columnFilter.valueFilter.not)
+                .map(columnFilter -> columnFilter.valueFilter.value.toString())
+                .collect(Collectors.toSet());
+        if (scopes.isEmpty()) {
+            return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
+        } else {
+            return scopes.stream()
+                    .flatMap(scopeId -> {
+                        PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
+                        return planetByContext.allPlanets().stream()
+                                .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                .filter(Objects::nonNull)
+                                .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
+                                        .map(Relationship::getStartNode));
+
+                    });
+        }
     }
 
     private Lineages initLineages(ExportQuery exportQuery) {
