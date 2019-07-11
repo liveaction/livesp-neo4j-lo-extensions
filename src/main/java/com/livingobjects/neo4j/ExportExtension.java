@@ -302,15 +302,9 @@ public final class ExportExtension {
             Node parentNode = parentRelationship.getEndNode();
             String parentType = parentNode.getProperty(_TYPE, "").toString();
 
-            String parentTag = parentNode.getProperty(TAG).toString();
             Node existingNode = lineage.nodesByType.get(parentType);
             if (existingNode == null) {
                 rewindLineage(parentNode, lineage, lineages);
-            } else {
-                String existingTag = existingNode.getProperty(TAG).toString();
-                if (!existingTag.equals(parentTag)) {
-                    throw new LineageCardinalityException(lineage, existingTag, parentTag);
-                }
             }
         }
     }
