@@ -21,6 +21,7 @@ public final class GraphModelConstants {
     public static final String CARDINALITY_MULTIPLE = "0..n";
     public static final String CARDINALITY_UNIQUE_PARENT = "1..1";
     public static final String _TYPE = "_type";
+    public static final String _DEFAULT_SCOPE = "_defaultScope";
     public static final String ID = "id";
     public static final String VERSION = "version";
     public static final String NAME = "name";
