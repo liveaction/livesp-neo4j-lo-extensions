@@ -33,11 +33,21 @@ public final class Lineages {
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
 
+    private boolean recursiveLineageComparator(MetaSchema metaSchema, String o1, String o2) {
+        if(metaSchema.getMonoParentRelations(o1)
+                .anyMatch(o2::equals)) {
+            return true;
+        } else {
+            return metaSchema.getMonoParentRelations(o1)
+                    .anyMatch(s -> recursiveLineageComparator(metaSchema, s, o2));
+        }
+    }
+
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery) {
         Comparator<String> lineageComparator = (o1, o2) -> {
-            if (metaSchema.getMonoParentRelations(o1).anyMatch(o2::equals)) {
+            if (recursiveLineageComparator(metaSchema, o1, o2)) {
                 return 1;
-            } else if (metaSchema.getMonoParentRelations(o2).anyMatch(o1::equals)) {
+            } else if (recursiveLineageComparator(metaSchema, o2, o1)) {
                 return -1;
             } else {
                 return o1.compareTo(o2);
