@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY_UNIQUE_PARENT;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
@@ -59,7 +60,7 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
             String keytype = n.getProperty(GraphModelConstants._TYPE).toString();
-            String key = keytype + GraphModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
+            String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
             Object requiredProperties = n.getProperty("requiredProperties", new String[0]);
             if (requiredProperties instanceof String[]) {
@@ -74,7 +75,11 @@ public final class MetaSchema {
                 defaultScopesBldr.put(key, Optional.empty());
             } else {
                 String defaultScopeAsString = (String) defaultScope;
-                defaultScopesBldr.put(key, Optional.of(defaultScopeAsString));
+                String classAsString = defaultScopeAsString.equals("global") ?
+                        "scope" :
+                        "cluster";
+
+                defaultScopesBldr.put(key, Optional.of(classAsString + KEYTYPE_SEPARATOR + defaultScopeAsString));
             }
 
             boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
@@ -211,7 +216,7 @@ public final class MetaSchema {
     }
 
     private String getKeyAttribute(Node node) {
-        return node.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
+        return node.getProperty(GraphModelConstants._TYPE).toString() + KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
     public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
