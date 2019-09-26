@@ -24,6 +24,8 @@ public abstract class Filter<T> {
 
     public abstract ImmutableList<T> columns();
 
+    public abstract ImmutableList<ColumnFilter<T>> columnsFilters();
+
     public abstract boolean test(Function<T, Object> valueSupplier);
 
     Filter() {
@@ -40,16 +42,21 @@ public abstract class Filter<T> {
         }
 
         @Override
+        public ImmutableList<ColumnFilter<T>> columnsFilters() {
+            return ImmutableList.of();
+        }
+
+        @Override
         public boolean test(Function<T, Object> valueSupplier) {
             return true;
         }
 
     }
 
-    static class ColumnFilter<T> extends Filter<T> {
+    public static class ColumnFilter<T> extends Filter<T> {
 
-        private final T column;
-        private final ValueFilter valueFilter;
+        public final T column;
+        public final ValueFilter valueFilter;
 
         public ColumnFilter(@JsonProperty("column") T column,
                             @JsonProperty("valueFilter") ValueFilter valueFilter) {
@@ -60,6 +67,11 @@ public abstract class Filter<T> {
         @Override
         public ImmutableList<T> columns() {
             return ImmutableList.of(column);
+        }
+
+        @Override
+        public ImmutableList<ColumnFilter<T>> columnsFilters() {
+            return ImmutableList.of(this);
         }
 
         @Override
@@ -86,6 +98,13 @@ public abstract class Filter<T> {
         }
 
         @Override
+        public ImmutableList<ColumnFilter<T>> columnsFilters() {
+            return ImmutableList.copyOf(filters.stream()
+                    .flatMap(f -> f.columnsFilters().stream())
+                    .collect(Collectors.toList()));
+        }
+
+        @Override
         public boolean test(Function<T, Object> valueSupplier) {
             return filters.stream().allMatch(filter -> filter.test(valueSupplier));
         }
@@ -108,6 +127,13 @@ public abstract class Filter<T> {
         }
 
         @Override
+        public ImmutableList<ColumnFilter<T>> columnsFilters() {
+            return ImmutableList.copyOf(filters.stream()
+                    .flatMap(f -> f.columnsFilters().stream())
+                    .collect(Collectors.toList()));
+        }
+
+        @Override
         public boolean test(Function<T, Object> valueSupplier) {
             return filters.stream().anyMatch(filter -> filter.test(valueSupplier));
         }
@@ -125,6 +151,11 @@ public abstract class Filter<T> {
         @Override
         public ImmutableList<T> columns() {
             return filter.columns();
+        }
+
+        @Override
+        public ImmutableList<ColumnFilter<T>> columnsFilters() {
+            return null;
         }
 
         @Override

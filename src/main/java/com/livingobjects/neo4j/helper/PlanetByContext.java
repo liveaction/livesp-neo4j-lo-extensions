@@ -1,10 +1,6 @@
 package com.livingobjects.neo4j.helper;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import com.google.common.collect.*;
 import com.livingobjects.neo4j.model.exception.InsufficientContextException;
 
 import java.util.Map;
@@ -49,6 +45,10 @@ public final class PlanetByContext {
         }
 
         return getBestMacthesIfNoConflicts(matchingPlanetsByScore);
+    }
+
+    public ImmutableSet<String> allPlanets() {
+        return planets.keySet();
     }
 
     private MatchScore computeScore(ImmutableMap<String, ImmutableSet<AttributeMatch>> planetAttributes, Set<String> elementContext) {

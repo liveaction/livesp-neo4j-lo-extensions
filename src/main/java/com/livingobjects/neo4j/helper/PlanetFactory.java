@@ -26,12 +26,20 @@ public class PlanetFactory {
     }
 
     public Node get(String planetTemplate, Scope scope) {
-        String name = getPlanetName(planetTemplate, scope);
-        return name.contains(scope.id) ? delegate.getWithOutcome(NAME, name) : null;
+        return get(planetTemplate, scope.id);
+    }
+
+    public Node get(String planetTemplate, String scopeId) {
+        String name = getPlanetName(planetTemplate, scopeId);
+        return name.contains(scopeId) ? delegate.getWithOutcome(NAME, name) : null;
     }
 
     public String getPlanetName(String planetTemplate, Scope scope) {
-        return planetTemplate.replace(TemplatedPlanetFactory.PLACEHOLDER, scope.id);
+        return getPlanetName(planetTemplate, scope.id);
+    }
+
+    public String getPlanetName(String planetTemplate, String scopeId) {
+        return planetTemplate.replace(TemplatedPlanetFactory.PLACEHOLDER, scopeId);
     }
 
 }

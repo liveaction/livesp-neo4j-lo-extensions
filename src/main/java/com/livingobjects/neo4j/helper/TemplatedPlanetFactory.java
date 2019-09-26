@@ -36,13 +36,17 @@ public class TemplatedPlanetFactory {
 
     public UniqueEntity<Node> localizePlanetForElement(Scope solidScope, Node element) {
         String keyType = element.getProperty(_TYPE).toString();
-        PlanetByContext planetByContext = planetNameTemplateCache.get(keyType);
+        PlanetByContext planetByContext = getPlanetByContext(keyType);
         if (planetByContext == null) {
             throw new IllegalStateException(String.format("Unable to instantiate planet for '%s'. No PlanetTemplate found.", keyType));
         }
         String planetTemplateName = localizePlanetForElement(element, planetByContext);
 
         return planetFactory.getOrCreate(planetTemplateName, solidScope);
+    }
+
+    public PlanetByContext getPlanetByContext(String keyType) {
+        return planetNameTemplateCache.get(keyType);
     }
 
     public static String localizePlanetForElement(Node element, PlanetByContext planetByContext) {

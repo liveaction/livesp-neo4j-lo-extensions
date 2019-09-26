@@ -21,8 +21,15 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY_UNIQUE_PARENT;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._DEFAULT_SCOPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
 import static org.neo4j.graphdb.Direction.INCOMING;
 
 public final class MetaSchema {
@@ -30,6 +37,7 @@ public final class MetaSchema {
     private final Node theGlobalNode;
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
+    private final ImmutableMap<String, Optional<String>> defaultScopes;
 
     private final ImmutableSet<String> scopeTypes;
 
@@ -47,17 +55,31 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<String>> requiredPropertiesBldr = ImmutableMap.builder();
+        ImmutableMap.Builder<String, Optional<String>> defaultScopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
             String keytype = n.getProperty(GraphModelConstants._TYPE).toString();
-            String key = keytype + GraphModelConstants.KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
+            String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
             Object requiredProperties = n.getProperty("requiredProperties", new String[0]);
             if (requiredProperties instanceof String[]) {
                 requiredPropertiesBldr.put(key, ImmutableSet.copyOf((String[]) requiredProperties));
             } else {
                 requiredPropertiesBldr.put(key, ImmutableSet.of(requiredProperties.toString()));
+            }
+
+            Object defaultScope = n.getProperty(_DEFAULT_SCOPE, null);
+
+            if (defaultScope == null) {
+                defaultScopesBldr.put(key, Optional.empty());
+            } else {
+                String defaultScopeAsString = (String) defaultScope;
+                String classAsString = defaultScopeAsString.equals("global") ?
+                        "scope" :
+                        "cluster";
+
+                defaultScopesBldr.put(key, Optional.of(classAsString + KEYTYPE_SEPARATOR + defaultScopeAsString));
             }
 
             boolean isOverride = (boolean) n.getProperty(_OVERRIDABLE, false);
@@ -101,6 +123,7 @@ public final class MetaSchema {
         this.scopeTypes = ImmutableSet.copyOf(scopeTypes);
 
         this.requiredProperties = requiredPropertiesBldr.build();
+        this.defaultScopes = defaultScopesBldr.build();
     }
 
     public ImmutableSet<String> getScopeTypes() {
@@ -142,6 +165,7 @@ public final class MetaSchema {
     public ImmutableList<String> getStrongChildren(String current) {
         return getChildrenOfCardinality(current, CARDINALITY_UNIQUE_PARENT::equals);
     }
+
     private ImmutableList<String> getChildrenOfCardinality(String current, Predicate<String> expectedCardinaly) {
         return ImmutableList.copyOf(getChildren(current).stream()
                 .filter(r -> expectedCardinaly.test(r.getProperty(CARDINALITY, "").toString()))
@@ -154,7 +178,7 @@ public final class MetaSchema {
     public int scopeLevel(String scopeTag) {
         if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
             return 2;
-        } else if(scopeTag.equals(SP_SCOPE.tag)) {
+        } else if (scopeTag.equals(SP_SCOPE.tag)) {
             return 1;
         } else {
             return 0;
@@ -192,7 +216,7 @@ public final class MetaSchema {
     }
 
     private String getKeyAttribute(Node node) {
-        return node.getProperty(GraphModelConstants._TYPE).toString() + GraphModelConstants.KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
+        return node.getProperty(GraphModelConstants._TYPE).toString() + KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
     public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
@@ -219,4 +243,7 @@ public final class MetaSchema {
         return getAuthorizedScopes(keyAttribute).size() > 1;
     }
 
+    public Optional<String> getDefaultScope(String keyAttribute) {
+        return defaultScopes.get(keyAttribute);
+    }
 }
