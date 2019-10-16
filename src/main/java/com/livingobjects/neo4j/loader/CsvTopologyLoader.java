@@ -147,10 +147,10 @@ public final class CsvTopologyLoader {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
                 LOGGER.error(e.getLocalizedMessage());
-//                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.warn("STACKTRACE", e);
-                    LOGGER.warn(Arrays.toString(nextLine));
-//                }
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("STACKTRACE", e);
+                    LOGGER.debug(Arrays.toString(nextLine));
+                }
             }
             lineIndex++;
         }
