@@ -235,7 +235,7 @@ public final class ExportExtension {
     }
 
     private List<FilteredLineage> filter(ExportQuery exportQuery, Lineages lineages) {
-        return ImmutableList.copyOf(lineages.lineages.stream()
+        return ImmutableList.copyOf(lineages.lineages().stream()
                 .map(lineage -> filterLineage(exportQuery, lineages, lineage))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
@@ -315,6 +315,9 @@ public final class ExportExtension {
             lineage.nodesByType.put(type, currentNode);
         }
         lineages.markAsVisited(type, currentNode);
+        if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
+            return;
+        }
         Iterable<Relationship> parentRelationships = currentNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
