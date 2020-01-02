@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.export;
 
 import com.google.common.collect.ImmutableSet;
+import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
@@ -21,8 +22,8 @@ public final class LineageNaturalComparator implements Comparator<Lineage> {
             Node node2 = l2.nodesByType.get(attribute);
             if (node1 != null) {
                 if (node2 != null) {
-                    String tag1 = node1.getProperty(GraphModelConstants.TAG).toString();
-                    String tag2 = node2.getProperty(GraphModelConstants.TAG).toString();
+                    String tag1 = PropertyConverter.asNonNullString(l1.getProperty(attribute, GraphModelConstants.TAG));
+                    String tag2 = PropertyConverter.asNonNullString(l2.getProperty(attribute, GraphModelConstants.TAG));
                     compare = tag1.compareTo(tag2);
                     if (compare == 0) {
                         compare = (int) (node1.getId() - node2.getId());

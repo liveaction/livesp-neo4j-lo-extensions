@@ -30,7 +30,7 @@ public final class Lineages {
     private final Comparator<Lineage> lineageSortComparator;
 
     private boolean recursiveLineageComparator(MetaSchema metaSchema, String o1, String o2) {
-        if(metaSchema.getMonoParentRelations(o1)
+        if (metaSchema.getMonoParentRelations(o1)
                 .anyMatch(o2::equals)) {
             return true;
         } else {
@@ -98,7 +98,7 @@ public final class Lineages {
     private void addScopeColumn(ImmutableSet<String> attributesToExport, MetaSchema metaSchema) {
         for (String keyAttribute : attributesToExport) {
             if (metaSchema.isMultiScope(keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
-                SortedMap<String, String> keyAttributeProperties = getKeyAttributeProperties(keyAttribute);
+                SortedMap<String, String> keyAttributeProperties = getKeyAttributePropertiesType(keyAttribute);
                 keyAttributeProperties.put(GraphModelConstants.SCOPE, "STRING");
             }
         }
@@ -108,19 +108,24 @@ public final class Lineages {
         return visitedNodes.contains(leaf);
     }
 
-    public void markAsVisited(String keyAttribute, Node node) {
+    public void markAsVisited(String keyAttribute, Node node, Lineage lineage) {
         visitedNodes.add(node);
         if (attributesToExtract.contains(keyAttribute)) {
-            SortedMap<String, String> properties = getKeyAttributeProperties(keyAttribute);
+            SortedMap<String, String> properties = getKeyAttributePropertiesType(keyAttribute);
+            Map<String, Object> values = lineage.propertiesByType.computeIfAbsent(keyAttribute, k -> new HashMap<>());
             Optional<ImmutableSet<String>> propertiesToExtract = getPropertiesToExtract(keyAttribute);
             Map<String, Object> currentProperties = propertiesToExtract
                     .map(pTE -> node.getProperties(pTE.toArray(new String[0])))
                     .orElseGet(node::getAllProperties);
             for (Map.Entry<String, Object> property : currentProperties.entrySet()) {
                 String name = property.getKey();
-                if (!ignoreProperty(name) && filterColumn(keyAttribute, name)) {
-                    String propertyType = PropertyConverter.getPropertyType(property.getValue());
-                    properties.put(name, propertyType);
+                if (!ignoreProperty(name)) {
+                    if (filterColumn(keyAttribute, name)) {
+                        properties.put(name, PropertyConverter.getPropertyType(property.getValue()));
+                    }
+                    if (propertiesToExtract.map(set -> set.contains(name)).orElse(true)) {
+                        values.put(name, property.getValue());
+                    }
                 }
             }
         }
@@ -136,7 +141,7 @@ public final class Lineages {
         return false;
     }
 
-    private boolean filterColumn(String keyAttribute, String name) {
+    public boolean filterColumn(String keyAttribute, String name) {
         if (columnsToExport.isEmpty()) {
             return true;
         }
@@ -155,7 +160,7 @@ public final class Lineages {
         return ImmutableSortedSet.copyOf(lineageSortComparator, lineages);
     }
 
-    private SortedMap<String, String> getKeyAttributeProperties(String keyAttribute) {
+    private SortedMap<String, String> getKeyAttributePropertiesType(String keyAttribute) {
         return propertiesTypeByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
     }
 

@@ -10,6 +10,7 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
@@ -23,6 +24,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 public final class Lineage {
 
     public final Map<String, Node> nodesByType = Maps.newHashMap();
+    public final Map<String, Map<String, Object>> propertiesByType = Maps.newHashMap();
 
     public final GraphDatabaseService graphDb;
 
@@ -35,7 +37,12 @@ public final class Lineage {
         return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
     }
 
-    public Object getProperty(Node node, String property) {
+    public Object getProperty(String type, String property) {
+        Optional<Object> value = Optional.ofNullable(propertiesByType.get(type)).map(values -> values.get(property));
+        if (value.isPresent()) {
+            return value.get();
+        }
+        Node node = nodesByType.get(type);
         if (node != null) {
             if (GraphModelConstants.SCOPE.equals(property)) {
                 return getElementScopeFromPlanet(node);

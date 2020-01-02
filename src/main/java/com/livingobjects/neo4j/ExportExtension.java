@@ -314,7 +314,7 @@ public final class ExportExtension {
         if (lineages.attributesToExtract.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
         }
-        lineages.markAsVisited(type, currentNode);
+        lineages.markAsVisited(type, currentNode, lineage);
         if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
             return;
         }
@@ -381,8 +381,10 @@ public final class ExportExtension {
             }
         } else if (properties != null) {
             for (String property : properties.keySet()) {
-                Object propertyValue = lineage.getProperty(node, property);
-                values.put(property, propertyValue);
+                if (lineages.filterColumn(keyAttribute, property)) {
+                    Object propertyValue = lineage.getProperty(keyAttribute, property);
+                    values.put(property, propertyValue);
+                }
             }
         }
         return values;
