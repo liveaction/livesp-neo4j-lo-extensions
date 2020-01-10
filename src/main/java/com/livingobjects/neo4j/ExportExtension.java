@@ -6,7 +6,12 @@ import com.davfx.ninio.csv.CsvWriter;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
-import com.google.common.collect.*;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.helper.PlanetByContext;
 import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
@@ -25,7 +30,11 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
-import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,14 +49,22 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 @Path("/export")
 public final class ExportExtension {
@@ -262,7 +279,8 @@ public final class ExportExtension {
     }
 
     private Lineages exportLineages(ExportQuery exportQuery) {
-        Lineages lineages = initLineages(exportQuery);
+        ImmutableSet<String> commonChildren = getCommonChildren(exportQuery);
+        Lineages lineages = initLineages(exportQuery, commonChildren);
         if (!lineages.attributesToExport.isEmpty()) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
                 getNodeIterator(leafAttribute, exportQuery).forEach(leaf -> {
@@ -279,6 +297,52 @@ public final class ExportExtension {
             }
         }
         return lineages;
+    }
+
+    /**
+     * For a given query, gives the common children of all the required attributes. If a common child has childs himself, those won't be returned
+     *
+     * @param exportQuery query
+     * @return The highest level common children
+     */
+    private ImmutableSet<String> getCommonChildren(ExportQuery exportQuery) {
+        List<ImmutableSet<ImmutableList<String>>> allLineages = exportQuery.requiredAttributes.stream()
+                .map(type -> metaSchema.getMetaLineagesForType(type)
+                        .stream()
+                        .map(lineage -> lineage.subList(0, lineage.indexOf(type) + 1))
+                        .collect(Collectors.toList()))
+                .map(ImmutableSet::copyOf)
+                .collect(Collectors.toList());
+        HashSet<String> result = Sets.cartesianProduct(allLineages).stream()
+                .map(ImmutableSet::copyOf)
+                .map(lineages -> lineages.stream()
+                        .reduce((attrs1, attrs2) -> ImmutableList.copyOf(Sets.intersection(new HashSet<>(attrs1), new HashSet<>(attrs2)).immutableCopy()))
+                        .orElseGet(ImmutableList::of))
+                .flatMap(Collection::stream)
+                .distinct() // all distinct common elements
+                .reduce(new HashSet<>(), (uniqueChilds, currentChild) -> {
+                            boolean match = false;
+                            ImmutableList<ImmutableList<String>> metaLineagesForType = metaSchema.getMetaLineagesForType(currentChild);
+                            for (ImmutableList<String> lineage : metaLineagesForType) {
+                                for (String child : uniqueChilds) {
+                                    if (lineage.contains(child)) {
+                                        match = true;
+                                        if (lineage.indexOf(currentChild) > lineage.indexOf(child)) {
+                                            uniqueChilds.remove(child);
+                                            uniqueChilds.add(currentChild);
+                                        }
+                                    }
+                                }
+                            }
+                            if (!match) {
+                                uniqueChilds.add(currentChild);
+                            }
+                            return uniqueChilds;
+                        },
+                        (strings, strings2) -> {
+                            throw new UnsupportedOperationException("Merging of sets is not allowed for this reduction");
+                        });
+        return ImmutableSet.copyOf(result);
     }
 
     private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
@@ -305,8 +369,8 @@ public final class ExportExtension {
         }
     }
 
-    private Lineages initLineages(ExportQuery exportQuery) {
-        return new Lineages(metaSchema, exportQuery);
+    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren) {
+        return new Lineages(metaSchema, exportQuery, commonChildren);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {

@@ -29,28 +29,10 @@ public final class Lineages {
     private final ImmutableMap<String, Optional<ImmutableSet<String>>> propertiesToExtractByType;
     private final Comparator<Lineage> lineageSortComparator;
 
-    private boolean recursiveLineageComparator(MetaSchema metaSchema, String o1, String o2) {
-        if (metaSchema.getMonoParentRelations(o1)
-                .anyMatch(o2::equals)) {
-            return true;
-        } else {
-            return metaSchema.getMonoParentRelations(o1)
-                    .anyMatch(s -> recursiveLineageComparator(metaSchema, s, o2));
-        }
-    }
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery) {
-        Comparator<String> lineageComparator = (o1, o2) -> {
-            if (recursiveLineageComparator(metaSchema, o1, o2)) {
-                return 1;
-            } else if (recursiveLineageComparator(metaSchema, o2, o1)) {
-                return -1;
-            } else {
-                return o1.compareTo(o2);
-            }
-        };
 
-        Set<String> attributesToExport = Sets.newTreeSet(lineageComparator);
+        Set<String> attributesToExport = Sets.newTreeSet(metaSchema.lineageComparator);
         attributesToExport.addAll(exportQuery.parentAttributes);
         attributesToExport.addAll(exportQuery.requiredAttributes);
         this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
@@ -60,13 +42,57 @@ public final class Lineages {
                 .map(c -> c.keyAttribute)
                 .collect(Collectors.toSet());
 
-        Set<String> attributesToExtract = Sets.newTreeSet(lineageComparator);
+        Set<String> attributesToExtract = Sets.newTreeSet(metaSchema.lineageComparator);
         attributesToExtract.addAll(exportQuery.parentAttributes);
         attributesToExtract.addAll(exportQuery.requiredAttributes);
         attributesToExtract.addAll(filterKeyAttributes);
         this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
 
-        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -lineageComparator.compare(o1, o2));
+        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -metaSchema.lineageComparator.compare(o1, o2));
+        orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
+        orderedLeafAttributes.addAll(filterKeyAttributes);
+        this.orderedLeafAttributes = ImmutableSet.copyOf(orderedLeafAttributes);
+
+        Map<String, Optional<Set<String>>> builder = new HashMap<>();
+        exportQuery.columns.forEach((att, set) -> builder.put(att, Optional.of(new HashSet<>(set))));
+        attributesToExtract.forEach(att -> builder.computeIfAbsent(att, unused -> Optional.empty()));
+        exportQuery.filter.columns().forEach(column -> builder.computeIfAbsent(column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(column.property)));
+        exportQuery.sort.forEach(columnOrder -> builder.computeIfAbsent(columnOrder.column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(columnOrder.column.property)));
+
+        this.propertiesToExtractByType = builder.entrySet().stream()
+                .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().map(ImmutableSet::copyOf)))
+                .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        lineageSortComparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(this.attributesToExport));
+        lineages = new ArrayList<>();
+        visitedNodes = new HashSet<>();
+        propertiesTypeByType = new HashMap<>();
+        includeMetadata = exportQuery.includeMetadata;
+        columnsToExport = exportQuery.columns;
+
+        addScopeColumn(this.attributesToExport, metaSchema);
+    }
+
+    public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
+
+        Set<String> attributesToExport = Sets.newTreeSet(metaSchema.lineageComparator);
+        attributesToExport.addAll(exportQuery.parentAttributes);
+        attributesToExport.addAll(exportQuery.requiredAttributes);
+        this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
+
+        Set<String> filterKeyAttributes = exportQuery.filter.columns()
+                .stream()
+                .map(c -> c.keyAttribute)
+                .collect(Collectors.toSet());
+
+        Set<String> attributesToExtract = Sets.newTreeSet(metaSchema.lineageComparator);
+        attributesToExtract.addAll(exportQuery.parentAttributes);
+        attributesToExtract.addAll(exportQuery.requiredAttributes);
+        attributesToExtract.addAll(filterKeyAttributes);
+        this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
+
+        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -metaSchema.lineageComparator.compare(o1, o2));
+        orderedLeafAttributes.addAll(commonChilds);
         orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
         orderedLeafAttributes.addAll(filterKeyAttributes);
         this.orderedLeafAttributes = ImmutableSet.copyOf(orderedLeafAttributes);
