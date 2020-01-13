@@ -279,8 +279,17 @@ public final class ExportExtension {
     }
 
     private Lineages exportLineages(ExportQuery exportQuery) {
-        ImmutableSet<String> commonChildren = getCommonChildren(exportQuery);
-        Lineages lineages = initLineages(exportQuery, commonChildren);
+        ImmutableSet<String> requiredCommonChildren = getCommonChildren(exportQuery.requiredAttributes);
+        ImmutableSet<String> filterCommonChildren = Sets.cartesianProduct(exportQuery.requiredAttributes, exportQuery.filter.columns()
+                .stream()
+                .map(c -> c.keyAttribute)
+                .collect(Collectors.toSet()))
+                .stream()
+                .map(ImmutableSet::copyOf)
+                .map(this::getCommonChildren)
+                .reduce((set, set2) -> Sets.union(set, set2).immutableCopy())
+                .orElseGet(ImmutableSet::of);
+        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy());
         if (!lineages.attributesToExport.isEmpty()) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
                 getNodeIterator(leafAttribute, exportQuery).forEach(leaf -> {
@@ -300,13 +309,13 @@ public final class ExportExtension {
     }
 
     /**
-     * For a given query, gives the common children of all the required attributes. If a common child has childs himself, those won't be returned
+     * For a set of types, gives their common children of higher rank. If a common child has childs himself, those won't be returned
      *
-     * @param exportQuery query
+     * @param types
      * @return The highest level common children
      */
-    private ImmutableSet<String> getCommonChildren(ExportQuery exportQuery) {
-        List<ImmutableSet<ImmutableList<String>>> allLineages = exportQuery.requiredAttributes.stream()
+    private ImmutableSet<String> getCommonChildren(ImmutableSet<String> types) {
+        List<ImmutableSet<ImmutableList<String>>> allLineages = types.stream()
                 .map(type -> metaSchema.getMetaLineagesForType(type)
                         .stream()
                         .map(lineage -> lineage.subList(0, lineage.indexOf(type) + 1))

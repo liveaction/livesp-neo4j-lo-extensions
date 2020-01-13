@@ -107,7 +107,7 @@ public final class Lineages {
                 .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().map(ImmutableSet::copyOf)))
                 .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
 
-        lineageSortComparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(this.attributesToExport));
+        lineageSortComparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(Sets.union(this.attributesToExport, filterKeyAttributes).immutableCopy()));
         lineages = new ArrayList<>();
         visitedNodes = new HashSet<>();
         propertiesTypeByType = new HashMap<>();
