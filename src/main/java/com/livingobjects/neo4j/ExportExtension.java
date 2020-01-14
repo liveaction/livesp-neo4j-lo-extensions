@@ -355,13 +355,14 @@ public final class ExportExtension {
     }
 
     private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
-        Set<String> scopes = exportQuery.filter.columnsFilters().stream()
-                .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
-                .filter(columnFilter -> columnFilter.column.property.equals(ID))
-                .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
-                        !columnFilter.valueFilter.not)
-                .map(columnFilter -> columnFilter.valueFilter.value.toString())
-                .collect(Collectors.toSet());
+        Set<String> scopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
+                exportQuery.filter.columnsFilters().stream()
+                        .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
+                        .filter(columnFilter -> columnFilter.column.property.equals(ID))
+                        .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
+                                !columnFilter.valueFilter.not)
+                        .map(columnFilter -> columnFilter.valueFilter.value.toString())
+                        .collect(Collectors.toSet());
         if (scopes.isEmpty()) {
             return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
