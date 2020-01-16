@@ -63,8 +63,15 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.CONNECT;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
+import static org.neo4j.graphdb.Direction.INCOMING;
+import static org.neo4j.graphdb.Direction.OUTGOING;
 
 @Path("/export")
 public final class ExportExtension {
@@ -310,9 +317,6 @@ public final class ExportExtension {
 
     /**
      * For a set of types, gives their common children of higher rank. If a common child has childs himself, those won't be returned
-     *
-     * @param types
-     * @return The highest level common children
      */
     private ImmutableSet<String> getCommonChildren(ImmutableSet<String> types) {
         List<ImmutableSet<ImmutableList<String>>> allLineages = types.stream()
@@ -366,17 +370,49 @@ public final class ExportExtension {
         if (scopes.isEmpty()) {
             return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
-            return scopes.stream()
-                    .flatMap(scopeId -> {
-                        PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
-                        return planetByContext.allPlanets().stream()
-                                .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
-                                .filter(Objects::nonNull)
-                                .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
-                                        .map(Relationship::getStartNode));
-
-                    });
+            if (metaSchema.isOverridable(leafAttribute)) {
+                List<Node> authorizedPlanets = scopes.stream()
+                        .flatMap(scopeId -> {
+                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
+                            List<String> possibleScopes;
+                            if (scopeId.equals(GLOBAL_SCOPE.id)) {
+                                possibleScopes = Lists.newArrayList(GLOBAL_SCOPE.id);
+                            } else if (scopeId.equals(SP_SCOPE.id)) {
+                                possibleScopes = Lists.newArrayList(SP_SCOPE.id, GLOBAL_SCOPE.id);
+                            } else {
+                                possibleScopes = Lists.newArrayList(scopeId, SP_SCOPE.id, GLOBAL_SCOPE.id);
+                            }
+                            return possibleScopes.stream()
+                                    .flatMap(scope -> planetByContext.allPlanets().stream()
+                                            .map(planetTemplate -> planetFactory.get(planetTemplate, scope))
+                                            .filter(Objects::nonNull));
+                        }).collect(Collectors.toList());
+                return authorizedPlanets.stream()
+                        .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
+                                .map(Relationship::getStartNode)) // All nodes which do not extend another
+                        .map(node -> getOverridingNode(node, authorizedPlanets));
+            } else {
+                return scopes.stream()
+                        .flatMap(scopeId -> {
+                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
+                            return planetByContext.allPlanets().stream()
+                                    .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                    .filter(Objects::nonNull)
+                                    .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
+                                            .map(Relationship::getStartNode))
+                                    .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext());
+                        });
+            }
         }
+    }
+
+    private Node getOverridingNode(Node element, List<Node> authorizedPlanets) {
+        return StreamSupport.stream(element.getRelationships(INCOMING, EXTEND).spliterator(), false)
+                .map(Relationship::getStartNode)
+                .filter(node -> authorizedPlanets.contains(Lists.newArrayList(node.getRelationships(OUTGOING, ATTRIBUTE)).get(0).getEndNode()))
+                .findAny()
+                .map(node -> getOverridingNode(node, authorizedPlanets))
+                .orElse(element);
     }
 
     private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren) {
@@ -392,7 +428,7 @@ public final class ExportExtension {
         if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
             return;
         }
-        Iterable<Relationship> parentRelationships = currentNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT);
+        Iterable<Relationship> parentRelationships = currentNode.getRelationships(OUTGOING, CONNECT);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
             String parentType = parentNode.getProperty(_TYPE, "").toString();
