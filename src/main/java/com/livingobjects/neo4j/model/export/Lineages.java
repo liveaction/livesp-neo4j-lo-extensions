@@ -30,49 +30,6 @@ public final class Lineages {
     private final Comparator<Lineage> lineageSortComparator;
 
 
-    public Lineages(MetaSchema metaSchema, ExportQuery exportQuery) {
-
-        Set<String> attributesToExport = Sets.newTreeSet(metaSchema.lineageComparator);
-        attributesToExport.addAll(exportQuery.parentAttributes);
-        attributesToExport.addAll(exportQuery.requiredAttributes);
-        this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
-
-        Set<String> filterKeyAttributes = exportQuery.filter.columns()
-                .stream()
-                .map(c -> c.keyAttribute)
-                .collect(Collectors.toSet());
-
-        Set<String> attributesToExtract = Sets.newTreeSet(metaSchema.lineageComparator);
-        attributesToExtract.addAll(exportQuery.parentAttributes);
-        attributesToExtract.addAll(exportQuery.requiredAttributes);
-        attributesToExtract.addAll(filterKeyAttributes);
-        this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
-
-        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -metaSchema.lineageComparator.compare(o1, o2));
-        orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
-        orderedLeafAttributes.addAll(filterKeyAttributes);
-        this.orderedLeafAttributes = ImmutableSet.copyOf(orderedLeafAttributes);
-
-        Map<String, Optional<Set<String>>> builder = new HashMap<>();
-        exportQuery.columns.forEach((att, set) -> builder.put(att, Optional.of(new HashSet<>(set))));
-        attributesToExtract.forEach(att -> builder.computeIfAbsent(att, unused -> Optional.empty()));
-        exportQuery.filter.columns().forEach(column -> builder.computeIfAbsent(column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(column.property)));
-        exportQuery.sort.forEach(columnOrder -> builder.computeIfAbsent(columnOrder.column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(columnOrder.column.property)));
-
-        this.propertiesToExtractByType = builder.entrySet().stream()
-                .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().map(ImmutableSet::copyOf)))
-                .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        lineageSortComparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(this.attributesToExport));
-        lineages = new ArrayList<>();
-        visitedNodes = new HashSet<>();
-        propertiesTypeByType = new HashMap<>();
-        includeMetadata = exportQuery.includeMetadata;
-        columnsToExport = exportQuery.columns;
-
-        addScopeColumn(this.attributesToExport, metaSchema);
-    }
-
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
 
         Set<String> attributesToExport = Sets.newTreeSet(metaSchema.lineageComparator);
