@@ -187,11 +187,23 @@ public final class ExportExtension {
         return csv;
     }
 
-    private PaginatedLineages paginate(Lineages lineages, List<FilteredLineage> filteredLineages, Optional<Pagination> pagination) {
+    private PaginatedLineages paginate(Lineages lineages, List<Lineage> filteredLineages, Optional<Pagination> pagination) {
         int end = pagination
                 .map(p -> Math.min(p.offset + p.limit, filteredLineages.size()))
                 .orElse(filteredLineages.size());
         return new PaginatedLineages() {
+
+            private List<Lineage> lineages() {
+                return pagination
+                        .map(p -> filteredLineages.subList(p.offset, end))
+                        .orElse(filteredLineages);
+            }
+
+            @Override
+            public void init() {
+                lineages().forEach(lineage -> initializePropertiesList(lineages, lineage));
+                lineages().forEach(lineage -> initializePropertiesToExport(lineages, lineage));
+            }
 
             @Override
             public ImmutableSet<String> attributesToExport() {
@@ -204,10 +216,11 @@ public final class ExportExtension {
             }
 
             @Override
-            public List<FilteredLineage> lineages() {
-                return pagination
-                        .map(p -> filteredLineages.subList(p.offset, end))
-                        .orElse(filteredLineages);
+            public List<FilteredLineage> filteredLineages() {
+                return lineages()
+                        .stream()
+                        .map(lineage -> new FilteredLineage(ImmutableMap.copyOf(lineage.propertiesToExportByType)))
+                        .collect(Collectors.toList());
             }
 
             @Override
@@ -229,18 +242,50 @@ public final class ExportExtension {
         };
     }
 
+    /**
+     * Adds to lineages.propertiesTypeByType all the properties from given lineage
+     */
+    private void initializePropertiesList(Lineages lineages, Lineage lineage) {
+        for (String keyAttribute : lineages.attributesToExport) {
+            SortedMap<String, String> propertiesType = lineages.getKeyAttributePropertiesType(keyAttribute);
+            lineages.getPropertiesToExport(keyAttribute)
+                    .map(elements -> (List<String>) Lists.newArrayList(elements))
+                    .orElseGet(() -> lineage.getAllPropertiesForType(keyAttribute))
+                    .stream()
+                    .filter(property -> !lineages.ignoreProperty(property) && lineages.filterColumn(keyAttribute, property))
+                    .forEach(property -> propertiesType.putIfAbsent(property, PropertyConverter.getPropertyType(property)));
+        }
+    }
+
+    /**
+     * Fills lineage.propertiesToExportByType with all the properties to export from this lineage
+     */
+    private void initializePropertiesToExport(Lineages lineages, Lineage lineage) {
+        for (String keyAttribute : lineages.attributesToExport) {
+            Map<String, Object> values = lineage.propertiesToExportByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+            List<String> propertiesToExport = Lists.newArrayList(lineages.propertiesTypeByType.get(keyAttribute).keySet());
+            for (String property : propertiesToExport) {
+                if (!lineages.ignoreProperty(property)) {
+                    values.put(property, lineage.getProperty(keyAttribute, property));
+                }
+            }
+        }
+    }
+
     private PaginatedLineages extract(ExportQuery exportQuery) {
         try (Transaction ignored = graphDb.beginTx()) {
             Lineages lineages = exportLineages(exportQuery);
-            List<FilteredLineage> filteredLineages = filter(exportQuery, lineages);
-            return paginate(lineages, filteredLineages, exportQuery.pagination);
+            List<Lineage> filteredLineages = filter(exportQuery, lineages);
+            PaginatedLineages paginate = paginate(lineages, filteredLineages, exportQuery.pagination);
+            paginate.init();
+            return paginate;
         }
     }
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             // If there is no lineage to write, don't even write the headers
-            if (paginatedLineages.lineages().size() > 0) {
+            if (paginatedLineages.filteredLineages().size() > 0) {
                 String[] headers = generateCSVHeader(paginatedLineages);
                 if (headers.length > 0) {
                     try (CsvWriter.Line headerLine = csv.line()) {
@@ -249,8 +294,8 @@ public final class ExportExtension {
                         }
                     }
                 }
-                for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
-                    writeCSVLine(filteredLineage, csv);
+                for (FilteredLineage lineage : paginatedLineages.filteredLineages()) {
+                    writeCSVLine(lineage, csv);
                 }
             }
         } catch (IOException e) {
@@ -258,19 +303,19 @@ public final class ExportExtension {
         }
     }
 
-    private List<FilteredLineage> filter(ExportQuery exportQuery, Lineages lineages) {
+    private List<Lineage> filter(ExportQuery exportQuery, Lineages lineages) {
         return ImmutableList.copyOf(lineages.lineages().stream()
                 .map(lineage -> filterLineage(exportQuery, lineages, lineage))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-                .map(FilteredLineage::new)
+                .sorted(lineages.lineageSortComparator)
                 .collect(Collectors.toList()));
     }
 
     private void exportAsJson(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try {
-            for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
-                String s = JSON_MAPPER.writeValueAsString(filteredLineage.properties);
+            for (FilteredLineage lineage : paginatedLineages.filteredLineages()) {
+                String s = JSON_MAPPER.writeValueAsString(lineage.properties);
                 outputStream.write(s.getBytes(UTF_8));
                 outputStream.write('\n');
             }
@@ -424,7 +469,7 @@ public final class ExportExtension {
         if (lineages.attributesToExtract.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
         }
-        lineages.markAsVisited(type, currentNode, lineage);
+        lineages.markAsVisited(currentNode);
         if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
             return;
         }
@@ -456,17 +501,19 @@ public final class ExportExtension {
         }
     }
 
-    private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
+    /**
+     * @return the Lineage given as input if it matches the filters, empty otherwise.
+     */
+    private Optional<Lineage> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         int missingRequired = 0;
         boolean filtered = exportQuery.filter
                 .test(column -> {
                     Node node = lineage.nodesByType.get(column.keyAttribute);
-                    return node != null ? node.getProperty(column.property, null) : null;
+                    return node != null ? lineage.getProperty(column.keyAttribute, column.property) : null;
                 });
         if (!filtered) {
             return Optional.empty();
         }
-        Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         for (String attribute : lineages.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
             if (node == null) {
@@ -477,27 +524,8 @@ public final class ExportExtension {
                     }
                 }
             }
-            map.put(attribute, getProperties(lineages, lineage, node, attribute));
         }
-        return Optional.of(ImmutableMap.copyOf(map));
-    }
-
-    private Map<String, Object> getProperties(Lineages lineages, Lineage lineage, Node node, String keyAttribute) {
-        Map<String, Object> values = Maps.newLinkedHashMap();
-        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(keyAttribute);
-        if (node == null) {
-            if (properties != null) {
-                properties.keySet().forEach(property -> values.put(property, null));
-            }
-        } else if (properties != null) {
-            for (String property : properties.keySet()) {
-                if (lineages.filterColumn(keyAttribute, property)) {
-                    Object propertyValue = lineage.getProperty(keyAttribute, property);
-                    values.put(property, propertyValue);
-                }
-            }
-        }
-        return values;
+        return Optional.of(lineage);
     }
 
     private String[] generateCSVHeader(PaginatedLineages lineages) {
@@ -524,11 +552,13 @@ public final class ExportExtension {
 
     public interface PaginatedLineages {
 
+        void init();
+
         ImmutableSet<String> attributesToExport();
 
         Map<String, SortedMap<String, String>> header();
 
-        List<FilteredLineage> lineages();
+        List<FilteredLineage> filteredLineages();
 
         int start();
 

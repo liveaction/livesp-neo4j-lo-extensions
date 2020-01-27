@@ -1,13 +1,24 @@
 package com.livingobjects.neo4j.model.export;
 
-import com.google.common.collect.*;
-import com.livingobjects.neo4j.helper.PropertyConverter;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.stream.Collectors;
 
 public final class Lineages {
@@ -21,21 +32,19 @@ public final class Lineages {
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
 
     public final ImmutableSet<String> attributesToExtract;
-    public final ImmutableSet<String> attributesToExport;
+    public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
+    public final Comparator<Lineage> lineageSortComparator;
 
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
     private final ImmutableMap<String, Optional<ImmutableSet<String>>> propertiesToExtractByType;
-    private final Comparator<Lineage> lineageSortComparator;
 
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
 
-        Set<String> attributesToExport = Sets.newTreeSet(metaSchema.lineageComparator);
-        attributesToExport.addAll(exportQuery.parentAttributes);
-        attributesToExport.addAll(exportQuery.requiredAttributes);
-        this.attributesToExport = ImmutableSet.copyOf(attributesToExport);
+        Set<String> attributesToExport = Sets.union(exportQuery.parentAttributes, exportQuery.requiredAttributes);
+        this.attributesToExport = ImmutableSortedSet.copyOf(metaSchema.lineageComparator, attributesToExport);
 
         Set<String> filterKeyAttributes = exportQuery.filter.columns()
                 .stream()
@@ -74,10 +83,6 @@ public final class Lineages {
         addScopeColumn(this.attributesToExport, metaSchema);
     }
 
-    public Optional<ImmutableSet<String>> getPropertiesToExtract(String type) {
-        return propertiesToExtractByType.get(type);
-    }
-
     private void addScopeColumn(ImmutableSet<String> attributesToExport, MetaSchema metaSchema) {
         for (String keyAttribute : attributesToExport) {
             if (metaSchema.isMultiScope(keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
@@ -87,31 +92,17 @@ public final class Lineages {
         }
     }
 
+    public Optional<ImmutableSet<String>> getPropertiesToExport(String type) {
+        return Optional.ofNullable(columnsToExport.get(type))
+                .map(ImmutableSet::copyOf);
+    }
+
     public boolean dejaVu(Node leaf) {
         return visitedNodes.contains(leaf);
     }
 
-    public void markAsVisited(String keyAttribute, Node node, Lineage lineage) {
+    public void markAsVisited(Node node) {
         visitedNodes.add(node);
-        if (attributesToExtract.contains(keyAttribute)) {
-            SortedMap<String, String> properties = getKeyAttributePropertiesType(keyAttribute);
-            Map<String, Object> values = lineage.propertiesByType.computeIfAbsent(keyAttribute, k -> new HashMap<>());
-            Optional<ImmutableSet<String>> propertiesToExtract = getPropertiesToExtract(keyAttribute);
-            Map<String, Object> currentProperties = propertiesToExtract
-                    .map(pTE -> node.getProperties(pTE.toArray(new String[0])))
-                    .orElseGet(node::getAllProperties);
-            for (Map.Entry<String, Object> property : currentProperties.entrySet()) {
-                String name = property.getKey();
-                if (!ignoreProperty(name)) {
-                    if (filterColumn(keyAttribute, name)) {
-                        properties.put(name, PropertyConverter.getPropertyType(property.getValue()));
-                    }
-                    if (propertiesToExtract.map(set -> set.contains(name)).orElse(true)) {
-                        values.put(name, property.getValue());
-                    }
-                }
-            }
-        }
     }
 
     public boolean ignoreProperty(String name) {
@@ -140,10 +131,10 @@ public final class Lineages {
     }
 
     public Set<Lineage> lineages() {
-        return ImmutableSortedSet.copyOf(lineageSortComparator, lineages);
+        return ImmutableSet.copyOf(lineages);
     }
 
-    private SortedMap<String, String> getKeyAttributePropertiesType(String keyAttribute) {
+    public SortedMap<String, String> getKeyAttributePropertiesType(String keyAttribute) {
         return propertiesTypeByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
     }
 
