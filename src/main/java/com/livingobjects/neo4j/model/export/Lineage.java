@@ -29,15 +29,13 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 public final class Lineage {
 
     public final Map<String, Node> nodesByType = Maps.newHashMap();
-
+    public final GraphDatabaseService graphDb;
     // Filled at the end of the process, with the properties to export only
     public final Map<String, SortedMap<String, Object>> propertiesToExportByType = Maps.newLinkedHashMap();
 
     // Contains all properties used during the process, with lazy loading
     private final Map<String, Map<String, Object>> propertiesByType = Maps.newHashMap();
-
-
-    public final GraphDatabaseService graphDb;
+    private String repr;
 
     public Lineage(GraphDatabaseService graphDb) {
         this.graphDb = graphDb;
@@ -45,7 +43,15 @@ public final class Lineage {
 
     @Override
     public String toString() {
-        return nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
+        try {
+            repr = nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
+            return repr;
+        } catch (Exception e) {
+            if (repr == null) {
+                throw e;
+            }
+            return repr;
+        }
     }
 
     public Object getProperty(String type, String property) {
