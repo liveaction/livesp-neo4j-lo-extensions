@@ -143,6 +143,7 @@ public final class ExportExtension {
                 stream = outputStream -> exportAsJson(lineages, outputStream);
                 mediatype = MediaType.APPLICATION_JSON_TYPE;
             }
+
             return Response.ok()
                     .header("Content-Range", "" + lineages.start() + '-' + lineages.end() + '/' + lineages.total())
                     .entity(stream)
@@ -404,7 +405,7 @@ public final class ExportExtension {
     }
 
     private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
-        Set<String> scopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
+        Set<String> initScopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
                 exportQuery.filter.columnsFilters().stream()
                         .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
                         .filter(columnFilter -> columnFilter.column.property.equals(ID))
@@ -412,6 +413,8 @@ public final class ExportExtension {
                                 !columnFilter.valueFilter.not)
                         .map(columnFilter -> columnFilter.valueFilter.value.toString())
                         .collect(Collectors.toSet());
+        ImmutableSet<String> scopes = getApplicableScopes(initScopes);
+
         if (scopes.isEmpty()) {
             return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
@@ -449,6 +452,18 @@ public final class ExportExtension {
                         });
             }
         }
+    }
+
+    /**
+     * Gets all the scopes applicable to the given set of scopes.
+     * If scopes contains at least one client Scope, return all scopes, plus SP and GLOBAL
+     * If scopes contains SP, return SP and GLOBAL
+     * If scope only contains GLOBAL, return GLOBAL
+     */
+    private ImmutableSet<String> getApplicableScopes(Set<String> initialScopes) {
+        return initialScopes.contains(GLOBAL_SCOPE.id) && initialScopes.size() == 1 ?
+                ImmutableSet.copyOf(initialScopes) :
+                ImmutableSet.<String>builder().addAll(initialScopes).add(SP_SCOPE.id, GLOBAL_SCOPE.id).build();
     }
 
     private Node getOverridingNode(Node element, List<Node> authorizedPlanets) {
