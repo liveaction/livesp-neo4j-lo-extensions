@@ -461,6 +461,9 @@ public final class ExportExtension {
      * If scope only contains GLOBAL, return GLOBAL
      */
     private ImmutableSet<String> getApplicableScopes(Set<String> initialScopes) {
+        if(initialScopes.isEmpty()) {
+            return ImmutableSet.of();
+        }
         return initialScopes.contains(GLOBAL_SCOPE.id) && initialScopes.size() == 1 ?
                 ImmutableSet.copyOf(initialScopes) :
                 ImmutableSet.<String>builder().addAll(initialScopes).add(SP_SCOPE.id, GLOBAL_SCOPE.id).build();
