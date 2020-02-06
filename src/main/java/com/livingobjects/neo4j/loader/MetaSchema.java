@@ -3,14 +3,19 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.google.common.collect.MoreCollectors;
 import com.google.common.collect.Sets;
+import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import scala.Tuple2;
 
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -42,12 +47,11 @@ public final class MetaSchema {
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
     private final ImmutableMap<String, Optional<String>> defaultScopes;
-
     private final ImmutableSet<String> scopeTypes;
-
     private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
-    private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
+    // origin_type -> <dest_type, rel_type>
+    private final ImmutableMap<String, ImmutableSet<Tuple2<String, String>>> crossAttributesRelations;
 
     private final ImmutableList<ImmutableList<String>> metaLineages;
 
@@ -70,7 +74,7 @@ public final class MetaSchema {
         ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
         ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
-        ImmutableMap.Builder<String, ImmutableSet<String>> crossAttributesRelationsBldr = ImmutableMap.builder();
+        ImmutableMap.Builder<String, ImmutableSet<Tuple2<String, String>>> crossAttributesRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<String>> requiredPropertiesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, Optional<String>> defaultScopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
@@ -112,7 +116,7 @@ public final class MetaSchema {
                 ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
                 n.getRelationships(INCOMING, PARENT).forEach(crels::add);
                 n.getRelationships(OUTGOING, PARENT).forEach(prels::add);
-                ImmutableSet<String> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
+                ImmutableSet<Tuple2<String, String>> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
                 if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
@@ -163,7 +167,7 @@ public final class MetaSchema {
 //                .build();
         List<Relationship> relationships = Lists.newArrayList(current.getRelationships(OUTGOING, PARENT));
 
-        if(relationships.isEmpty()) {
+        if (relationships.isEmpty()) {
             builder.add(ImmutableList.of(key));
         } else {
             relationships.forEach(r -> builder.addAll(generateMetaLineages(r.getEndNode(), null)
@@ -194,12 +198,17 @@ public final class MetaSchema {
         return requiredProperties.getOrDefault(keyAttribute, ImmutableSet.of());
     }
 
-    public ImmutableMap<String, ImmutableSet<String>> getCrossAttributesRelations() {
+    public ImmutableMap<String, ImmutableSet<Tuple2<String, String>>> getCrossAttributesRelations() {
         return crossAttributesRelations;
     }
 
     public ImmutableSet<String> getCrossAttributesRelations(String keyAttribute) {
-        return crossAttributesRelations.getOrDefault(keyAttribute, ImmutableSet.of());
+        Set<String> collect = crossAttributesRelations.entrySet().stream()
+                .filter(entry -> entry.getKey().equals(keyAttribute))
+                .flatMap(entry -> entry.getValue().stream())
+                .map(Tuple2::_1)
+                .collect(Collectors.toSet());
+        return ImmutableSet.copyOf(collect);
     }
 
     public ImmutableList<Relationship> getChildren(String current) {
@@ -300,6 +309,40 @@ public final class MetaSchema {
                 .filter(lineage -> lineage.contains(type))
                 .collect(Collectors.toList());
         return ImmutableList.copyOf(result);
+    }
+
+    /**
+     * Returns all the relationships existing with given type
+     */
+    public CrossRelationship getRelationshipOfType(String reltype) {
+        return crossAttributesRelations.entrySet().stream()
+                .filter(e -> !e.getValue().isEmpty())
+                .filter(e -> e.getKey().equals(reltype) || e.getValue().stream()
+                        .anyMatch(tuple -> tuple._2().equals(reltype)))
+                .flatMap(e -> e.getValue().stream()
+                        .filter(tuple -> tuple._2().equals(reltype))
+                        .map(tuple -> new CrossRelationship(e.getKey(), tuple._1, tuple._2)))
+                .collect(MoreCollectors.onlyElement());
+    }
+
+    /**
+     * returns a List of all the path possible between the originType and destType. Each path contains a List of all types (in the order from bottom to top) needed to get to destination.
+     * If destType is not a parent of originType, this method will always return an empty List
+     */
+    public ImmutableList<ImmutableList<String>> getUpwardPath(String originType, String destType) {
+        return ImmutableList.copyOf(getParentRelations()
+                .get(originType)
+                .stream()
+                .map(Relationship::getEndNode)
+                .map(this::getKeyAttribute)
+                .flatMap(parentType -> parentType.equals(destType) ?
+                        ImmutableList.of(ImmutableList.of(parentType)).stream() :
+                        getUpwardPath(parentType, destType).stream()
+                                .map(path -> ImmutableList.<String>builder()
+                                        .add(parentType)
+                                        .addAll(path)
+                                        .build()))
+                .collect(Collectors.toList()));
     }
 
     private boolean recursiveLineageComparator(String o1, String o2) {

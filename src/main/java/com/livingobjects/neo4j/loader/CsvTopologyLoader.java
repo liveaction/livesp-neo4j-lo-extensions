@@ -41,6 +41,7 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.Tuple2;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -337,16 +338,16 @@ public final class CsvTopologyLoader {
 
     private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         Map<String, Relationship> multiElementLinks = Maps.newHashMap();
-        for (Entry<String, ImmutableSet<String>> rel : metaSchema.getCrossAttributesRelations().entrySet()) {
+        for (Entry<String, ImmutableSet<Tuple2<String, String>>> rel : metaSchema.getCrossAttributesRelations().entrySet()) {
             String keyType = rel.getKey();
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
-                for (String endKeyType : rel.getValue()) {
-                    if (!keyType.equals(endKeyType)) {
-                        Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType, Optional.empty());
+                for (Tuple2<String, String> endKeyType : rel.getValue()) {
+                    if (!keyType.equals(endKeyType._1())) {
+                        Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType._1(), Optional.empty());
                         optEndNode.ifPresent(toNode -> {
-                            Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE);
-                            String key = keyType + ELEMENT_SEPARATOR + endKeyType;
+                            Relationship link = createOutgoingUniqueLink(fromNode.entity, toNode.entity, RelationshipTypes.CROSS_ATTRIBUTE, endKeyType._2());
+                            String key = keyType + ELEMENT_SEPARATOR + endKeyType._1();
                             multiElementLinks.put(key, link);
                         });
                     }
@@ -448,18 +449,22 @@ public final class CsvTopologyLoader {
                         continue;
                     }
                 }
-                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT);
+                createOutgoingUniqueLink(keyTypeNode.entity, parent.get().entity, RelationshipTypes.CONNECT, null);
             }
         }
     }
 
-    private Relationship createOutgoingUniqueLink(Node node, Node parent, org.neo4j.graphdb.RelationshipType linkType) {
+    private Relationship createOutgoingUniqueLink(Node node, Node parent, org.neo4j.graphdb.RelationshipType linkType, String typeAttr) {
         for (Relationship next : node.getRelationships(Direction.OUTGOING, linkType)) {
             if (next.getEndNode().equals(parent)) {
                 return next;
             }
         }
-        return node.createRelationshipTo(parent, linkType);
+        Relationship relationship = node.createRelationshipTo(parent, linkType);
+        if (typeAttr != null) {
+            relationship.setProperty(CsvLoaderHelper.TYPE_ATTR, typeAttr);
+        }
+        return relationship;
     }
 
     private Optional<UniqueEntity<Node>> createElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType) {

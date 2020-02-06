@@ -25,21 +25,16 @@ public final class Lineages {
 
     private static final Set<String> METADATA_PROPERTIES = ImmutableSet.of("tag", "createdAt", "updatedAt", "createdBy", "updatedBy");
 
-    private final List<Lineage> lineages;
-
-    public final Set<Node> visitedNodes;
-
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
-
     public final ImmutableSet<String> attributesToExtract;
     public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
     public final Comparator<Lineage> lineageSortComparator;
 
+    private final List<Lineage> lineages;
+    private final Set<Node> visitedNodes;
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
-    private final ImmutableMap<String, Optional<ImmutableSet<String>>> propertiesToExtractByType;
-
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
 
@@ -69,7 +64,7 @@ public final class Lineages {
         exportQuery.filter.columns().forEach(column -> builder.computeIfAbsent(column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(column.property)));
         exportQuery.sort.forEach(columnOrder -> builder.computeIfAbsent(columnOrder.column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(columnOrder.column.property)));
 
-        this.propertiesToExtractByType = builder.entrySet().stream()
+        ImmutableMap<String, Optional<ImmutableSet<String>>> propertiesToExtractByType = builder.entrySet().stream()
                 .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().map(ImmutableSet::copyOf)))
                 .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
 
@@ -105,6 +100,7 @@ public final class Lineages {
         visitedNodes.add(node);
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean ignoreProperty(String name) {
         if (name.startsWith("_")) {
             return true;

@@ -27,8 +27,6 @@ public final class ExportQuery {
     public final boolean includeMetadata;
     // sort the elements
     public final ImmutableList<ColumnOrder> sort;
-    // pagination (/!\: not the same as the Pagination in longback-commons)
-    public final Optional<Pagination> pagination;
     // scopes of the query (values can be <client_id>, global or sp). Allows filtering by planets
     public final ImmutableSet<String> scopes;
 
@@ -38,7 +36,6 @@ public final class ExportQuery {
                        @JsonProperty("filter") Filter<Column> filter,
                        @JsonProperty("includeMetadata") boolean includeMetadata,
                        @JsonProperty("sort") List<ColumnOrder> sort,
-                       @JsonProperty("pagination") @Nullable Pagination pagination,
                        @JsonProperty("scopes") Set<String> scopes) {
         this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
         this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
@@ -46,7 +43,6 @@ public final class ExportQuery {
         this.filter = filter;
         this.includeMetadata = includeMetadata;
         this.sort = ImmutableList.copyOf(sort);
-        this.pagination = Optional.ofNullable(pagination);
         this.scopes = ImmutableSet.copyOf(scopes);
     }
 
@@ -61,13 +57,12 @@ public final class ExportQuery {
                 Objects.equals(columns, that.columns) &&
                 Objects.equals(filter, that.filter) &&
                 Objects.equals(sort, that.sort) &&
-                Objects.equals(scopes, that.scopes) &&
-                Objects.equals(pagination, that.pagination);
+                Objects.equals(scopes, that.scopes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, sort, pagination, scopes);
+        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, sort, scopes);
     }
 
     @Override
@@ -79,7 +74,6 @@ public final class ExportQuery {
                 .add("filter", filter)
                 .add("includeMetadata", includeMetadata)
                 .add("sort", sort)
-                .add("pagination", pagination)
                 .add("scopes", scopes)
                 .toString();
     }
