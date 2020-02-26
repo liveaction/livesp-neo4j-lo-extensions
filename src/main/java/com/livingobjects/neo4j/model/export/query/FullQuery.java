@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Optional;
 
 public class FullQuery {
@@ -14,37 +15,24 @@ public class FullQuery {
     public final ImmutableList<RelationshipQuery> relationshipQueries;
     // pagination (/!\: not the same as the Pagination in longback-commons)
     public final Optional<Pagination> pagination;
+    public final ImmutableList<Pair<Integer, ColumnOrder>> ordersByIndex;
 
-    public FullQuery(@JsonProperty("exportQueries") ImmutableList<ExportQuery> exportQueries,
+    public FullQuery(@JsonProperty("exportQueries") List<ExportQuery> exportQueries,
                      @JsonProperty("pagination") @Nullable Pagination pagination,
-                     @JsonProperty("relationshipQueries") ImmutableList<RelationshipQuery> relationshipQueries) {
-        if (exportQueries.size() != relationshipQueries.size() + 1) {
+                     @JsonProperty("ordersByIndex") @Nullable List<Pair<Integer, ColumnOrder>> ordersByIndex,
+                     @JsonProperty("relationshipQueries") @Nullable List<RelationshipQuery> relationshipQueries) {
+        ImmutableList<RelationshipQuery> relations = relationshipQueries == null ? ImmutableList.of() : ImmutableList.copyOf(relationshipQueries);
+        ImmutableList<Pair<Integer, ColumnOrder>> orders = ordersByIndex == null ? ImmutableList.of() : ImmutableList.copyOf(ordersByIndex);
+        if (exportQueries.size() != relations.size() + 1) {
             throw new IllegalArgumentException(String.format("Error constructing FullQuery: there are %d export queries " +
                             "and %d relationship queries, while there should be exactly one more export query than relationship queries",
                     exportQueries.size(),
-                    relationshipQueries.size()));
+                    relations.size()));
         }
-        if (exportQueries.stream()
-                .map(q -> q.sort)
-                .filter(orders -> orders != null && orders.size() > 0)
-                .count() > 1) {
-            throw new IllegalArgumentException("Error: more than one ExportQuery contains sorting information, this is forbidden");
-        }
-        this.exportQueries = exportQueries;
-        this.relationshipQueries = relationshipQueries;
+        this.exportQueries = ImmutableList.copyOf(exportQueries);
+        this.relationshipQueries = ImmutableList.copyOf(relations);
         this.pagination = Optional.ofNullable(pagination);
-    }
-
-    public FullQuery(@JsonProperty("pagination") @Nullable Pagination pagination,
-                     @JsonProperty("exportQueries") ImmutableList<ExportQuery> exportQueries) {
-        if (exportQueries.size() > 1) {
-            throw new IllegalArgumentException(String.format("Error constructing FullQuery: there are %d export queries " +
-                            "and no relationship queries, while there should be exactly one more export query than relationship queries",
-                    exportQueries.size()));
-        }
-        this.exportQueries = exportQueries;
-        this.relationshipQueries = ImmutableList.of();
-        this.pagination = Optional.ofNullable(pagination);
+        this.ordersByIndex = orders;
     }
 
     @Override
@@ -54,12 +42,13 @@ public class FullQuery {
         FullQuery fullQuery = (FullQuery) o;
         return Objects.equal(exportQueries, fullQuery.exportQueries) &&
                 Objects.equal(relationshipQueries, fullQuery.relationshipQueries) &&
-                Objects.equal(pagination, fullQuery.pagination);
+                Objects.equal(pagination, fullQuery.pagination) &&
+                Objects.equal(ordersByIndex, fullQuery.ordersByIndex);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(exportQueries, relationshipQueries, pagination);
+        return Objects.hashCode(exportQueries, relationshipQueries, pagination, ordersByIndex);
     }
 
     @Override
@@ -68,6 +57,7 @@ public class FullQuery {
                 .add("exportQueries", exportQueries)
                 .add("relationshipQueries", relationshipQueries)
                 .add("pagination", pagination)
+                .add("ordersByIndex", ordersByIndex)
                 .toString();
     }
 }

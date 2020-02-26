@@ -23,12 +23,16 @@ import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.export.Lineage;
+import com.livingobjects.neo4j.model.export.LineageListNaturalComparator;
+import com.livingobjects.neo4j.model.export.LineageListSortComparator;
 import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.PropertyNameComparator;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
+import com.livingobjects.neo4j.model.export.query.ExportQueryResult;
 import com.livingobjects.neo4j.model.export.query.FullQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
+import com.livingobjects.neo4j.model.export.query.Pair;
 import com.livingobjects.neo4j.model.export.query.RelationshipQuery;
 import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
@@ -42,7 +46,6 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.Tuple2;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
@@ -55,6 +58,7 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -279,7 +283,8 @@ public final class ExportExtension {
      */
     private void initializePropertiesToExport(Lineages lineages, Lineage lineage) {
         for (String keyAttribute : lineages.attributesToExport) {
-            Map<String, Object> values = lineage.propertiesToExportByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+            Map<String, Object> values = lineage.propertiesToExportByType
+                    .computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
             List<String> propertiesToExport = Lists.newArrayList(lineages.propertiesTypeByType.get(keyAttribute).keySet());
             for (String property : propertiesToExport) {
                 if (!lineages.ignoreProperty(property)) {
@@ -301,50 +306,66 @@ public final class ExportExtension {
                 filteredLineages.add(filter);
                 for (Lineage l : filter) {
                     initializePropertiesList(lineages.get(i), l);
+                }
+                for (Lineage l : filter) {
                     initializePropertiesToExport(lineages.get(i), l);
                 }
             }
-            List<List<Lineage>> filteredLinkedLineages = linkLineagesFromRelations(filteredLineages, fullQuery.relationshipQueries, ImmutableList.copyOf(relations));
+            List<List<Lineage>> filteredLinkedLineages = linkLineagesFromRelations(
+                    filteredLineages,
+                    fullQuery.relationshipQueries,
+                    ImmutableList.copyOf(relations),
+                    fullQuery.exportQueries
+            );
 
-            Optional<Integer> sortIdx = Optional.empty();
-            for (int i = 0; i < fullQuery.exportQueries.size(); i++) {
-                if (!fullQuery.exportQueries.get(i).sort.isEmpty()) {
-                    sortIdx = Optional.of(i);
-                    break;
-                }
-            }
-            List<List<Lineage>> sortedLineages = sortLineages(filteredLinkedLineages, sortIdx.map(idx -> lineages.get(idx).lineageSortComparator), sortIdx);
-            return paginate(lineages, sortedLineages, fullQuery.pagination);
+            List<String> attrs = lineages.stream()
+                    .map(l -> l.attributesToExtract)
+                    .collect(Lists::newArrayList,
+                            ArrayList::addAll,
+                            (a, b) -> {
+                                throw new UnsupportedOperationException("Parallel stream is not supported here");
+                            }
+                    );
+
+            ImmutableSet<String> attributesOrdering = ImmutableSet.copyOf(attrs);
+            Comparator<List<Lineage>> lineageSortComparator = new LineageListSortComparator(
+                    fullQuery.ordersByIndex,
+                    new LineageListNaturalComparator(attributesOrdering)
+            );
+            filteredLinkedLineages.sort(lineageSortComparator);
+            return paginate(lineages, filteredLinkedLineages, fullQuery.pagination);
         }
     }
 
-    private List<List<Lineage>> sortLineages(List<List<Lineage>> filteredLineages, Optional<Comparator<Lineage>> comparator, Optional<Integer> sortIdx) {
-        if (!comparator.isPresent() || !sortIdx.isPresent()) {
-            return filteredLineages;
-        }
-        return filteredLineages.stream()
-                .sorted((l1, l2) -> comparator.get().compare(l1.get(sortIdx.get()), l2.get(sortIdx.get())))
-                .collect(Collectors.toList());
-    }
-
-    private List<List<Lineage>> linkLineagesFromRelations(List<List<Lineage>> lineages, ImmutableList<RelationshipQuery> relationQueries, ImmutableList<CrossRelationship> metaRelations) {
-        if (lineages.size() < 2) {
-            return lineages;
-        }
+    private List<List<Lineage>> linkLineagesFromRelations(List<List<Lineage>> lineages,
+                                                          ImmutableList<RelationshipQuery> relationQueries,
+                                                          ImmutableList<CrossRelationship> metaRelations,
+                                                          ImmutableList<ExportQuery> exportQueries) {
         for (List<Lineage> l : lineages) {
             if (l.isEmpty()) {
-                return ImmutableList.of();
+                return Lists.newArrayList();
             }
         }
-        List<List<Lineage>> result = Lists.newArrayList();
-        linkLineagesFromRelationsR(result,
+        List<List<Lineage>> linkedLineages = Lists.newArrayList();
+        linkLineagesFromRelationsR(linkedLineages,
                 ImmutableList.copyOf(lineages.stream()
                         .map(ImmutableList::copyOf)
                         .collect(Collectors.toList())
                 ),
                 relationQueries,
                 metaRelations);
-        return result;
+        linkedLineages = linkedLineages
+                .stream()
+                .map(Lists::newArrayList)
+                .collect(Collectors.toList());
+        // replace useless lineages with empty lineage
+        for (int i = 0; i < exportQueries.size(); i++) {
+            if (exportQueries.get(i).noResult) {
+                int finalI = i;
+                linkedLineages.forEach(l -> l.set(finalI, new Lineage(null)));
+            }
+        }
+        return linkedLineages;
     }
 
     /**
@@ -352,7 +373,10 @@ public final class ExportExtension {
      * by a relationship described in relationQueries and metaRelations.
      * linkedLineages[i] and linkedLineages[i+1] are linked by the relationship described by relationQueries[i] and metaRelations[i]
      */
-    private void linkLineagesFromRelationsR(List<List<Lineage>> linkedLineages, ImmutableList<ImmutableList<Lineage>> allLineages, ImmutableList<RelationshipQuery> relationQueries, ImmutableList<CrossRelationship> metaRelations) {
+    private void linkLineagesFromRelationsR(List<List<Lineage>> linkedLineages,
+                                            ImmutableList<ImmutableList<Lineage>> allLineages,
+                                            ImmutableList<RelationshipQuery> relationQueries,
+                                            ImmutableList<CrossRelationship> metaRelations) {
         if (linkedLineages.isEmpty()) {
             allLineages.get(0).forEach(l -> linkedLineages.add(Lists.newArrayList(l)));
             linkLineagesFromRelationsR(linkedLineages, allLineages, relationQueries, metaRelations);
@@ -363,16 +387,13 @@ public final class ExportExtension {
             return;
         }
         List<Lineage> nextLineages = allLineages.get(i + 1);
-        Set<Lineage> currentLineages = linkedLineages.stream().map(l -> l.get(i)).collect(Collectors.toSet());
-        for (Lineage l : currentLineages) {
-            List<Lineage> toAdd = getMatchingLineage(l, nextLineages, metaRelations.get(i), relationQueries.get(i));
-            if (toAdd.isEmpty()) {
-                // remove this from lineages : relationships are mandatory
-                linkedLineages.removeIf(list -> list.get(i).equals(l));
-            } else {
-                linkedLineages.forEach(list -> list.add(l));
-            }
-        }
+        ImmutableList.copyOf(linkedLineages)
+                .forEach(list -> {
+                    Lineage l = list.get(i);
+                    List<Lineage> toAdd = getMatchingLineage(l, nextLineages, metaRelations.get(i), relationQueries.get(i));
+                    linkedLineages.remove(list);
+                    linkedLineages.addAll(Lists.cartesianProduct(list, toAdd));
+                });
         if (!linkedLineages.isEmpty()) {
             linkLineagesFromRelationsR(linkedLineages, allLineages, relationQueries, metaRelations);
         }
@@ -392,7 +413,12 @@ public final class ExportExtension {
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
-            if (paginatedLineages.filteredLineages().size() > 1) {
+            if (paginatedLineages.filteredLineages() != null &&
+                    paginatedLineages.filteredLineages()
+                            .stream()
+                            .map(List::size)
+                            .max(Comparator.naturalOrder())
+                            .orElse(0) > 1) {
                 throw new UnsupportedOperationException("Queries with relationships can't be exported as csv");
             }
             // If there is no lineage to write, don't even write the headers
@@ -405,9 +431,10 @@ public final class ExportExtension {
                         }
                     }
                 }
-                for (FilteredLineage lineage : paginatedLineages.filteredLineages().get(0)) {
-                    writeCSVLine(lineage, csv);
-                }
+                paginatedLineages.filteredLineages()
+                        .stream()
+                        .map(list -> list.get(0))
+                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csv));
             }
         } catch (IOException e) {
             Throwables.propagate(e);
@@ -426,10 +453,10 @@ public final class ExportExtension {
         try {
 
             for (List<FilteredLineage> lineages : paginatedLineages.filteredLineages()) {
-                List<ImmutableMap<String, Map<String, Object>>> propertiesList = lineages.stream()
-                        .map(filteredLineage -> filteredLineage.properties)
+                List<ExportQueryResult> results = lineages.stream()
+                        .map(filteredLineage -> new ExportQueryResult(filteredLineage.properties))
                         .collect(Collectors.toList());
-                String s = JSON_MAPPER.writeValueAsString(propertiesList);
+                String s = JSON_MAPPER.writeValueAsString(results);
                 outputStream.write(s.getBytes(UTF_8));
                 outputStream.write('\n');
             }
@@ -453,20 +480,22 @@ public final class ExportExtension {
             Optional<RelationshipQuery> previousQuery = i == 0 ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i - 1));
             Optional<RelationshipQuery> nextQuery = i == fullQuery.relationshipQueries.size() ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i));
 
-            Function<RelationshipQuery, Tuple2<RelationshipQuery, CrossRelationship>> queryToTuple = q -> new Tuple2<>(q, relations.stream().filter(r -> r.type.equals(q.type)).collect(MoreCollectors.onlyElement()));
-            Optional<Tuple2<RelationshipQuery, CrossRelationship>> previousRel = previousQuery.map(queryToTuple);
-            Optional<Tuple2<RelationshipQuery, CrossRelationship>> nextRel = nextQuery.map(queryToTuple);
+            Function<RelationshipQuery, Pair<RelationshipQuery, CrossRelationship>> queryToPair = q -> new Pair<>(q, relations.stream().filter(r -> r.type.equals(q.type)).collect(MoreCollectors.onlyElement()));
+            Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel = previousQuery.map(queryToPair);
+            Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel = nextQuery.map(queryToPair);
 
-            previousRel.ifPresent(q -> requiredChildren.add(q._1.direction == INCOMING ? q._2.originType : q._2.destinationType));
-            nextRel.ifPresent(q -> requiredChildren.add(q._1.direction == INCOMING ? q._2.destinationType : q._2.originType));
+            previousRel.ifPresent(q -> requiredChildren.add(q.first.direction == INCOMING ? q.second.originType : q.second.destinationType));
+            nextRel.ifPresent(q -> requiredChildren.add(q.first.direction == INCOMING ? q.second.destinationType : q.second.originType));
 
-            lineagesBuilder.add(exportLineagesSingleQuery(requiredChildren.build(), exportQuery, previousRel));
+            lineagesBuilder.add(exportLineagesSingleQuery(requiredChildren.build(), exportQuery, previousRel, nextRel));
         }
         return lineagesBuilder.build();
     }
 
-    private Lineages exportLineagesSingleQuery(ImmutableSet<String> requiredCommonChildren, ExportQuery
-            exportQuery, Optional<Tuple2<RelationshipQuery, CrossRelationship>> previousRel) {
+    private Lineages exportLineagesSingleQuery(ImmutableSet<String> requiredCommonChildren,
+                                               ExportQuery exportQuery,
+                                               Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel,
+                                               Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
         ImmutableSet<String> filterCommonChildren = Sets.cartesianProduct(exportQuery.requiredAttributes, exportQuery.filter.columns()
                 .stream()
                 .map(c -> c.keyAttribute)
@@ -476,15 +505,23 @@ public final class ExportExtension {
                 .map(this::getCommonChildren)
                 .reduce((set, set2) -> Sets.union(set, set2).immutableCopy())
                 .orElseGet(ImmutableSet::of);
-        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy());
-        if (!lineages.attributesToExport.isEmpty()) {
+        ImmutableList.Builder<String> relationAttrToExport = ImmutableList.builder();
+        previousRel.ifPresent(pair -> relationAttrToExport.add(pair.first.direction == INCOMING ? pair.second.originType : pair.second.destinationType));
+        nextRel.ifPresent(pair -> relationAttrToExport.add(pair.first.direction == INCOMING ? pair.second.destinationType : pair.second.originType));
+        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy(), relationAttrToExport.build());
+        if (!lineages.attributesToExport.isEmpty() || lineages.noResult) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
                 getNodeIterator(leafAttribute, exportQuery)
-                        .filter(nodeFilter(leafAttribute, previousRel))
+                        .filter(nodeFilter(leafAttribute, previousRel, nextRel))
                         .forEach(leaf -> {
                             if (!lineages.dejaVu(leaf)) {
                                 Lineage lineage = new Lineage(graphDb);
-                                rewindLineage(leaf, lineage, lineages);
+                                if (!lineages.attributesToExport.isEmpty()) {
+                                    rewindLineage(leaf, lineage, lineages);
+                                } else {
+                                    // no attributesToExport => this is just used for relationships
+                                    lineage.nodesByType.put(leaf.getProperty(_TYPE, "").toString(), leaf);
+                                }
                                 lineages.add(lineage);
                             }
                         });
@@ -500,34 +537,33 @@ public final class ExportExtension {
      * @param previousRel Relationship with the previous Lineage (in the order defined by the original query), the direction of this relationship is reversed
      * @return The predicate
      */
-    private Predicate<Node> nodeFilter(String nodeType, Optional<Tuple2<RelationshipQuery, CrossRelationship>> previousRel) {
+    private Predicate<Node> nodeFilter(String nodeType, Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel, Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
         return node -> {
             AtomicBoolean result = new AtomicBoolean(true);
-
             // check if previousRel is satisfied
-            previousRel.ifPresent(tuple -> {
-                String type = tuple._1.direction == INCOMING ? tuple._2.originType : tuple._2.destinationType;
-                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, type);
+            previousRel.ifPresent(pair -> {
+                String destType = pair.first.direction == INCOMING ? pair.second.originType : pair.second.destinationType;
+                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, destType);
                 AtomicBoolean relRes = new AtomicBoolean(false);
                 for (ImmutableList<String> path : upwardPaths) {
                     Optional<Node> optParent = getNodeFromPath(node, path);
                     optParent.ifPresent(parent -> relRes.set(relRes.get() ||
-                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, tuple._1.direction))
-                                    .anyMatch(r -> tuple._1.type.equals(r.getProperty(_TYPE).toString()))));
+                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, pair.first.direction == INCOMING ? OUTGOING : INCOMING))
+                                    .anyMatch(r -> pair.first.type.equals(r.getProperty(_TYPE).toString()))));
                 }
                 result.set(result.get() && relRes.get());
             });
 
             // check if nextRel is satisfied
-            previousRel.ifPresent(tuple -> {
-                String type = tuple._1.direction == INCOMING ? tuple._2.destinationType : tuple._2.originType;
-                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, type);
+            nextRel.ifPresent(pair -> {
+                String destType = pair.first.direction == INCOMING ? pair.second.destinationType : pair.second.originType;
+                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, destType);
                 AtomicBoolean relRes = new AtomicBoolean(false);
                 for (ImmutableList<String> path : upwardPaths) {
                     Optional<Node> optParent = getNodeFromPath(node, path);
                     optParent.ifPresent(parent -> relRes.set(relRes.get() ||
-                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, tuple._1.direction))
-                                    .anyMatch(r -> tuple._1.type.equals(r.getProperty(_TYPE).toString()))));
+                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, pair.first.direction))
+                                    .anyMatch(r -> pair.first.type.equals(r.getProperty(_TYPE).toString()))));
                 }
                 result.set(result.get() && relRes.get());
             });
@@ -664,8 +700,8 @@ public final class ExportExtension {
                 .orElse(element);
     }
 
-    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren) {
-        return new Lineages(metaSchema, exportQuery, commonChildren);
+    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren, ImmutableList<String> relAttrToExport) {
+        return new Lineages(metaSchema, exportQuery, commonChildren, relAttrToExport);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) {

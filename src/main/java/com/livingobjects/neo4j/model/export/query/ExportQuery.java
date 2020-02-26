@@ -1,17 +1,14 @@
 package com.livingobjects.neo4j.model.export.query;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.export.query.filter.Filter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 public final class ExportQuery {
@@ -25,25 +22,25 @@ public final class ExportQuery {
     public final Filter<Column> filter;
     // true if you need metadata: tag, createdAt, createdBy, updatedAt, updatedBy
     public final boolean includeMetadata;
-    // sort the elements
-    public final ImmutableList<ColumnOrder> sort;
     // scopes of the query (values can be <client_id>, global or sp). Allows filtering by planets
     public final ImmutableSet<String> scopes;
+    // true if this specific query should not return any results (only used for relationships purposes)
+    public final boolean noResult;
 
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                        @JsonProperty("parentAttributes") List<String> parentAttributes,
                        @JsonProperty("columns") Map<String, Set<String>> columns,
                        @JsonProperty("filter") Filter<Column> filter,
                        @JsonProperty("includeMetadata") boolean includeMetadata,
-                       @JsonProperty("sort") List<ColumnOrder> sort,
-                       @JsonProperty("scopes") Set<String> scopes) {
+                       @JsonProperty("scopes") Set<String> scopes,
+                       @JsonProperty("noResult") boolean noResult) {
         this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
         this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
         this.columns = ImmutableMap.copyOf(columns);
         this.filter = filter;
         this.includeMetadata = includeMetadata;
-        this.sort = ImmutableList.copyOf(sort);
         this.scopes = ImmutableSet.copyOf(scopes);
+        this.noResult = noResult;
     }
 
     @Override
@@ -56,13 +53,12 @@ public final class ExportQuery {
                 Objects.equals(parentAttributes, that.parentAttributes) &&
                 Objects.equals(columns, that.columns) &&
                 Objects.equals(filter, that.filter) &&
-                Objects.equals(sort, that.sort) &&
                 Objects.equals(scopes, that.scopes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, sort, scopes);
+        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, scopes);
     }
 
     @Override
@@ -73,7 +69,6 @@ public final class ExportQuery {
                 .add("columns", columns)
                 .add("filter", filter)
                 .add("includeMetadata", includeMetadata)
-                .add("sort", sort)
                 .add("scopes", scopes)
                 .toString();
     }

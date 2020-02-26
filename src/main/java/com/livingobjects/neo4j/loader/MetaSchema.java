@@ -328,8 +328,12 @@ public final class MetaSchema {
     /**
      * returns a List of all the path possible between the originType and destType. Each path contains a List of all types (in the order from bottom to top) needed to get to destination.
      * If destType is not a parent of originType, this method will always return an empty List
+     * If destType and originType are the same, this method will return a List containing the empty List
      */
     public ImmutableList<ImmutableList<String>> getUpwardPath(String originType, String destType) {
+        if(destType.equals(originType)) {
+            return ImmutableList.of(ImmutableList.of());
+        }
         return ImmutableList.copyOf(getParentRelations()
                 .get(originType)
                 .stream()
