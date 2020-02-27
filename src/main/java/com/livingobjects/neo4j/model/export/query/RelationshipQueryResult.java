@@ -7,13 +7,13 @@ import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 
 /**
- * Represents the result of a single ExportQuery
+ * Represents the result of a single RelationshipQuery
  */
-public class ExportQueryResult {
+public class RelationshipQueryResult {
 
-    public final ImmutableMap<String, Map<String, Object>> result;
+    public final ImmutableMap<String, Object> result;
 
-    public ExportQueryResult(ImmutableMap<String, Map<String, Object>> result) {
+    public RelationshipQueryResult(ImmutableMap<String, Object> result) {
         this.result = result;
     }
 
@@ -21,7 +21,7 @@ public class ExportQueryResult {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        ExportQueryResult that = (ExportQueryResult) o;
+        RelationshipQueryResult that = (RelationshipQueryResult) o;
         return Objects.equal(result, that.result);
     }
 
