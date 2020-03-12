@@ -1,9 +1,9 @@
 package com.livingobjects.neo4j.model.schema;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
 import com.livingobjects.neo4j.model.schema.type.type.CounterType;
-import org.codehaus.jackson.annotate.JsonIgnoreProperties;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 import javax.annotation.Nullable;
 import java.util.Objects;

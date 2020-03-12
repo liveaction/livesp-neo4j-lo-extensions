@@ -1,14 +1,14 @@
 package com.livingobjects.neo4j;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.livingobjects.neo4j.loader.TopologyLoader;
 import com.livingobjects.neo4j.model.iwan.Relationship;
 import com.livingobjects.neo4j.model.iwan.RelationshipStatus;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import org.codehaus.jackson.JsonParser;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

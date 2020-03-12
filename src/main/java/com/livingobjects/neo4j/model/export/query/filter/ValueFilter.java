@@ -1,6 +1,6 @@
 package com.livingobjects.neo4j.model.export.query.filter;
 
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import java.util.Objects;

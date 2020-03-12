@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.schema.planet;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
-import org.codehaus.jackson.annotate.JsonProperty;
 
 import java.util.Set;
 

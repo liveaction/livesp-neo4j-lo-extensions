@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.schema;
 import com.google.common.collect.ImmutableList;
 import com.livingobjects.neo4j.model.schema.planet.PlanetUpdate;
 import com.livingobjects.neo4j.model.schema.update.SchemaUpdate;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import java.util.List;
