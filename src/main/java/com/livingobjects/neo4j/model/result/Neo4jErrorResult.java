@@ -1,6 +1,6 @@
 package com.livingobjects.neo4j.model.result;
 
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public final class Neo4jErrorResult {
 

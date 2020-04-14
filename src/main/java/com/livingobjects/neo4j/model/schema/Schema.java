@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.schema;
 
 import com.google.common.collect.ImmutableMap;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Map;
 

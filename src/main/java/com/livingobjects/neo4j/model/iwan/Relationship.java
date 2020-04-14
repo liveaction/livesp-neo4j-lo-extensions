@@ -2,7 +2,7 @@ package com.livingobjects.neo4j.model.iwan;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableMap;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Map;
 

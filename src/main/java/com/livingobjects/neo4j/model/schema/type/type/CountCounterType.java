@@ -1,7 +1,7 @@
 package com.livingobjects.neo4j.model.schema.type.type;
 
 import com.google.common.base.MoreObjects;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Objects;
 

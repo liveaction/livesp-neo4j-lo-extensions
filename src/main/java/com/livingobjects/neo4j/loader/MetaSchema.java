@@ -3,15 +3,16 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
-import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
-import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -30,7 +31,10 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._DEFAULT_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PARENT;
 import static org.neo4j.graphdb.Direction.INCOMING;
+import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class MetaSchema {
 
@@ -45,6 +49,19 @@ public final class MetaSchema {
     private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
     private final ImmutableMap<String, ImmutableSet<String>> crossAttributesRelations;
 
+    private final ImmutableList<ImmutableList<String>> metaLineages;
+
+    // Comparator for 2 attributes: o1 > o2 => o2 -[:Parent*0..n]-> o1
+    public final Comparator<String> lineageComparator = (o1, o2) -> {
+        if (recursiveLineageComparator(o1, o2)) {
+            return 1;
+        } else if (recursiveLineageComparator(o2, o1)) {
+            return -1;
+        } else {
+            return o1.compareTo(o2);
+        }
+    };
+
     public MetaSchema(GraphDatabaseService graphDb) {
         this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
         Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
@@ -58,8 +75,10 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, Optional<String>> defaultScopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<Node, String> scopesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
+        ImmutableList.Builder<ImmutableList<String>> metaLineagesBuilder = ImmutableList.builder();
+
         graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
-            String keytype = n.getProperty(GraphModelConstants._TYPE).toString();
+            String keytype = n.getProperty(_TYPE).toString();
             String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
             Object requiredProperties = n.getProperty("requiredProperties", new String[0]);
@@ -91,15 +110,20 @@ public final class MetaSchema {
                 }
                 ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
                 ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                n.getRelationships(INCOMING, RelationshipTypes.PARENT).forEach(crels::add);
-                n.getRelationships(Direction.OUTGOING, RelationshipTypes.PARENT).forEach(prels::add);
+                n.getRelationships(INCOMING, PARENT).forEach(crels::add);
+                n.getRelationships(OUTGOING, PARENT).forEach(prels::add);
                 ImmutableSet<String> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
                 if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
-                childrenRelationsBldr.put(key, crels.build());
+                ImmutableList<Relationship> childrenRelations = crels.build();
+                childrenRelationsBldr.put(key, childrenRelations);
                 parentRelationsBldr.put(key, prels.build());
                 crossAttributesRelationsBldr.put(key, crossAttributes);
+
+                if (childrenRelations.isEmpty()) {
+                    metaLineagesBuilder.addAll(generateMetaLineages(n, ImmutableList.of()));
+                }
             }
         });
 
@@ -107,6 +131,7 @@ public final class MetaSchema {
         this.childrenRelations = childrenRelationsBldr.build();
         this.parentRelations = parentRelationsBldr.build();
         this.crossAttributesRelations = crossAttributesRelationsBldr.build();
+        this.metaLineages = metaLineagesBuilder.build();
 
         ImmutableMap<Node, String> scopes = scopesBldr.build();
         for (Map.Entry<String, Node> attributeNodeEntry : importableKeyTypesBldr.build().entrySet()) {
@@ -124,6 +149,29 @@ public final class MetaSchema {
 
         this.requiredProperties = requiredPropertiesBldr.build();
         this.defaultScopes = defaultScopesBldr.build();
+    }
+
+    /**
+     * Generates all lineages for the given node
+     */
+    private ImmutableList<ImmutableList<String>> generateMetaLineages(Node current, ImmutableList<String> previous) {
+        String key = current.getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + current.getProperty(NAME).toString();
+        ImmutableList.Builder<ImmutableList<String>> builder = ImmutableList.builder();
+//        ImmutableList<String> currentLineage = ImmutableList.<String>builder()
+//                .addAll(previous)
+//                .add(key)
+//                .build();
+        List<Relationship> relationships = Lists.newArrayList(current.getRelationships(OUTGOING, PARENT));
+
+        if(relationships.isEmpty()) {
+            builder.add(ImmutableList.of(key));
+        } else {
+            relationships.forEach(r -> builder.addAll(generateMetaLineages(r.getEndNode(), null)
+                    .stream()
+                    .map(list -> ImmutableList.<String>builder().add(key).addAll(list).build())
+                    .collect(Collectors.toList())));
+        }
+        return builder.build();
     }
 
     public ImmutableSet<String> getScopeTypes() {
@@ -216,7 +264,7 @@ public final class MetaSchema {
     }
 
     private String getKeyAttribute(Node node) {
-        return node.getProperty(GraphModelConstants._TYPE).toString() + KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
+        return node.getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
     public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
@@ -245,5 +293,22 @@ public final class MetaSchema {
 
     public Optional<String> getDefaultScope(String keyAttribute) {
         return defaultScopes.get(keyAttribute);
+    }
+
+    public ImmutableList<ImmutableList<String>> getMetaLineagesForType(String type) {
+        List<ImmutableList<String>> result = metaLineages.stream()
+                .filter(lineage -> lineage.contains(type))
+                .collect(Collectors.toList());
+        return ImmutableList.copyOf(result);
+    }
+
+    private boolean recursiveLineageComparator(String o1, String o2) {
+        if (getMonoParentRelations(o1)
+                .anyMatch(o2::equals)) {
+            return true;
+        } else {
+            return getMonoParentRelations(o1)
+                    .anyMatch(s -> recursiveLineageComparator(s, o2));
+        }
     }
 }

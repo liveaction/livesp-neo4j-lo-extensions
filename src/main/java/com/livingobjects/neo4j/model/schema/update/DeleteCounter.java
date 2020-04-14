@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.schema.update;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.livingobjects.neo4j.model.schema.RealmPathSegment;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 

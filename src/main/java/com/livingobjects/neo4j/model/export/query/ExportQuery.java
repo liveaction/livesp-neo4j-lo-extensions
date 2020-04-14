@@ -5,7 +5,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.export.query.filter.Filter;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -23,12 +23,14 @@ public final class ExportQuery {
     public final ImmutableMap<String, Set<String>> columns;
     // Filter on the attribute (required, parent, or not requested) columns (by default, all filters are linked by AND operator)
     public final Filter<Column> filter;
-    // true if you need metadata : tag, createdAt, createdBy, updatedAt, updatedBy
+    // true if you need metadata: tag, createdAt, createdBy, updatedAt, updatedBy
     public final boolean includeMetadata;
     // sort the elements
     public final ImmutableList<ColumnOrder> sort;
-    // pagination (/!\ : not the same as the Pagination in longback-commons)
+    // pagination (/!\: not the same as the Pagination in longback-commons)
     public final Optional<Pagination> pagination;
+    // scopes of the query (values can be <client_id>, global or sp). Allows filtering by planets
+    public final ImmutableSet<String> scopes;
 
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                        @JsonProperty("parentAttributes") List<String> parentAttributes,
@@ -36,7 +38,8 @@ public final class ExportQuery {
                        @JsonProperty("filter") Filter<Column> filter,
                        @JsonProperty("includeMetadata") boolean includeMetadata,
                        @JsonProperty("sort") List<ColumnOrder> sort,
-                       @JsonProperty("pagination") @Nullable Pagination pagination) {
+                       @JsonProperty("pagination") @Nullable Pagination pagination,
+                       @JsonProperty("scopes") Set<String> scopes) {
         this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
         this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
         this.columns = ImmutableMap.copyOf(columns);
@@ -44,6 +47,7 @@ public final class ExportQuery {
         this.includeMetadata = includeMetadata;
         this.sort = ImmutableList.copyOf(sort);
         this.pagination = Optional.ofNullable(pagination);
+        this.scopes = ImmutableSet.copyOf(scopes);
     }
 
     @Override
@@ -57,12 +61,13 @@ public final class ExportQuery {
                 Objects.equals(columns, that.columns) &&
                 Objects.equals(filter, that.filter) &&
                 Objects.equals(sort, that.sort) &&
+                Objects.equals(scopes, that.scopes) &&
                 Objects.equals(pagination, that.pagination);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, sort, pagination);
+        return Objects.hash(requiredAttributes, parentAttributes, columns, filter, includeMetadata, sort, pagination, scopes);
     }
 
     @Override
@@ -75,6 +80,7 @@ public final class ExportQuery {
                 .add("includeMetadata", includeMetadata)
                 .add("sort", sort)
                 .add("pagination", pagination)
+                .add("scopes", scopes)
                 .toString();
     }
 

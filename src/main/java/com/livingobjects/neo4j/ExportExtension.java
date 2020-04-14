@@ -3,6 +3,8 @@ package com.livingobjects.neo4j;
 import com.davfx.ninio.csv.AutoCloseableCsvWriter;
 import com.davfx.ninio.csv.Csv;
 import com.davfx.ninio.csv.CsvWriter;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
@@ -23,8 +25,6 @@ import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +48,9 @@ import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
+import static org.neo4j.graphdb.Direction.INCOMING;
+import static org.neo4j.graphdb.Direction.OUTGOING;
 
 @Path("/export")
 public final class ExportExtension {
@@ -75,6 +78,7 @@ public final class ExportExtension {
     @GET
     @Path("/properties")
     public Response exportProperties() throws IOException {
+        LOGGER.info("test");
         try (Transaction ignored = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
             graphDb.findNodes(Labels.ELEMENT)
@@ -119,6 +123,7 @@ public final class ExportExtension {
                 stream = outputStream -> exportAsJson(lineages, outputStream);
                 mediatype = MediaType.APPLICATION_JSON_TYPE;
             }
+
             return Response.ok()
                     .header("Content-Range", "" + lineages.start() + '-' + lineages.end() + '/' + lineages.total())
                     .entity(stream)
@@ -163,11 +168,23 @@ public final class ExportExtension {
         return csv;
     }
 
-    private PaginatedLineages paginate(Lineages lineages, List<FilteredLineage> filteredLineages, Optional<Pagination> pagination) {
+    private PaginatedLineages paginate(Lineages lineages, List<Lineage> filteredLineages, Optional<Pagination> pagination) {
         int end = pagination
                 .map(p -> Math.min(p.offset + p.limit, filteredLineages.size()))
                 .orElse(filteredLineages.size());
         return new PaginatedLineages() {
+
+            private List<Lineage> lineages() {
+                return pagination
+                        .map(p -> filteredLineages.subList(p.offset, end))
+                        .orElse(filteredLineages);
+            }
+
+            @Override
+            public void init() {
+                lineages().forEach(lineage -> initializePropertiesList(lineages, lineage));
+                lineages().forEach(lineage -> initializePropertiesToExport(lineages, lineage));
+            }
 
             @Override
             public ImmutableSet<String> attributesToExport() {
@@ -180,10 +197,11 @@ public final class ExportExtension {
             }
 
             @Override
-            public List<FilteredLineage> lineages() {
-                return pagination
-                        .map(p -> filteredLineages.subList(p.offset, end))
-                        .orElse(filteredLineages);
+            public List<FilteredLineage> filteredLineages() {
+                return lineages()
+                        .stream()
+                        .map(lineage -> new FilteredLineage(ImmutableMap.copyOf(lineage.propertiesToExportByType)))
+                        .collect(Collectors.toList());
             }
 
             @Override
@@ -205,18 +223,50 @@ public final class ExportExtension {
         };
     }
 
+    /**
+     * Adds to lineages.propertiesTypeByType all the properties from given lineage
+     */
+    private void initializePropertiesList(Lineages lineages, Lineage lineage) {
+        for (String keyAttribute : lineages.attributesToExport) {
+            SortedMap<String, String> propertiesType = lineages.getKeyAttributePropertiesType(keyAttribute);
+            lineages.getPropertiesToExport(keyAttribute)
+                    .map(elements -> (List<String>) Lists.newArrayList(elements))
+                    .orElseGet(() -> lineage.getAllPropertiesForType(keyAttribute))
+                    .stream()
+                    .filter(property -> !lineages.ignoreProperty(property) && lineages.filterColumn(keyAttribute, property))
+                    .forEach(property -> propertiesType.putIfAbsent(property, PropertyConverter.getPropertyType(property)));
+        }
+    }
+
+    /**
+     * Fills lineage.propertiesToExportByType with all the properties to export from this lineage
+     */
+    private void initializePropertiesToExport(Lineages lineages, Lineage lineage) {
+        for (String keyAttribute : lineages.attributesToExport) {
+            Map<String, Object> values = lineage.propertiesToExportByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+            List<String> propertiesToExport = Lists.newArrayList(lineages.propertiesTypeByType.get(keyAttribute).keySet());
+            for (String property : propertiesToExport) {
+                if (!lineages.ignoreProperty(property)) {
+                    values.put(property, lineage.getProperty(keyAttribute, property));
+                }
+            }
+        }
+    }
+
     private PaginatedLineages extract(ExportQuery exportQuery) {
         try (Transaction ignored = graphDb.beginTx()) {
             Lineages lineages = exportLineages(exportQuery);
-            List<FilteredLineage> filteredLineages = filter(exportQuery, lineages);
-            return paginate(lineages, filteredLineages, exportQuery.pagination);
+            List<Lineage> filteredLineages = filter(exportQuery, lineages);
+            PaginatedLineages paginate = paginate(lineages, filteredLineages, exportQuery.pagination);
+            paginate.init();
+            return paginate;
         }
     }
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             // If there is no lineage to write, don't even write the headers
-            if (paginatedLineages.lineages().size() > 0) {
+            if (paginatedLineages.filteredLineages().size() > 0) {
                 String[] headers = generateCSVHeader(paginatedLineages);
                 if (headers.length > 0) {
                     try (CsvWriter.Line headerLine = csv.line()) {
@@ -225,8 +275,8 @@ public final class ExportExtension {
                         }
                     }
                 }
-                for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
-                    writeCSVLine(filteredLineage, csv);
+                for (FilteredLineage lineage : paginatedLineages.filteredLineages()) {
+                    writeCSVLine(lineage, csv);
                 }
             }
         } catch (IOException e) {
@@ -234,19 +284,19 @@ public final class ExportExtension {
         }
     }
 
-    private List<FilteredLineage> filter(ExportQuery exportQuery, Lineages lineages) {
-        return ImmutableList.copyOf(lineages.lineages.stream()
+    private List<Lineage> filter(ExportQuery exportQuery, Lineages lineages) {
+        return ImmutableList.copyOf(lineages.lineages().stream()
                 .map(lineage -> filterLineage(exportQuery, lineages, lineage))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-                .map(FilteredLineage::new)
+                .sorted(lineages.lineageSortComparator)
                 .collect(Collectors.toList()));
     }
 
     private void exportAsJson(PaginatedLineages paginatedLineages, OutputStream outputStream) {
         try {
-            for (FilteredLineage filteredLineage : paginatedLineages.lineages()) {
-                String s = JSON_MAPPER.writeValueAsString(filteredLineage.properties);
+            for (FilteredLineage lineage : paginatedLineages.filteredLineages()) {
+                String s = JSON_MAPPER.writeValueAsString(lineage.properties);
                 outputStream.write(s.getBytes(UTF_8));
                 outputStream.write('\n');
             }
@@ -262,7 +312,17 @@ public final class ExportExtension {
     }
 
     private Lineages exportLineages(ExportQuery exportQuery) {
-        Lineages lineages = initLineages(exportQuery);
+        ImmutableSet<String> requiredCommonChildren = getCommonChildren(exportQuery.requiredAttributes);
+        ImmutableSet<String> filterCommonChildren = Sets.cartesianProduct(exportQuery.requiredAttributes, exportQuery.filter.columns()
+                .stream()
+                .map(c -> c.keyAttribute)
+                .collect(Collectors.toSet()))
+                .stream()
+                .map(ImmutableSet::copyOf)
+                .map(this::getCommonChildren)
+                .reduce((set, set2) -> Sets.union(set, set2).immutableCopy())
+                .orElseGet(ImmutableSet::of);
+        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy());
         if (!lineages.attributesToExport.isEmpty()) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
                 getNodeIterator(leafAttribute, exportQuery).forEach(leaf -> {
@@ -281,32 +341,125 @@ public final class ExportExtension {
         return lineages;
     }
 
+    /**
+     * For a set of types, gives their common children of higher rank. If a common child has childs himself, those won't be returned
+     */
+    private ImmutableSet<String> getCommonChildren(ImmutableSet<String> types) {
+        List<ImmutableSet<ImmutableList<String>>> allLineages = types.stream()
+                .map(type -> metaSchema.getMetaLineagesForType(type)
+                        .stream()
+                        .map(lineage -> lineage.subList(0, lineage.indexOf(type) + 1))
+                        .collect(Collectors.toList()))
+                .map(ImmutableSet::copyOf)
+                .collect(Collectors.toList());
+        HashSet<String> result = Sets.cartesianProduct(allLineages).stream()
+                .map(ImmutableSet::copyOf)
+                .map(lineages -> lineages.stream()
+                        .reduce((attrs1, attrs2) -> ImmutableList.copyOf(Sets.intersection(new HashSet<>(attrs1), new HashSet<>(attrs2)).immutableCopy()))
+                        .orElseGet(ImmutableList::of))
+                .flatMap(Collection::stream)
+                .distinct() // all distinct common elements
+                .reduce(new HashSet<>(), (uniqueChilds, currentChild) -> {
+                            boolean match = false;
+                            ImmutableList<ImmutableList<String>> metaLineagesForType = metaSchema.getMetaLineagesForType(currentChild);
+                            for (ImmutableList<String> lineage : metaLineagesForType) {
+                                for (String child : uniqueChilds) {
+                                    if (lineage.contains(child)) {
+                                        match = true;
+                                        if (lineage.indexOf(currentChild) > lineage.indexOf(child)) {
+                                            uniqueChilds.remove(child);
+                                            uniqueChilds.add(currentChild);
+                                        }
+                                    }
+                                }
+                            }
+                            if (!match) {
+                                uniqueChilds.add(currentChild);
+                            }
+                            return uniqueChilds;
+                        },
+                        (strings, strings2) -> {
+                            throw new UnsupportedOperationException("Merging of sets is not allowed for this reduction");
+                        });
+        return ImmutableSet.copyOf(result);
+    }
+
     private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
-        Set<String> scopes = exportQuery.filter.columnsFilters().stream()
-                .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
-                .filter(columnFilter -> columnFilter.column.property.equals(ID))
-                .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
-                        !columnFilter.valueFilter.not)
-                .map(columnFilter -> columnFilter.valueFilter.value.toString())
-                .collect(Collectors.toSet());
+        Set<String> initScopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
+                exportQuery.filter.columnsFilters().stream()
+                        .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
+                        .filter(columnFilter -> columnFilter.column.property.equals(ID))
+                        .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
+                                !columnFilter.valueFilter.not)
+                        .map(columnFilter -> columnFilter.valueFilter.value.toString())
+                        .collect(Collectors.toSet());
+        ImmutableSet<String> scopes = getApplicableScopes(initScopes);
+
         if (scopes.isEmpty()) {
             return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
-            return scopes.stream()
-                    .flatMap(scopeId -> {
-                        PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
-                        return planetByContext.allPlanets().stream()
-                                .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
-                                .filter(Objects::nonNull)
-                                .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
-                                        .map(Relationship::getStartNode));
-
-                    });
+            if (metaSchema.isOverridable(leafAttribute)) {
+                List<Node> authorizedPlanets = scopes.stream()
+                        .flatMap(scopeId -> {
+                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
+                            List<String> possibleScopes;
+                            if (scopeId.equals(GLOBAL_SCOPE.id)) {
+                                possibleScopes = Lists.newArrayList(GLOBAL_SCOPE.id);
+                            } else if (scopeId.equals(SP_SCOPE.id)) {
+                                possibleScopes = Lists.newArrayList(SP_SCOPE.id, GLOBAL_SCOPE.id);
+                            } else {
+                                possibleScopes = Lists.newArrayList(scopeId, SP_SCOPE.id, GLOBAL_SCOPE.id);
+                            }
+                            return possibleScopes.stream()
+                                    .flatMap(scope -> planetByContext.allPlanets().stream()
+                                            .map(planetTemplate -> planetFactory.get(planetTemplate, scope))
+                                            .filter(Objects::nonNull));
+                        }).collect(Collectors.toList());
+                return authorizedPlanets.stream()
+                        .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(Direction.INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
+                                .map(Relationship::getStartNode)) // All nodes which do not extend another
+                        .map(node -> getOverridingNode(node, authorizedPlanets));
+            } else {
+                return scopes.stream()
+                        .flatMap(scopeId -> {
+                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
+                            return planetByContext.allPlanets().stream()
+                                    .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                    .filter(Objects::nonNull)
+                                    .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
+                                            .map(Relationship::getStartNode))
+                                    .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext());
+                        });
+            }
         }
     }
 
-    private Lineages initLineages(ExportQuery exportQuery) {
-        return new Lineages(metaSchema, exportQuery);
+    /**
+     * Gets all the scopes applicable to the given set of scopes.
+     * If scopes contains at least one client Scope, return all scopes, plus SP and GLOBAL
+     * If scopes contains SP, return SP and GLOBAL
+     * If scope only contains GLOBAL, return GLOBAL
+     */
+    private ImmutableSet<String> getApplicableScopes(Set<String> initialScopes) {
+        if(initialScopes.isEmpty()) {
+            return ImmutableSet.of();
+        }
+        return initialScopes.contains(GLOBAL_SCOPE.id) && initialScopes.size() == 1 ?
+                ImmutableSet.copyOf(initialScopes) :
+                ImmutableSet.<String>builder().addAll(initialScopes).add(SP_SCOPE.id, GLOBAL_SCOPE.id).build();
+    }
+
+    private Node getOverridingNode(Node element, List<Node> authorizedPlanets) {
+        return StreamSupport.stream(element.getRelationships(INCOMING, EXTEND).spliterator(), false)
+                .map(Relationship::getStartNode)
+                .filter(node -> authorizedPlanets.contains(Lists.newArrayList(node.getRelationships(OUTGOING, ATTRIBUTE)).get(0).getEndNode()))
+                .findAny()
+                .map(node -> getOverridingNode(node, authorizedPlanets))
+                .orElse(element);
+    }
+
+    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren) {
+        return new Lineages(metaSchema, exportQuery, commonChildren);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {
@@ -314,8 +467,11 @@ public final class ExportExtension {
         if (lineages.attributesToExtract.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
         }
-        lineages.markAsVisited(type, currentNode);
-        Iterable<Relationship> parentRelationships = currentNode.getRelationships(Direction.OUTGOING, RelationshipTypes.CONNECT);
+        lineages.markAsVisited(currentNode);
+        if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
+            return;
+        }
+        Iterable<Relationship> parentRelationships = currentNode.getRelationships(OUTGOING, CONNECT);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
             String parentType = parentNode.getProperty(_TYPE, "").toString();
@@ -343,17 +499,19 @@ public final class ExportExtension {
         }
     }
 
-    private Optional<ImmutableMap<String, Map<String, Object>>> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
+    /**
+     * @return the Lineage given as input if it matches the filters, empty otherwise.
+     */
+    private Optional<Lineage> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         int missingRequired = 0;
         boolean filtered = exportQuery.filter
                 .test(column -> {
                     Node node = lineage.nodesByType.get(column.keyAttribute);
-                    return node != null ? node.getProperty(column.property, null) : null;
+                    return node != null ? lineage.getProperty(column.keyAttribute, column.property) : null;
                 });
         if (!filtered) {
             return Optional.empty();
         }
-        Map<String, Map<String, Object>> map = Maps.newLinkedHashMap();
         for (String attribute : lineages.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
             if (node == null) {
@@ -364,25 +522,8 @@ public final class ExportExtension {
                     }
                 }
             }
-            map.put(attribute, getProperties(lineages, lineage, node, attribute));
         }
-        return Optional.of(ImmutableMap.copyOf(map));
-    }
-
-    private Map<String, Object> getProperties(Lineages lineages, Lineage lineage, Node node, String keyAttribute) {
-        Map<String, Object> values = Maps.newLinkedHashMap();
-        SortedMap<String, String> properties = lineages.propertiesTypeByType.get(keyAttribute);
-        if (node == null) {
-            if (properties != null) {
-                properties.keySet().forEach(property -> values.put(property, null));
-            }
-        } else if (properties != null) {
-            for (String property : properties.keySet()) {
-                Object propertyValue = lineage.getProperty(node, property);
-                values.put(property, propertyValue);
-            }
-        }
-        return values;
+        return Optional.of(lineage);
     }
 
     private String[] generateCSVHeader(PaginatedLineages lineages) {
@@ -409,11 +550,13 @@ public final class ExportExtension {
 
     public interface PaginatedLineages {
 
+        void init();
+
         ImmutableSet<String> attributesToExport();
 
         Map<String, SortedMap<String, String>> header();
 
-        List<FilteredLineage> lineages();
+        List<FilteredLineage> filteredLineages();
 
         int start();
 
