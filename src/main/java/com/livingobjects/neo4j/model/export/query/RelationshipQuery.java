@@ -3,7 +3,7 @@ package com.livingobjects.neo4j.model.export.query;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
-import org.codehaus.jackson.annotate.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.neo4j.graphdb.Direction;
 
 import java.util.List;
