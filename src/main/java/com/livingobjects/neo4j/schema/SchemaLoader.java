@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j.schema;
 
+import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -41,7 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
@@ -85,11 +85,11 @@ public final class SchemaLoader {
     }
 
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
-        return lockAndWriteSchema(() -> {
+        return lockAndWriteSchema(tx -> {
 
-            boolean modified = migrateSchemas(schemaAndPlanetsUpdate.schemaUpdates, schemaAndPlanetsUpdate.version);
+            boolean modified = migrateSchemas(schemaAndPlanetsUpdate.schemaUpdates, schemaAndPlanetsUpdate.version, tx);
 
-            migratePlanets(schemaAndPlanetsUpdate.planetUpdates);
+            migratePlanets(schemaAndPlanetsUpdate.planetUpdates, tx);
 
             return modified;
 
@@ -97,7 +97,7 @@ public final class SchemaLoader {
     }
 
     public boolean load(SchemaAndPlanets schemaAndPlanets) {
-        return lockAndWriteSchema(() -> {
+        return lockAndWriteSchema(tx -> {
             ManagedSchema managedSchema = ManagedSchema.fullyManaged(schemaAndPlanets.schema);
             ImmutableList<PlanetUpdate> planetUpdate = schemaAndPlanets.planetMigrations;
             UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaAndPlanets.schema.id);
@@ -111,11 +111,11 @@ public final class SchemaLoader {
                 }
             }
 
-            ImmutableSet<Node> realmTemplates = createRealmTemplates(managedSchema);
+            ImmutableSet<Node> realmTemplates = createRealmTemplates(managedSchema, tx);
 
             RelationshipUtils.replaceRelationships(OUTGOING, schemaNode.entity, RelationshipTypes.PROVIDED, realmTemplates);
 
-            migratePlanets(planetUpdate);
+            migratePlanets(planetUpdate, tx);
 
             return true;
         });
@@ -207,21 +207,21 @@ public final class SchemaLoader {
         return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren, managedMemdexPath.topCount);
     }
 
-    private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version) {
+    private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version, Transaction tx) {
         boolean modified = false;
         for (SchemaUpdate schemaUpdate : schemaUpdates) {
-            if (applySchemaUpdate(schemaUpdate, version)) {
+            if (applySchemaUpdate(schemaUpdate, version, tx)) {
                 modified = true;
             }
         }
         return modified;
     }
 
-    private boolean applySchemaUpdate(SchemaUpdate schemaUpdate, String version) {
-        return schemaUpdate.visit(new SchemaUpdate.SchemaUpdateVisitor<Boolean>() {
+    private boolean applySchemaUpdate(SchemaUpdate schemaUpdate, String version, Transaction tx) {
+        return schemaUpdate.visit(new SchemaUpdate.SchemaUpdateVisitor<>() {
             @Override
             public Boolean appendCounter(String schema, String realmTemplate, ImmutableSet<String> attributes, ImmutableList<RealmPathSegment> realmPath, CounterNode counter) {
-                return appendCounterToSchema(schema, realmTemplate, attributes, realmPath, counter, version);
+                return appendCounterToSchema(schema, realmTemplate, attributes, realmPath, counter, version, tx);
             }
 
             @Override
@@ -342,7 +342,8 @@ public final class SchemaLoader {
                                           ImmutableSet<String> attributes,
                                           ImmutableList<RealmPathSegment> realmPath,
                                           CounterNode counter,
-                                          String version) {
+                                          String version,
+                                          Transaction tx) {
         boolean modified = false;
 
         UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
@@ -382,7 +383,7 @@ public final class SchemaLoader {
 
             Relationship firstLevel = realmTemplateEntity.entity.getSingleRelationship(MEMDEXPATH, OUTGOING);
             if (firstLevel == null) {
-                if (mergeRealmPath(realmTemplate, realmTemplateEntity.entity, rootSegment, tailPath, counter)) {
+                if (mergeRealmPath(realmTemplate, realmTemplateEntity.entity, rootSegment, tailPath, counter, tx)) {
                     modified = true;
                 }
             } else {
@@ -391,7 +392,7 @@ public final class SchemaLoader {
                 Object existingPath = firstSegment.getProperty(PATH);
 
                 if (existingPath.equals(rootSegment.path)) {
-                    if (updateRealmPath(realmTemplate, rootSegment, tailPath, counter, firstSegment)) {
+                    if (updateRealmPath(realmTemplate, rootSegment, tailPath, counter, firstSegment, tx)) {
                         modified = true;
                     }
                 } else {
@@ -401,7 +402,7 @@ public final class SchemaLoader {
         }
 
         if (realmTemplateEntity.wasCreated || moveRealm) {
-            for (Relationship relationship : realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING)) {
+            for (Relationship relationship : realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED)) {
                 relationship.delete();
             }
             schemaNode.entity.createRelationshipTo(realmTemplateEntity.entity, PROVIDED);
@@ -424,7 +425,7 @@ public final class SchemaLoader {
         return RelationshipUtils.replaceRelationships(OUTGOING, realmTemplateEntity.entity, ATTRIBUTE, attributeNodeFactory, attributesMatchProperties);
     }
 
-    private void migratePlanets(ImmutableList<PlanetUpdate> planets) {
+    private void migratePlanets(ImmutableList<PlanetUpdate> planets, Transaction tx) {
         ImmutableList<PlanetUpdate> migrations = ImmutableList.copyOf(planets.stream()
                 .filter(pU -> pU.planetUpdateStatus != UPDATE)
                 .collect(toList()));
@@ -445,7 +446,7 @@ public final class SchemaLoader {
         ImmutableSet<PlanetNode> createdPlanets = ImmutableSet.copyOf(Sets.difference(allNewPlanets, allOldPlanets));
         ImmutableSet<PlanetNode> deletedPlanets = ImmutableSet.copyOf(allDeletedPlanets);
         List<Scope> scopes = Lists.newArrayList();
-        graphDb.findNodes(Labels.SCOPE).forEachRemaining(node ->
+        tx.findNodes(Labels.SCOPE).forEachRemaining(node ->
                 scopes.add(new Scope(Optional.ofNullable(node.getProperty(ID, null))
                         .orElseGet(() -> node.getProperty(NAME)).toString(),
                         node.getProperty(TAG).toString())));
@@ -566,7 +567,7 @@ public final class SchemaLoader {
         return Optional.ofNullable(planetFactory.get(planetTemplateName, scope));
     }
 
-    private ImmutableSet<Node> createRealmTemplates(ManagedSchema managedSchema) {
+    private ImmutableSet<Node> createRealmTemplates(ManagedSchema managedSchema, Transaction tx) {
         Set<Node> realmTemplates = Sets.newLinkedHashSet();
         for (RealmNode realmNodeEntry : managedSchema.realms.values()) {
             String realm = realmNodeEntry.name;
@@ -574,10 +575,10 @@ public final class SchemaLoader {
 
             if (!realmTemplateEntity.wasCreated) {
                 deleteRealm(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
-                realmTemplateEntity.entity.getRelationships(PROVIDED, INCOMING).forEach(Relationship::delete);
+                realmTemplateEntity.entity.getRelationships(INCOMING, PROVIDED).forEach(Relationship::delete);
             }
 
-            createRealm(realmTemplateEntity, realmNodeEntry, managedSchema);
+            createRealm(realmTemplateEntity, realmNodeEntry, managedSchema, tx);
 
             realmTemplates.add(realmTemplateEntity.entity);
         }
@@ -588,7 +589,8 @@ public final class SchemaLoader {
                                    Node parentNode,
                                    RealmPathSegment segment,
                                    ImmutableList<RealmPathSegment> tail,
-                                   CounterNode counter) {
+                                   CounterNode counter,
+                                   Transaction tx) {
         boolean modified = false;
 
         Node segmentNode = null;
@@ -601,13 +603,13 @@ public final class SchemaLoader {
             }
         }
         if (segmentNode == null) {
-            segmentNode = graphDb.createNode(Labels.SEGMENT);
-            segmentNode.setProperty(PATH, segment.path);
-            parentNode.createRelationshipTo(segmentNode, MEMDEXPATH);
+                segmentNode = tx.createNode(Labels.SEGMENT);
+                segmentNode.setProperty(PATH, segment.path);
+                parentNode.createRelationshipTo(segmentNode, MEMDEXPATH);
             modified = true;
         }
 
-        if (updateRealmPath(realmTemplate, segment, tail, counter, segmentNode)) {
+        if (updateRealmPath(realmTemplate, segment, tail, counter, segmentNode, tx)) {
             modified = true;
         }
 
@@ -618,7 +620,8 @@ public final class SchemaLoader {
                                     RealmPathSegment segment,
                                     ImmutableList<RealmPathSegment> tail,
                                     CounterNode counter,
-                                    Node segmentNode) {
+                                    Node segmentNode,
+                                    Transaction tx) {
         boolean modified = false;
 
         if (replaceAttributesRelationships(ImmutableSet.of(segment.keyAttribute), segmentNode)) {
@@ -630,21 +633,21 @@ public final class SchemaLoader {
                 modified = true;
             }
         } else {
-            if (mergeRealmPath(realmTemplate, segmentNode, tail.get(0), tail.subList(1, tail.size()), counter)) {
+            if (mergeRealmPath(realmTemplate, segmentNode, tail.get(0), tail.subList(1, tail.size()), counter, tx)) {
                 modified = true;
             }
         }
         return modified;
     }
 
-    private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ManagedSchema managedSchema) {
+    private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ManagedSchema managedSchema, Transaction tx) {
         replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
-        Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, managedSchema);
+        Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, managedSchema, tx);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
     }
 
-    private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ManagedSchema managedSchema) {
-        Node segmentNode = graphDb.createNode(Labels.SEGMENT);
+    private Node createMemdexTree(String realmTemplate, MemdexPathNode memdexPathNode, ManagedSchema managedSchema, Transaction tx) {
+        Node segmentNode = tx.createNode(Labels.SEGMENT);
         segmentNode.setProperty(PATH, memdexPathNode.segment);
         if (memdexPathNode.topCount != null) {
             segmentNode.setProperty("topCount", memdexPathNode.topCount);
@@ -672,7 +675,7 @@ public final class SchemaLoader {
         }
 
         for (MemdexPathNode child : memdexPathNode.children) {
-            Node childNode = createMemdexTree(realmTemplate, child, managedSchema);
+            Node childNode = createMemdexTree(realmTemplate, child, managedSchema, tx);
             segmentNode.createRelationshipTo(childNode, MEMDEXPATH);
         }
 
@@ -845,12 +848,12 @@ public final class SchemaLoader {
         }
     }
 
-    private <T> T lockAndWriteSchema(Callable<T> schemaModification) {
+    private <T> T lockAndWriteSchema(Function<Transaction, T> schemaModification) {
         try {
             schemaLock.lock();
             try (Transaction tx = graphDb.beginTx()) {
-                T result = schemaModification.call();
-                tx.success();
+                T result = schemaModification.apply(tx);
+                tx.commit();
                 return result;
             }
         } catch (Throwable e) {

@@ -6,8 +6,10 @@ import com.google.common.reflect.ClassPath;
 import com.google.common.reflect.ClassPath.ResourceInfo;
 import org.apache.commons.io.IOUtils;
 import org.junit.rules.ExternalResource;
+import org.neo4j.dbms.api.DatabaseManagementService;
+import org.neo4j.dbms.api.DatabaseManagementServiceBuilder;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.factory.GraphDatabaseFactory;
+import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +23,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -29,15 +30,14 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.fail;
+import static org.neo4j.configuration.GraphDatabaseSettings.DEFAULT_DATABASE_NAME;
 
 @SuppressWarnings("deprecation")
 public class WithNeo4jImpermanentDatabase extends ExternalResource {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WithNeo4jImpermanentDatabase.class);
-    private static final int RANDOM_PORTS_LOWER_BOUND = 9200;
-    private static final int RANDOM_PORTS_COUNT = 50000;
-    private static final String NEO4J_EMBEDDED_HOST = "127.0.0.1";
 
+    private DatabaseManagementService databaseManagementService;
     private GraphDatabaseService db;
 
     //private WrappingNeoServerBootstrapper neoServerBootstrapper;
@@ -138,49 +138,9 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 //        SLF4JBridgeHandler.removeHandlersForRootLogger();
 //        SLF4JBridgeHandler.install();
 
-        Map<String, String> config = new HashMap<>();
-        //config.put(ServerSettings.awebserver_address.name(), NEO4J_EMBEDDED_HOST);
-        //config.put(ServerSettings.webserver_port.name(), Integer.toString(port));
-        //config.put(ServerSettings.auth_enabled.name(), Boolean.toString(false));
-        //config.put(ServerSettings.http_logging_enabled.name(), Boolean.toString(false));
-
-        db = new GraphDatabaseFactory()
-                .newEmbeddedDatabaseBuilder(Files.createTempDirectory("neo4j-test-db").toFile())
-                .setConfig(config).newGraphDatabase();
-
-        /*db = new TestGraphDatabaseFactory().newImpermanentDatabase();
-
-        boolean available = db.isAvailable(5000);
-        assert available;
-
-        int start = -1;
-        Random random = new Random();
-        while (start != 0) {
-            int port = RANDOM_PORTS_LOWER_BOUND + random.nextInt(RANDOM_PORTS_COUNT);
-            try {
-                Map<String, String> config = new HashMap<>();
-                config.put(ServerSettings.webserver_address.name(), NEO4J_EMBEDDED_HOST);
-                config.put(ServerSettings.webserver_port.name(), Integer.toString(port));
-                config.put(ServerSettings.auth_enabled.name(), Boolean.toString(false));
-                config.put(ServerSettings.http_logging_enabled.name(), Boolean.toString(false));
-                ConfigWrappingConfigurator confBuilder = new ConfigWrappingConfigurator(new Config(config));
-
-                neoServerBootstrapper = new WrappingNeoServerBootstrapper((GraphDatabaseAPI) db, confBuilder);
-                start = neoServerBootstrapper.start(null);
-                new GraphDatabaseFactory()
-                        .newEmbeddedDatabaseBuilder(testDirectory.graphDbDir())
-                java.util.logging.Logger l0 = java.util.logging.Logger.getLogger("");
-                l0.removeHandler(l0.getHandlers()[0]);
-                l0.setLevel(Level.OFF);
-            } catch (Exception e) {
-                start = -1;
-            }
-        }
-
-        // Pas bien
-        Field log = Bootstrapper.class.getDeclaredField("log");
-        log.setAccessible(true);
-        log.set(neoServerBootstrapper, NullLog.getInstance());*/
+        databaseManagementService = new DatabaseManagementServiceBuilder(Files.createTempDirectory("neo4j-test-db").toFile())
+                .build();
+        db = databaseManagementService.database(DEFAULT_DATABASE_NAME);
 
         LOGGER.debug("Graph database started.");
         initializeDatabase();
@@ -190,20 +150,22 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
         if (cypherStream.isPresent()) {
             cyphers.add(loadCqlFromInputStream(cypherStream.get()));
         }
-
         long start = System.currentTimeMillis();
-        for (String q : cyphers) {
-            String[] distinctQueries = q.split(";");
-            for (String query : distinctQueries) {
-                if (!query.trim().isEmpty()) {
-                    try {
-                        db.execute(query);
-                    } catch (Exception e) {
-                        LOGGER.error("{}: {}\n{}\n", e.getClass(), e.getLocalizedMessage(), query);
-                        throw e;
+        try (Transaction tx = db.beginTx()) {
+            for (String q : cyphers) {
+                String[] distinctQueries = q.split(";");
+                for (String query : distinctQueries) {
+                    if (!query.trim().isEmpty()) {
+                        try {
+                            tx.execute(query);
+                        } catch (Exception e) {
+                            LOGGER.error("{}: {}\n{}\n", e.getClass(), e.getLocalizedMessage(), query);
+                            throw e;
+                        }
                     }
                 }
             }
+            tx.commit();
         }
         LOGGER.debug("Graph database initialized with fixtures in {}s.", (System.currentTimeMillis() - start) / 1000);
     }
@@ -217,7 +179,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
     @Override
     public void after() {
         //neoServerBootstrapper.stop();
-        db.shutdown();
+        databaseManagementService.shutdown();
         cypherStream.ifPresent(cs -> {
             try {
                 cs.close();
@@ -227,7 +189,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
         super.after();
     }
 
-    public static String[] osgiSystemPackages() {
+    public static String[] éosgiSystemPackages() {
         return new String[]{
                 "org.neo4j.harness",
                 "org.neo4j.harness.internal",

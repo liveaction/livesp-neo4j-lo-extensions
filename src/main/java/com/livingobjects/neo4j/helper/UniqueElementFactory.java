@@ -9,6 +9,7 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.ResourceIterator;
+import org.neo4j.graphdb.Transaction;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -72,30 +73,34 @@ public final class UniqueElementFactory {
 
     private synchronized UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2) {
         Node node;
-        if (key2 == null) {
-            node = graphdb.findNode(keyLabel, key1, value1);
-        } else {
-            node = filterNode(key1, value1, key2, value2);
-        }
-        if (node != null) {
-            return UniqueEntity.existing(node);
-        }
+        try (Transaction tx = graphdb.beginTx()) {
+            if (key2 == null) {
+                node = tx.findNode(keyLabel, key1, value1);
+            } else {
+                node = filterNode(key1, value1, key2, value2);
+            }
+            if (node != null) {
+                return UniqueEntity.existing(node);
+            }
 
-        if (createIfNotExist) {
-            node = graphdb.createNode();
-            return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
-        } else {
-            return null;
+            if (createIfNotExist) {
+                node = tx.createNode();
+                return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
+            } else {
+                return null;
+            }
         }
     }
 
     private Node filterNode(String key1, Object value1, String key2, Object value2) {
-        ResourceIterator<Node> nodes = graphdb.findNodes(keyLabel, key1, value1);
-        while (nodes.hasNext()) {
-            Node next = nodes.next();
-            Object currentValue = next.getProperty(key2, null);
-            if (value2.equals(currentValue)) {
-                return next;
+        try (Transaction tx = graphdb.beginTx()) {
+            ResourceIterator<Node> nodes = tx.findNodes(keyLabel, key1, value1);
+            while (nodes.hasNext()) {
+                Node next = nodes.next();
+                Object currentValue = next.getProperty(key2, null);
+                if (value2.equals(currentValue)) {
+                    return next;
+                }
             }
         }
         return null;

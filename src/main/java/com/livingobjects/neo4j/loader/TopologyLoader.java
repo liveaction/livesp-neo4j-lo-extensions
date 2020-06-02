@@ -35,13 +35,13 @@ public final class TopologyLoader {
     private final TopologyLoaderUtils topologyLoaderUtils;
 
     public TopologyLoader(GraphDatabaseService graphDb) {
-        try (Transaction ignore = graphDb.beginTx()) {
+        try (Transaction tx = graphDb.beginTx()) {
             this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
 
             Map<String, Set<String>> rels = Maps.newHashMap();
-            graphDb.findNodes(Labels.ATTRIBUTE)
+            tx.findNodes(Labels.ATTRIBUTE)
                     .forEachRemaining(a -> {
-                        for (org.neo4j.graphdb.Relationship relationship : a.getRelationships(RelationshipTypes.CROSS_ATTRIBUTE, Direction.OUTGOING)) {
+                        for (org.neo4j.graphdb.Relationship relationship : a.getRelationships(Direction.OUTGOING, RelationshipTypes.CROSS_ATTRIBUTE)) {
                             Node startNode = relationship.getStartNode();
                             Node endNode = relationship.getEndNode();
                             String from = startNode.getProperty(GraphModelConstants._TYPE).toString() + ':' + startNode.getProperty(GraphModelConstants.NAME).toString();
@@ -52,7 +52,7 @@ public final class TopologyLoader {
             this.crossAttributeRelationships = ImmutableMap.copyOf(Maps.transformValues(rels, ImmutableSet::copyOf));
 
             UniqueElementFactory scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
-            MetaSchema metaSchema = new MetaSchema(graphDb);
+            MetaSchema metaSchema = new MetaSchema(tx);
 
             this.topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
         }
@@ -71,7 +71,7 @@ public final class TopologyLoader {
                     statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, e.getMessage()));
                 }
             }
-            tx.success();
+            tx.commit();
             statuses.forEach(relationshipStatusConsumer);
         } catch (Throwable e) {
             String message = e.getMessage();
@@ -142,7 +142,7 @@ public final class TopologyLoader {
     private org.neo4j.graphdb.Relationship mergeRelationship(Node from, Node to, ImportRelationship relationshipType, boolean updateOnly) {
         org.neo4j.graphdb.Relationship existingRelationship = null;
 
-        for (org.neo4j.graphdb.Relationship r : from.getRelationships(relationshipType.relationshipType, Direction.OUTGOING)) {
+        for (org.neo4j.graphdb.Relationship r : from.getRelationships(Direction.OUTGOING, relationshipType.relationshipType)) {
             if (r.getEndNode().equals(to)) {
                 existingRelationship = r;
             }
