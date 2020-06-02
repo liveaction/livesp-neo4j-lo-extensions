@@ -12,6 +12,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.Map;
 import java.util.Set;
@@ -67,32 +68,34 @@ public class TemplatedPlanetFactory {
                 .collect(Collectors.toSet());
     }
 
-    private ImmutableMap<String, PlanetByContext> loadPlanetTemplateName(GraphDatabaseService graphDb) {
-        Map<String, Map<String, ImmutableSet<String>>> tplCacheBuilder = Maps.newHashMap();
-        graphDb.findNodes(Labels.PLANET_TEMPLATE).forEachRemaining(pltNode -> {
-            String keyType = null;
-            ImmutableSet.Builder<String> contexts = ImmutableSet.builder();
-            for (Relationship aRelation : pltNode.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
-                Node attNode = aRelation.getEndNode();
-                if (!attNode.hasLabel(Labels.ATTRIBUTE)) continue;
-                String type = attNode.getProperty(_TYPE).toString();
-                String context = type + KEYTYPE_SEPARATOR + attNode.getProperty(NAME).toString();
-                if (KEY_TYPES.contains(type)) keyType = context;
-                contexts.add(context);
-            }
-            if (keyType == null) {
-                String planetName = pltNode.getProperty(NAME).toString();
-                throw new IllegalStateException("Schema cannot be loaded : the planet '" + planetName + "' does not have a valid keyAttribute");
-            }
-            Map<String, ImmutableSet<String>> attributesByPlanet = tplCacheBuilder.computeIfAbsent(keyType, k -> Maps.newHashMap());
-            attributesByPlanet.put(pltNode.getProperty(NAME).toString(), contexts.build());
-        });
+    private ImmutableMap<String, PlanetByContext> loadPlanetTemplateName(GraphDatabaseService graphdb) {
+        try (Transaction tx = graphdb.beginTx()) {
+            Map<String, Map<String, ImmutableSet<String>>> tplCacheBuilder = Maps.newHashMap();
+            tx.findNodes(Labels.PLANET_TEMPLATE).forEachRemaining(pltNode -> {
+                String keyType = null;
+                ImmutableSet.Builder<String> contexts = ImmutableSet.builder();
+                for (Relationship aRelation : pltNode.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
+                    Node attNode = aRelation.getEndNode();
+                    if (!attNode.hasLabel(Labels.ATTRIBUTE)) continue;
+                    String type = attNode.getProperty(_TYPE).toString();
+                    String context = type + KEYTYPE_SEPARATOR + attNode.getProperty(NAME).toString();
+                    if (KEY_TYPES.contains(type)) keyType = context;
+                    contexts.add(context);
+                }
+                if (keyType == null) {
+                    String planetName = pltNode.getProperty(NAME).toString();
+                    throw new IllegalStateException("Schema cannot be loaded : the planet '" + planetName + "' does not have a valid keyAttribute");
+                }
+                Map<String, ImmutableSet<String>> attributesByPlanet = tplCacheBuilder.computeIfAbsent(keyType, k -> Maps.newHashMap());
+                attributesByPlanet.put(pltNode.getProperty(NAME).toString(), contexts.build());
+            });
 
-        ImmutableMap.Builder<String, PlanetByContext> result = ImmutableMap.builder();
-        tplCacheBuilder.forEach((keyType, planets) ->
-                result.put(keyType, new PlanetByContext(planets)));
+            ImmutableMap.Builder<String, PlanetByContext> result = ImmutableMap.builder();
+            tplCacheBuilder.forEach((keyType, planets) ->
+                    result.put(keyType, new PlanetByContext(planets)));
 
-        return result.build();
+            return result.build();
+        }
     }
 
 }

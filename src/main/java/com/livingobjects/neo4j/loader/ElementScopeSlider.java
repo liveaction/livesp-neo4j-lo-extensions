@@ -40,7 +40,7 @@ final class ElementScopeSlider {
 
     private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope) {
         ImmutableSet.Builder<String> oldScopesBldr = ImmutableSet.builder();
-        for (Relationship plRelation : element.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING)) {
+        for (Relationship plRelation : element.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
             Node planet = plRelation.getEndNode();
             Object oldScope = planet.getProperty(SCOPE, null);
             if (planet.hasLabel(Labels.PLANET) && !toScope.equals(oldScope)) {

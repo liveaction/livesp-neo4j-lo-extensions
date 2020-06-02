@@ -21,7 +21,13 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.ws.rs.*;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -85,8 +91,8 @@ public class SchemaTemplateExtension {
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
         SchemaReader schemaReader = new SchemaReader();
-        try (Transaction ignore = graphDb.beginTx()) {
-            Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+        try (Transaction tx = graphDb.beginTx()) {
+            Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
 
             if (schemaNode == null) {
                 return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
@@ -97,7 +103,7 @@ public class SchemaTemplateExtension {
             List<Node> realmNodes = Lists.newArrayList();
             try (JsonGenerator jg = json.getFactory().createGenerator(outputStream, JsonEncoding.UTF8);
                  Transaction tx = graphDb.beginTx()) {
-                Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+                Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
 
                 if (schemaNode == null) {
                     throw new NoSuchElementException("Schema " + schemaId + " not found in database !");

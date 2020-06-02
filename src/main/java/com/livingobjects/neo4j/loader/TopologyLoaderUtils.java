@@ -30,7 +30,7 @@ public final class TopologyLoaderUtils {
     }
 
     public Optional<Scope> getScopeFromElementPlanet(Node node) {
-        Iterator<Relationship> iterator = node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).iterator();
+        Iterator<Relationship> iterator = node.getRelationships(Direction.OUTGOING,RelationshipTypes.ATTRIBUTE).iterator();
 
         if (iterator.hasNext()) {
             Relationship attributeRelationship = iterator.next();

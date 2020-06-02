@@ -10,6 +10,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.HashMap;
 import java.util.List;
@@ -108,12 +109,14 @@ public final class Lineage {
             case SCOPE_SP_TAG:
                 return SP_SCOPE.id;
             default:
-                Node scopeNode = graphDb.findNode(Labels.NETWORK_ELEMENT, TAG, scopeTag);
-                if (scopeNode != null) {
-                    String[] split = scopeNode.getProperty(_TYPE, ":").toString().split(":");
-                    return split[1];
-                } else {
-                    throw new IllegalArgumentException(String.format("Scope %s=%s cannot be found", TAG, scopeTag));
+                try (Transaction tx = graphDb.beginTx()) {
+                    Node scopeNode = tx.findNode(Labels.NETWORK_ELEMENT, TAG, scopeTag);
+                    if (scopeNode != null) {
+                        String[] split = scopeNode.getProperty(_TYPE, ":").toString().split(":");
+                        return split[1];
+                    } else {
+                        throw new IllegalArgumentException(String.format("Scope %s=%s cannot be found", TAG, scopeTag));
+                    }
                 }
         }
     }

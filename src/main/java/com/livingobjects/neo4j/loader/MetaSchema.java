@@ -3,19 +3,17 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.MoreCollectors;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
-import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import scala.Tuple2;
 
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -66,8 +64,8 @@ public final class MetaSchema {
         }
     };
 
-    public MetaSchema(GraphDatabaseService graphDb) {
-        this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
+    public MetaSchema(Transaction tx) {
+        this.theGlobalNode = tx.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
         Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
 
         ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
@@ -81,7 +79,7 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         ImmutableList.Builder<ImmutableList<String>> metaLineagesBuilder = ImmutableList.builder();
 
-        graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
+        tx.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
             String keytype = n.getProperty(_TYPE).toString();
             String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
@@ -331,7 +329,7 @@ public final class MetaSchema {
      * If destType and originType are the same, this method will return a List containing the empty List
      */
     public ImmutableList<ImmutableList<String>> getUpwardPath(String originType, String destType) {
-        if(destType.equals(originType)) {
+        if (destType.equals(originType)) {
             return ImmutableList.of(ImmutableList.of());
         }
         return ImmutableList.copyOf(getParentRelations()
