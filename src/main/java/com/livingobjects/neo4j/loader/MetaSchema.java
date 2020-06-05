@@ -6,14 +6,20 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.MoreCollectors;
 import com.google.common.collect.Sets;
+import com.google.common.collect.Streams;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
+import picocli.CommandLine;
 import scala.Tuple2;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +47,7 @@ import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class MetaSchema {
 
-    private final Node theGlobalNode;
+    private final InternalNode theGlobalNode;
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
     private final ImmutableMap<String, Optional<String>> defaultScopes;
@@ -65,7 +71,9 @@ public final class MetaSchema {
     };
 
     public MetaSchema(Transaction tx) {
-        this.theGlobalNode = tx.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
+        List<InternalNode> nodes = Lists.newArrayList();
+        List<InternalRelation> rels = Lists.newArrayList();
+        this.theGlobalNode = new InternalNode(tx.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag), nodes, rels);
         Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
 
         ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
@@ -79,7 +87,8 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         ImmutableList.Builder<ImmutableList<String>> metaLineagesBuilder = ImmutableList.builder();
 
-        tx.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
+        tx.findNodes(Labels.ATTRIBUTE).forEachRemaining(node -> {
+            InternalNode n = new InternalNode(node, nodes, rels);
             String keytype = n.getProperty(_TYPE).toString();
             String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
@@ -354,6 +363,350 @@ public final class MetaSchema {
         } else {
             return getMonoParentRelations(o1)
                     .anyMatch(s -> recursiveLineageComparator(s, o2));
+        }
+    }
+
+    public class InternalRelation implements Relationship {
+        private Map<String, Object> properties;
+        private InternalNode startNode;
+        private InternalNode endNode;
+        private RelationshipType type;
+        private long id;
+
+        private InternalRelation(Relationship r, List<InternalNode> nodes, List<InternalRelation> rels) {
+            rels.add(this);
+            id = r.getId();
+            type = r.getType();
+            properties = r.getAllProperties();
+            // get start node from already created ones
+            startNode = nodes.stream()
+                    .filter(n -> n.getId() == r.getStartNode().getId())
+                    .findFirst()
+                    .or(() -> Optional.of(new InternalNode(r.getStartNode(), nodes, rels)))
+                    .get();
+            // get end node from already created ones
+            endNode = nodes.stream()
+                    .filter(n -> n.getId() == r.getEndNode().getId())
+                    .findFirst()
+                    .or(() -> Optional.of(new InternalNode(r.getEndNode(), nodes, rels)))
+                    .get();
+        }
+
+        @Override
+        public void delete() {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Node getStartNode() {
+            return startNode;
+        }
+
+        @Override
+        public Node getEndNode() {
+            return endNode;
+        }
+
+        @Override
+        public Node getOtherNode(Node node) {
+            if (node.equals(startNode)) {
+                return endNode;
+            }
+            if (node.equals(endNode)) {
+                return startNode;
+            }
+            throw new IllegalArgumentException("Node should be either startNode or endNode");
+        }
+
+        @Override
+        public Node[] getNodes() {
+            return new Node[]{startNode, endNode};
+        }
+
+        @Override
+        public RelationshipType getType() {
+            return type;
+        }
+
+        @Override
+        public boolean isType(RelationshipType type) {
+            return this.type.equals(type);
+        }
+
+        @Override
+        public long getId() {
+            return id;
+        }
+
+        @Override
+        public boolean hasProperty(String key) {
+            return properties.containsKey(key);
+        }
+
+        @Override
+        public Object getProperty(String key) {
+            return properties.get(key);
+        }
+
+        @Override
+        public Object getProperty(String key, Object defaultValue) {
+            return properties.getOrDefault(key, defaultValue);
+        }
+
+        @Override
+        public void setProperty(String key, Object value) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Object removeProperty(String key) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Iterable<String> getPropertyKeys() {
+            return properties.keySet();
+        }
+
+        @Override
+        public Map<String, Object> getProperties(String... keys) {
+            List<String> keyList = List.of(keys);
+            return properties.entrySet()
+                    .stream()
+                    .filter(entry -> keyList.contains(entry.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }
+
+        @Override
+        public Map<String, Object> getAllProperties() {
+            return properties;
+        }
+    }
+
+    public class InternalNode implements Node {
+        private List<Relationship> incRelations;
+        private List<Relationship> outRelations;
+        private List<Relationship> allRelations;
+        private Iterable<Label> labels;
+        private long id;
+        private Map<String, Object> properties;
+
+        protected InternalNode(Node node, List<InternalNode> nodes, List<InternalRelation> rels) {
+            nodes.add(this);
+            id = node.getId();
+            labels = node.getLabels();
+            properties = node.getAllProperties();
+            Function<Relationship, InternalRelation> relationToInternalRelation = r -> rels.stream()
+                    .filter(rel -> r.getId() == rel.getId())
+                    .findFirst()
+                    .or(() -> Optional.of(new InternalRelation(r, nodes, rels)))
+                    .get();
+            incRelations = Streams.stream(node.getRelationships(INCOMING))
+                    .map(relationToInternalRelation)
+                    .collect(Collectors.toList());
+            outRelations = Streams.stream(node.getRelationships(OUTGOING)).map(relationToInternalRelation)
+                    .collect(Collectors.toList());
+            allRelations = Streams.stream(node.getRelationships()).map(relationToInternalRelation)
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public void delete() {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Iterable<Relationship> getRelationships() {
+            return allRelations;
+        }
+
+        @Override
+        public boolean hasRelationship() {
+            return allRelations.isEmpty();
+        }
+
+        @Override
+        public Iterable<Relationship> getRelationships(RelationshipType... types) {
+            return getRelation(allRelations, types);
+        }
+
+        @Override
+        public Iterable<Relationship> getRelationships(Direction direction, RelationshipType... types) {
+            switch(direction) {
+                case BOTH:
+                    return getRelation(allRelations, types);
+                case INCOMING:
+                    return getRelation(incRelations, types);
+                case OUTGOING:
+                    return getRelation(outRelations, types);
+            }
+            return null;
+        }
+
+        @Override
+        public boolean hasRelationship(RelationshipType... types) {
+            return containsRelation(allRelations, types);
+        }
+
+        @Override
+        public boolean hasRelationship(Direction direction, RelationshipType... types) {
+            switch(direction) {
+                case BOTH:
+                    return containsRelation(allRelations, types);
+                case INCOMING:
+                    return containsRelation(incRelations, types);
+                case OUTGOING:
+                    return containsRelation(outRelations, types);
+            }
+            return false;
+        }
+
+        private boolean containsRelation(List<Relationship> relations, RelationshipType... types) {
+            List<RelationshipType> typeList = List.of(types);
+            return relations.stream()
+                    .anyMatch(r -> typeList.contains(r.getType()));
+        }
+
+        private List<Relationship> getRelation(List<Relationship> relations, RelationshipType... types) {
+            List<RelationshipType> typeList = List.of(types);
+            return relations.stream()
+                    .filter(r -> typeList.contains(r.getType()))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public Iterable<Relationship> getRelationships(Direction dir) {
+            switch (dir) {
+                case BOTH:
+                    return allRelations;
+                case INCOMING:
+                    return incRelations;
+                case OUTGOING:
+                    return outRelations;
+            }
+            return null;
+        }
+
+        @Override
+        public boolean hasRelationship(Direction dir) {
+            switch (dir) {
+                case BOTH:
+                    return !allRelations.isEmpty();
+                case INCOMING:
+                    return !incRelations.isEmpty();
+                case OUTGOING:
+                    return !outRelations.isEmpty();
+            }
+            return false;
+        }
+
+        @Override
+        public Relationship getSingleRelationship(RelationshipType type, Direction dir) {
+
+            ArrayList<Relationship> relationships = Lists.newArrayList(getRelationships(dir, type));
+            if(relationships.size() != 1) {
+                throw new IllegalArgumentException(String.format("Only 1 relationship should match type %s and direction %s but %d were found", type, dir, relationships.size()));
+            }
+            return relationships.get(0);
+        }
+
+        @Override
+        public Relationship createRelationshipTo(Node otherNode, RelationshipType type) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Iterable<RelationshipType> getRelationshipTypes() {
+            return allRelations.stream().map(Relationship::getType).collect(Collectors.toSet());
+        }
+
+        @Override
+        public int getDegree() {
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        @Override
+        public int getDegree(RelationshipType type) {
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        @Override
+        public int getDegree(Direction direction) {
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        @Override
+        public int getDegree(RelationshipType type, Direction direction) {
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        @Override
+        public void addLabel(Label label) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public void removeLabel(Label label) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public boolean hasLabel(Label label) {
+            return false;
+        }
+
+        @Override
+        public Iterable<Label> getLabels() {
+            return labels;
+        }
+
+        @Override
+        public long getId() {
+            return id;
+        }
+
+        @Override
+        public boolean hasProperty(String key) {
+            return false;
+        }
+
+        @Override
+        public Object getProperty(String key) {
+            return properties.get(key);
+        }
+
+        @Override
+        public Object getProperty(String key, Object defaultValue) {
+            return properties.getOrDefault(key, defaultValue);
+        }
+
+        @Override
+        public void setProperty(String key, Object value) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Object removeProperty(String key) {
+            throw new UnsupportedOperationException("Can't perform update operations on Internal entities");
+        }
+
+        @Override
+        public Iterable<String> getPropertyKeys() {
+            return properties.keySet();
+        }
+
+        @Override
+        public Map<String, Object> getProperties(String... keys) {
+            List<String> keyList = List.of(keys);
+            return properties.entrySet()
+                    .stream()
+                    .filter(entry -> keyList.contains(entry.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }
+
+        @Override
+        public Map<String, Object> getAllProperties() {
+            return properties;
         }
     }
 }

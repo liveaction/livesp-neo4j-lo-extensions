@@ -100,7 +100,7 @@ public final class SchemaLoader {
         return lockAndWriteSchema(tx -> {
             ManagedSchema managedSchema = ManagedSchema.fullyManaged(schemaAndPlanets.schema);
             ImmutableList<PlanetUpdate> planetUpdate = schemaAndPlanets.planetMigrations;
-            UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaAndPlanets.schema.id);
+            UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaAndPlanets.schema.id, tx);
             schemaNode.entity.setProperty(VERSION, schemaAndPlanets.schema.version);
             if (!schemaNode.wasCreated) {
                 managedSchema = mergeAllUnmanagedCounters(managedSchema, schemaNode.entity);
@@ -226,7 +226,7 @@ public final class SchemaLoader {
 
             @Override
             public Boolean deleteCounter(String schema, String realmTemplate, ImmutableList<RealmPathSegment> realmPath, String counter) {
-                return deleteCounterFromSchema(schema, realmTemplate, realmPath, counter);
+                return deleteCounterFromSchema(schema, realmTemplate, realmPath, counter, tx);
             }
         });
     }
@@ -234,9 +234,10 @@ public final class SchemaLoader {
     private boolean deleteCounterFromSchema(String schema,
                                             String realmTemplate,
                                             ImmutableList<RealmPathSegment> realmPath,
-                                            String counter) {
+                                            String counter,
+                                            Transaction tx) {
         boolean modified = false;
-        Node schemaNode = schemaFactory.getWithOutcome(ID, schema);
+        Node schemaNode = schemaFactory.getWithOutcome(ID, schema, tx);
         if (schemaNode != null) {
             for (Relationship realmTemplateRelationship : schemaNode.getRelationships(OUTGOING, PROVIDED)) {
                 Node realmNode = realmTemplateRelationship.getEndNode();
@@ -346,7 +347,7 @@ public final class SchemaLoader {
                                           Transaction tx) {
         boolean modified = false;
 
-        UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId);
+        UniqueEntity<Node> schemaNode = schemaFactory.getOrCreateWithOutcome(ID, schemaId, tx);
         String oldVersion = schemaNode.entity.getProperty(VERSION, "").toString();
         if (version != null && !oldVersion.equals(version)) {
             schemaNode.entity.setProperty(VERSION, version);
@@ -357,7 +358,7 @@ public final class SchemaLoader {
             modified = true;
         }
 
-        UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate);
+        UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realmTemplate, tx);
         if (realmTemplateEntity.wasCreated) {
             modified = true;
         }
@@ -373,7 +374,7 @@ public final class SchemaLoader {
             }
         }
 
-        if (updateRealmAttributes(attributes, realmTemplateEntity)) {
+        if (updateRealmAttributes(attributes, realmTemplateEntity, tx)) {
             modified = true;
         }
 
@@ -410,7 +411,7 @@ public final class SchemaLoader {
         return modified;
     }
 
-    private boolean updateRealmAttributes(Collection<String> attributes, UniqueEntity<Node> realmTemplateEntity) {
+    private boolean updateRealmAttributes(Collection<String> attributes, UniqueEntity<Node> realmTemplateEntity, Transaction tx) {
         Set<MatchProperties> attributesMatchProperties = attributes.stream()
                 .map(attribute -> {
                     String[] split = attribute.split(":");
@@ -422,7 +423,7 @@ public final class SchemaLoader {
                     return MatchProperties.of(_TYPE, type, NAME, name);
                 })
                 .collect(toSet());
-        return RelationshipUtils.replaceRelationships(OUTGOING, realmTemplateEntity.entity, ATTRIBUTE, attributeNodeFactory, attributesMatchProperties);
+        return RelationshipUtils.replaceRelationships(OUTGOING, realmTemplateEntity.entity, ATTRIBUTE, attributeNodeFactory, attributesMatchProperties, tx);
     }
 
     private void migratePlanets(ImmutableList<PlanetUpdate> planets, Transaction tx) {
@@ -451,26 +452,26 @@ public final class SchemaLoader {
                         .orElseGet(() -> node.getProperty(NAME)).toString(),
                         node.getProperty(TAG).toString())));
 
-        movePlanetTemplates(updates);
-        updates.forEach(planetUpdate -> scopes.forEach(scope -> movePlanets(planetUpdate, scope)));
+        movePlanetTemplates(updates, tx);
+        updates.forEach(planetUpdate -> scopes.forEach(scope -> movePlanets(planetUpdate, scope, tx)));
 
-        createPlanetTemplates(createdPlanets);
-        migrations.forEach(planetUpdate -> scopes.forEach(scope -> migratePlanets(planetUpdate, scope)));
+        createPlanetTemplates(createdPlanets, tx);
+        migrations.forEach(planetUpdate -> scopes.forEach(scope -> migratePlanets(planetUpdate, scope, tx)));
 
-        deletePlanetTemplates(deletedPlanets);
-        if (!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope));
+        deletePlanetTemplates(deletedPlanets, tx);
+        if (!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope, tx));
     }
 
-    private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets) {
+    private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets, Transaction tx) {
         createdPlanets.forEach(createdPlanet -> {
-            UniqueEntity<Node> newPlanetTemplateNode = planetTemplateFactory.getOrCreateWithOutcome(NAME, createdPlanet.name);
+            UniqueEntity<Node> newPlanetTemplateNode = planetTemplateFactory.getOrCreateWithOutcome(NAME, createdPlanet.name, tx);
             Set<MatchProperties> matchProperties = matchProperties(createdPlanet);
-            RelationshipUtils.replaceRelationships(OUTGOING, newPlanetTemplateNode.entity, ATTRIBUTE, attributeNodeFactory, matchProperties);
+            RelationshipUtils.replaceRelationships(OUTGOING, newPlanetTemplateNode.entity, ATTRIBUTE, attributeNodeFactory, matchProperties, tx);
         });
     }
 
-    private void migratePlanets(PlanetUpdate planetUpdate, Scope scope) {
-        Optional<Node> oldNodeOpt = Optional.ofNullable(planetUpdate.oldPlanet).flatMap(v -> localizePlanet(v.name, scope));
+    private void migratePlanets(PlanetUpdate planetUpdate, Scope scope, Transaction tx) {
+        Optional<Node> oldNodeOpt = Optional.ofNullable(planetUpdate.oldPlanet).flatMap(v -> localizePlanet(v.name, scope, tx));
         if (!oldNodeOpt.isPresent()) {
             return;
         }
@@ -480,7 +481,7 @@ public final class SchemaLoader {
         if (newPlanets.size() == 1 && planetUpdate.planetUpdateStatus == DELETE) {
             PlanetNode newPlanet = Iterables.getOnlyElement(newPlanets);
             // Move all ne from old planets to new one
-            Node newPlanetNode = planetFactory.getOrCreate(newPlanet.name, scope).entity;
+            Node newPlanetNode = planetFactory.getOrCreate(newPlanet.name, scope, tx).entity;
             for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
                 oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
                 oldRelationship.delete();
@@ -500,25 +501,25 @@ public final class SchemaLoader {
             for (Relationship oldRelationship : oldPlanetNode.getRelationships(INCOMING, ATTRIBUTE)) {
                 Node element = oldRelationship.getStartNode();
                 String planetTemplateName = TemplatedPlanetFactory.localizePlanetForElement(element, planetByContext);
-                Node newPlanetNode = newPlanetNodes.computeIfAbsent(planetTemplateName, k -> planetFactory.getOrCreate(k, scope).entity);
+                Node newPlanetNode = newPlanetNodes.computeIfAbsent(planetTemplateName, k -> planetFactory.getOrCreate(k, scope, tx).entity);
                 oldRelationship.getStartNode().createRelationshipTo(newPlanetNode, ATTRIBUTE);
                 oldRelationship.delete();
             }
         }
     }
 
-    private void movePlanets(PlanetUpdate planetUpdate, Scope scope) {
+    private void movePlanets(PlanetUpdate planetUpdate, Scope scope, Transaction tx) {
         PlanetNode oldPlanet = planetUpdate.oldPlanet;
         PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
-        localizePlanet(oldPlanet.name, scope).ifPresent(node ->
+        localizePlanet(oldPlanet.name, scope, tx).ifPresent(node ->
                 node.setProperty(NAME, planetFactory.getPlanetName(newPlanet.name, scope)));
 
     }
 
-    private void movePlanetTemplates(ImmutableList<PlanetUpdate> planetUpdates) {
+    private void movePlanetTemplates(ImmutableList<PlanetUpdate> planetUpdates, Transaction tx) {
         planetUpdates.forEach(planetUpdate -> {
             PlanetNode oldPlanet = planetUpdate.oldPlanet;
-            Node oldPlanetNode = planetTemplateFactory.getWithOutcome(NAME, oldPlanet.name);
+            Node oldPlanetNode = planetTemplateFactory.getWithOutcome(NAME, oldPlanet.name, tx);
             PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
             if (!oldPlanet.name.equals(newPlanet.name)) {
                 // Rename planet
@@ -527,7 +528,7 @@ public final class SchemaLoader {
             if (!oldPlanet.attributes.equals(newPlanet.attributes)) {
                 // Change planet attributes
                 Set<MatchProperties> matchProperties = matchProperties(newPlanet);
-                RelationshipUtils.replaceRelationships(OUTGOING, oldPlanetNode, ATTRIBUTE, attributeNodeFactory, matchProperties);
+                RelationshipUtils.replaceRelationships(OUTGOING, oldPlanetNode, ATTRIBUTE, attributeNodeFactory, matchProperties, tx);
             }
         });
     }
@@ -545,9 +546,9 @@ public final class SchemaLoader {
                 .collect(toSet());
     }
 
-    private void deletePlanetTemplates(ImmutableSet<PlanetNode> deletedPlanets) {
+    private void deletePlanetTemplates(ImmutableSet<PlanetNode> deletedPlanets, Transaction tx) {
         deletedPlanets.forEach(deletedPlanet ->
-                Optional.ofNullable(planetTemplateFactory.getWithOutcome(NAME, deletedPlanet.name))
+                Optional.ofNullable(planetTemplateFactory.getWithOutcome(NAME, deletedPlanet.name, tx))
                         .ifPresent(node -> {
                             node.getRelationships().forEach(Relationship::delete);
                             node.delete();
@@ -555,23 +556,23 @@ public final class SchemaLoader {
 
     }
 
-    private void deletePlanets(ImmutableSet<PlanetNode> deletedPlanets, Scope scope) {
+    private void deletePlanets(ImmutableSet<PlanetNode> deletedPlanets, Scope scope, Transaction tx) {
         deletedPlanets.stream()
-                .map(p -> localizePlanet(p.name, scope))
+                .map(p -> localizePlanet(p.name, scope, tx))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .forEach(Node::delete);
     }
 
-    private Optional<Node> localizePlanet(String planetTemplateName, Scope scope) {
-        return Optional.ofNullable(planetFactory.get(planetTemplateName, scope));
+    private Optional<Node> localizePlanet(String planetTemplateName, Scope scope, Transaction tx) {
+        return Optional.ofNullable(planetFactory.get(planetTemplateName, scope, tx));
     }
 
     private ImmutableSet<Node> createRealmTemplates(ManagedSchema managedSchema, Transaction tx) {
         Set<Node> realmTemplates = Sets.newLinkedHashSet();
         for (RealmNode realmNodeEntry : managedSchema.realms.values()) {
             String realm = realmNodeEntry.name;
-            UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm);
+            UniqueEntity<Node> realmTemplateEntity = realmTemplateFactory.getOrCreateWithOutcome(NAME, realm, tx);
 
             if (!realmTemplateEntity.wasCreated) {
                 deleteRealm(false, realmTemplateEntity.entity, OUTGOING, MEMDEXPATH);
@@ -603,9 +604,9 @@ public final class SchemaLoader {
             }
         }
         if (segmentNode == null) {
-                segmentNode = tx.createNode(Labels.SEGMENT);
-                segmentNode.setProperty(PATH, segment.path);
-                parentNode.createRelationshipTo(segmentNode, MEMDEXPATH);
+            segmentNode = tx.createNode(Labels.SEGMENT);
+            segmentNode.setProperty(PATH, segment.path);
+            parentNode.createRelationshipTo(segmentNode, MEMDEXPATH);
             modified = true;
         }
 
@@ -624,12 +625,12 @@ public final class SchemaLoader {
                                     Transaction tx) {
         boolean modified = false;
 
-        if (replaceAttributesRelationships(ImmutableSet.of(segment.keyAttribute), segmentNode)) {
+        if (replaceAttributesRelationships(ImmutableSet.of(segment.keyAttribute), segmentNode, tx)) {
             modified = true;
         }
 
         if (tail.isEmpty()) {
-            if (appendCounterToSegment(realmTemplate, counter, segmentNode)) {
+            if (appendCounterToSegment(realmTemplate, counter, segmentNode, tx)) {
                 modified = true;
             }
         } else {
@@ -641,7 +642,7 @@ public final class SchemaLoader {
     }
 
     private void createRealm(UniqueEntity<Node> realmTemplateEntity, RealmNode realm, ManagedSchema managedSchema, Transaction tx) {
-        replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity);
+        replaceAttributesRelationships(realm.attributes, realmTemplateEntity.entity, tx);
         Node memdexPathNode = createMemdexTree(realm.name, realm.memdexPath, managedSchema, tx);
         realmTemplateEntity.entity.createRelationshipTo(memdexPathNode, MEMDEXPATH);
     }
@@ -653,7 +654,7 @@ public final class SchemaLoader {
             segmentNode.setProperty("topCount", memdexPathNode.topCount);
         }
 
-        updateCountersRelationships(realmTemplate, memdexPathNode, managedSchema, segmentNode);
+        updateCountersRelationships(realmTemplate, memdexPathNode, managedSchema, segmentNode, tx);
 
         String keyType = memdexPathNode.keyAttribute;
         String[] split = keyType.split(":");
@@ -666,7 +667,7 @@ public final class SchemaLoader {
         if (split.length == 3) {
             specializer = split[2];
         }
-        UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
+        UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name, tx);
         Relationship relationshipTo = segmentNode.createRelationshipTo(attributeNode.entity, ATTRIBUTE);
         if (specializer == null) {
             relationshipTo.removeProperty(LINK_PROP_SPECIALIZER);
@@ -682,7 +683,7 @@ public final class SchemaLoader {
         return segmentNode;
     }
 
-    private boolean appendCounterToSegment(String realmTemplate, CounterNode counter, Node segmentNode) {
+    private boolean appendCounterToSegment(String realmTemplate, CounterNode counter, Node segmentNode, Transaction tx) {
         Relationship relationship = null;
         for (Relationship existingRelationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
             Node counterNode = existingRelationship.getStartNode();
@@ -693,7 +694,7 @@ public final class SchemaLoader {
         }
 
         String counterId = counter.name + "@context:" + realmTemplate;
-        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+        UniqueEntity<Node> counterEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId, tx);
         counterEntity.entity.setProperty(NAME, counter.name);
         counterEntity.entity.setProperty(CONTEXT, realmTemplate);
         counterEntity.entity.setProperty(_TYPE, "counter");
@@ -723,7 +724,8 @@ public final class SchemaLoader {
     private void updateCountersRelationships(String realmTemplate,
                                              MemdexPathNode memdexPath,
                                              ManagedSchema managedSchema,
-                                             Node segmentNode) {
+                                             Node segmentNode,
+                                             Transaction tx) {
         Map<String, Relationship> existingRelationships = Maps.newHashMap();
         for (Relationship relationship : segmentNode.getRelationships(INCOMING, PROVIDED)) {
             Node counterNode = relationship.getStartNode();
@@ -737,7 +739,7 @@ public final class SchemaLoader {
                 throw new IllegalArgumentException(String.format("Counter with reference '%s' is not found in provided schema.", counter));
             }
             String counterId = counterNode.name + "@context:" + realmTemplate;
-            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId);
+            UniqueEntity<Node> counterNodeEntity = counterNodeFactory.getOrCreateWithOutcome(ID, counterId, tx);
             counterNodeEntity.entity.setProperty(NAME, counterNode.name);
             counterNodeEntity.entity.setProperty(CONTEXT, realmTemplate);
             counterNodeEntity.entity.setProperty("_type", "counter");
@@ -774,7 +776,7 @@ public final class SchemaLoader {
         }
     }
 
-    private boolean replaceAttributesRelationships(ImmutableSet<String> attributes, Node node) {
+    private boolean replaceAttributesRelationships(ImmutableSet<String> attributes, Node node, Transaction tx) {
         boolean modified = false;
 
         Map<String, Relationship> existingRelationships = Maps.newHashMap();
@@ -804,7 +806,7 @@ public final class SchemaLoader {
             }
 
             if (relationship == null) {
-                UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name);
+                UniqueEntity<Node> attributeNode = attributeNodeFactory.getOrCreateWithOutcome(_TYPE, type, NAME, name, tx);
                 Relationship relationshipTo = node.createRelationshipTo(attributeNode.entity, ATTRIBUTE);
                 if (specializer == null) {
                     relationshipTo.removeProperty(LINK_PROP_SPECIALIZER);

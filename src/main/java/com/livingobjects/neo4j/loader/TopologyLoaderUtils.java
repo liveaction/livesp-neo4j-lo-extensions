@@ -5,6 +5,7 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.Iterator;
 import java.util.Optional;
@@ -25,30 +26,30 @@ public final class TopologyLoaderUtils {
         this.scopeElementFactory = requireNonNull(scopeElementFactory);
     }
 
-    public Scope getScope(Node node) {
-        return getScopeFromElementPlanet(node).orElseThrow(() -> new IllegalArgumentException("An element should have a scope"));
+    public Scope getScope(Node node, Transaction tx) {
+        return getScopeFromElementPlanet(node, tx).orElseThrow(() -> new IllegalArgumentException("An element should have a scope"));
     }
 
-    public Optional<Scope> getScopeFromElementPlanet(Node node) {
+    public Optional<Scope> getScopeFromElementPlanet(Node node, Transaction tx) {
         Iterator<Relationship> iterator = node.getRelationships(Direction.OUTGOING,RelationshipTypes.ATTRIBUTE).iterator();
 
         if (iterator.hasNext()) {
             Relationship attributeRelationship = iterator.next();
             Node planetNode = attributeRelationship.getEndNode();
             String scopeTag = planetNode.getProperty(SCOPE, SCOPE_GLOBAL_TAG).toString();
-            return Optional.of(readScopeFromTag(scopeTag));
+            return Optional.of(readScopeFromTag(scopeTag, tx));
         } else {
             return Optional.empty();
         }
     }
 
-    private Scope readScopeFromTag(String scopeTag) {
+    private Scope readScopeFromTag(String scopeTag, Transaction tx) {
         if (scopeTag.equals(GLOBAL_SCOPE.tag)) {
             return GLOBAL_SCOPE;
         } else if (scopeTag.equals(SP_SCOPE.tag)) {
             return SP_SCOPE;
         } else {
-            Node scope = scopeElementFactory.getWithOutcome(TAG, scopeTag);
+            Node scope = scopeElementFactory.getWithOutcome(TAG, scopeTag, tx);
             if (scope == null) {
                 throw new IllegalStateException(String.format("The scope %s cannot be found in database", scopeTag));
             }

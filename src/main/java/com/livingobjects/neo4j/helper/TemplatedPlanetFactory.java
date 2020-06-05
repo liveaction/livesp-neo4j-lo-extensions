@@ -35,7 +35,7 @@ public class TemplatedPlanetFactory {
         this.planetNameTemplateCache = loadPlanetTemplateName(graphDb);
     }
 
-    public UniqueEntity<Node> localizePlanetForElement(Scope solidScope, Node element) {
+    public UniqueEntity<Node> localizePlanetForElement(Scope solidScope, Node element, Transaction tx) {
         String keyType = element.getProperty(_TYPE).toString();
         PlanetByContext planetByContext = getPlanetByContext(keyType);
         if (planetByContext == null) {
@@ -43,7 +43,7 @@ public class TemplatedPlanetFactory {
         }
         String planetTemplateName = localizePlanetForElement(element, planetByContext);
 
-        return planetFactory.getOrCreate(planetTemplateName, solidScope);
+        return planetFactory.getOrCreate(planetTemplateName, solidScope, tx);
     }
 
     public PlanetByContext getPlanetByContext(String keyType) {

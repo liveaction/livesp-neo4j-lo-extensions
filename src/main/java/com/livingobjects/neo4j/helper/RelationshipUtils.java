@@ -6,6 +6,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.Set;
 import java.util.function.Consumer;
@@ -25,9 +26,10 @@ public class RelationshipUtils {
                                               Node startNode,
                                               RelationshipType relationshipType,
                                               UniqueElementFactory uniqueNodeFactory,
-                                              Iterable<MatchProperties> nodesToMatch) {
+                                              Iterable<MatchProperties> nodesToMatch,
+                                              Transaction tx) {
         return updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, false, node -> {
-        });
+        }, tx);
     }
 
     /**
@@ -54,9 +56,10 @@ public class RelationshipUtils {
                                                Node startNode,
                                                RelationshipType relationshipType,
                                                UniqueElementFactory uniqueNodeFactory,
-                                               Iterable<MatchProperties> nodesToMatch) {
+                                               Iterable<MatchProperties> nodesToMatch,
+                                               Transaction tx) {
         return replaceRelationships(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, node -> {
-        });
+        }, tx);
     }
 
     /**
@@ -93,8 +96,9 @@ public class RelationshipUtils {
                                                 RelationshipType relationshipType,
                                                 UniqueElementFactory uniqueNodeFactory,
                                                 Iterable<MatchProperties> nodesToMatch,
-                                                Consumer<Node> detachedNodeHandler) {
-        return updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, true, detachedNodeHandler);
+                                                Consumer<Node> detachedNodeHandler,
+                                                Transaction tx) {
+        return updateRelationshipsInternal(direction, startNode, relationshipType, uniqueNodeFactory, nodesToMatch, true, detachedNodeHandler, tx);
     }
 
     private static boolean updateRelationshipsInternal(Direction direction,
@@ -103,10 +107,11 @@ public class RelationshipUtils {
                                                        UniqueElementFactory uniqueNodeFactory,
                                                        Iterable<MatchProperties> nodesToMatch,
                                                        boolean removeOtherRelationships,
-                                                       Consumer<Node> detachedNodeHandler) {
+                                                       Consumer<Node> detachedNodeHandler,
+                                                       Transaction tx) {
         Set<Node> relationshipsEndNodes = Sets.newLinkedHashSet();
         for (MatchProperties matchProperties : nodesToMatch) {
-            UniqueEntity<Node> node = uniqueNodeFactory.getOrCreateWithOutcome(matchProperties);
+            UniqueEntity<Node> node = uniqueNodeFactory.getOrCreateWithOutcome(matchProperties, tx);
             relationshipsEndNodes.add(node.entity);
         }
         return updateRelationshipsInternal(direction, startNode, relationshipType, relationshipsEndNodes, removeOtherRelationships, detachedNodeHandler);

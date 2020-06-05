@@ -8,6 +8,7 @@ import com.livingobjects.neo4j.loader.CsvTopologyLoader;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.sun.jersey.multipart.MultiPart;
+import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,8 +38,8 @@ public final class LoadCSVExtension {
 
     private final MetricRegistry metrics = new MetricRegistry();
 
-    public LoadCSVExtension(@Context GraphDatabaseService graphDb) {
-        this.graphDb = graphDb;
+    public LoadCSVExtension(@Context DatabaseManagementService dbms) {
+        this.graphDb = dbms.database(dbms.listDatabases().get(0));
     }
 
     @POST

@@ -40,7 +40,7 @@ public class ElementScopeSliderTest {
             Node element = tx.findNode(Labels.NETWORK_ELEMENT, TAG, "class=neType,cpe=AA_RJ45,neType=cpe");
 
             Scope expectedScope = new Scope("boots", "class=cluster,client=boots,cluster=client");
-            Node actual = tested.slide(element, expectedScope);
+            Node actual = tested.slide(element, expectedScope, tx);
 
             Node planetNode = actual.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).getEndNode();
             assertThat(planetNode.getProperty(SCOPE).toString()).isEqualTo(expectedScope.tag);
