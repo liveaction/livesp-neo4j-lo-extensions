@@ -126,37 +126,41 @@ public final class CsvTopologyLoader {
         Map<Integer, String> errors = Maps.newHashMap();
 
         Transaction tx = graphDb.beginTx();
-        while ((nextLine = reader.readNext()) != null) {
-            try {
-                ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), nextLine);
-                ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy, tx);
-                for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
-                    Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
-                    set.addAll(importedElements.getValue());
-                }
-                imported++;
-                currentTransaction.add(nextLine);
-                if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
-                    tx = txManager.renewTransaction(tx);
-                    currentTransaction.clear();
-                }
-            } catch (ImportException e) {
-                tx = renewTransaction(strategy, currentTransaction, tx);
-                errors.put(lineIndex, e.getMessage());
-                LOGGER.debug(e.getLocalizedMessage());
-                LOGGER.debug(Arrays.toString(nextLine));
-            } catch (Exception e) {
-                tx = renewTransaction(strategy, currentTransaction, tx);
-                errors.put(lineIndex, e.getMessage());
-                LOGGER.error(e.getLocalizedMessage());
-                if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debug("STACKTRACE", e);
+        try {
+            while ((nextLine = reader.readNext()) != null) {
+                try {
+                    ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), nextLine);
+                    ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy, tx);
+                    for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
+                        Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
+                        set.addAll(importedElements.getValue());
+                    }
+                    imported++;
+                    currentTransaction.add(nextLine);
+                    if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
+                        tx = txManager.renewTransaction(tx);
+                        currentTransaction.clear();
+                    }
+                } catch (ImportException e) {
+                    tx = renewTransaction(strategy, currentTransaction, tx);
+                    errors.put(lineIndex, e.getMessage());
+                    LOGGER.debug(e.getLocalizedMessage());
                     LOGGER.debug(Arrays.toString(nextLine));
+                } catch (Exception e) {
+                    tx = renewTransaction(strategy, currentTransaction, tx);
+                    errors.put(lineIndex, e.getMessage());
+                    LOGGER.error(e.getLocalizedMessage());
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("STACKTRACE", e);
+                        LOGGER.debug(Arrays.toString(nextLine));
+                    }
                 }
+                lineIndex++;
             }
-            lineIndex++;
+            tx.commit();
+        } finally {
+            tx.close();
         }
-        tx.close();
 
         return new Neo4jLoadResult(imported, errors, importedElementByScope);
     }
@@ -228,7 +232,7 @@ public final class CsvTopologyLoader {
             // Create elements
             Map<String, Optional<UniqueEntity<Node>>> elementsWithParents = lineage.keySet().stream()
                     .filter(key -> !allElementToDelete.contains(key))
-                    .map(key -> Maps.immutableEntry(key, createElement(lineStrategy, line, key)))
+                    .map(key -> Maps.immutableEntry(key, createElement(lineStrategy, line, key, tx)))
                     .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
             Map<String, Optional<UniqueEntity<Node>>> nodesBuilder = Maps.newHashMap();
@@ -246,22 +250,22 @@ public final class CsvTopologyLoader {
             checkRequiredProperties(nodes, strategy, line);
 
             if (!markedToDelete.isEmpty()) {
-                deleteElements(lineStrategy, line, markedToDelete.keySet(), markedToDelete.values().iterator().next()); // We have checked that only one distinct action is present
+                deleteElements(lineStrategy, line, markedToDelete.keySet(), markedToDelete.values().iterator().next(), tx); // We have checked that only one distinct action is present
             }
 
-            return createOrUpdatePlanetLink(lineStrategy, nodes);
+            return createOrUpdatePlanetLink(lineStrategy, nodes, tx);
         }
     }
 
-    private void deleteElements(LineMappingStrategy lineStrategy, String[] line, Set<String> keyTypes, Action action) {
+    private void deleteElements(LineMappingStrategy lineStrategy, String[] line, Set<String> keyTypes, Action action, Transaction tx) {
         switch (action) {
             case DELETE_CASCADE_ALL:
             case DELETE_CASCADE:
-                keyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action));
+                keyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action, tx));
                 break;
             case DELETE_NO_CASCADE:
                 List<String> sortedKeyTypes = sortKeyTypes(keyTypes);
-                sortedKeyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action));
+                sortedKeyTypes.forEach(keyType -> deleteElement(lineStrategy, line, keyType, action, tx));
                 break;
         }
     }
@@ -377,7 +381,7 @@ public final class CsvTopologyLoader {
                 oNode.ifPresent(node -> linkToParents(strategy, keyType, node, nodes)));
     }
 
-    private ImmutableMultimap<TypedScope, String> createOrUpdatePlanetLink(LineMappingStrategy lineStrategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private ImmutableMultimap<TypedScope, String> createOrUpdatePlanetLink(LineMappingStrategy lineStrategy, Map<String, Optional<UniqueEntity<Node>>> nodes, Transaction tx) {
         ImmutableMultimap.Builder<TypedScope, String> importedElementByScopeBuilder = ImmutableMultimap.builder();
         for (Entry<String, Optional<UniqueEntity<Node>>> node : nodes.entrySet()) {
             if (!node.getValue().isPresent()) continue;
@@ -387,7 +391,7 @@ public final class CsvTopologyLoader {
             if (GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyAttribute)) continue;
 
             importedElementByScopeBuilder.put(
-                    reviewPlanetElement(lineStrategy, element, nodes),
+                    reviewPlanetElement(lineStrategy, element, nodes, tx),
                     element.entity.getProperty(GraphModelConstants.TAG).toString()
             );
         }
@@ -396,23 +400,24 @@ public final class CsvTopologyLoader {
 
     private TypedScope reviewPlanetElement(LineMappingStrategy lineStrategy,
                                            UniqueEntity<Node> element,
-                                           Map<String, Optional<UniqueEntity<Node>>> nodes) {
+                                           Map<String, Optional<UniqueEntity<Node>>> nodes,
+                                           Transaction tx) {
         String keyType = element.entity.getProperty(_TYPE).toString();
 
         Optional<Scope> scopeFromImport = lineStrategy.tryToGuessElementScopeInLine(metaSchema, keyType);
         boolean overridable = metaSchema.isOverridable(keyType);
 
-        Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity)
-                .orElseGet(() -> !overridable ? getScopeFromParent(keyType, nodes).orElse(null) : null);
+        Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity, tx)
+                .orElseGet(() -> !overridable ? getScopeFromParent(keyType, nodes, tx).orElse(null) : null);
 
         return scopeFromImport
                 .map(scope -> {
                     if (scopeFromDatabase != null && !scope.tag.equals(scopeFromDatabase.tag)) {
                         // If the imported element scope is different than the existing one
                         // slide the element to the new scope
-                        elementScopeSlider.slide(element.entity, scope);
+                        elementScopeSlider.slide(element.entity, scope, tx);
                     }
-                    UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scope, element.entity);
+                    UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scope, element.entity, tx);
                     replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));
                     return new TypedScope(scope.tag, keyType);
                 })
@@ -422,18 +427,18 @@ public final class CsvTopologyLoader {
                         throw new IllegalStateException(String.format("Inconsistent element '%s' in db : it is not linked to a planet which is required. Fix this.", tag));
                     } else {
                         // review the planet (in case the element has been created)
-                        UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scopeFromDatabase, element.entity);
+                        UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scopeFromDatabase, element.entity, tx);
                         replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));
                         return new TypedScope(scopeFromDatabase.tag, keyType);
                     }
                 });
     }
 
-    private Optional<Scope> getScopeFromParent(String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes) {
+    private Optional<Scope> getScopeFromParent(String keyAttribute, Map<String, Optional<UniqueEntity<Node>>> nodes, Transaction tx) {
         return metaSchema.getRequiredParent(keyAttribute)
                 .flatMap(requiredParent ->
                         nodes.getOrDefault(requiredParent, Optional.empty())
-                                .flatMap(nodeUniqueEntity -> topologyLoaderUtils.getScopeFromElementPlanet(nodeUniqueEntity.entity)));
+                                .flatMap(nodeUniqueEntity -> topologyLoaderUtils.getScopeFromElementPlanet(nodeUniqueEntity.entity, tx)));
     }
 
     private void linkToParents(LineMappingStrategy strategy, String keyType, UniqueEntity<Node> keyTypeNode, Map<String, Optional<UniqueEntity<Node>>> nodes) {
@@ -482,12 +487,10 @@ public final class CsvTopologyLoader {
         return relationship;
     }
 
-    private Optional<UniqueEntity<Node>> createElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType) {
+    private Optional<UniqueEntity<Node>> createElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType, Transaction tx) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-createElement").time()) {
             if (GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(elementKeyType)) {
-                try (Transaction tx = graphDb.beginTx()) {
-                    return Optional.of(UniqueEntity.existing(tx.findNode(Labels.SCOPE, "tag", GraphModelConstants.SCOPE_GLOBAL_TAG)));
-                }
+                return Optional.of(UniqueEntity.existing(tx.findNode(Labels.SCOPE, "tag", GraphModelConstants.SCOPE_GLOBAL_TAG)));
             }
 
             Set<String> todelete = metaSchema.getMonoParentRelations(elementKeyType)
@@ -506,7 +509,7 @@ public final class CsvTopologyLoader {
                 Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
                 uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
             } else {
-                uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag);
+                uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag, tx);
             }
 
             Iterable<String> schemasToApply = getSchemasToApply(lineStrategy.strategy, line, elementKeyType);
@@ -551,12 +554,12 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void deleteElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType, Action action) {
+    private void deleteElement(LineMappingStrategy lineStrategy, String[] line, String elementKeyType, Action action, Transaction tx) {
         int tagIndex = lineStrategy.strategy.getColumnIndex(elementKeyType, GraphModelConstants.TAG);
         if (tagIndex < 0) return;
         String tag = line[tagIndex];
         if (tag.isEmpty()) return;
-        Optional<Node> node = Optional.ofNullable(networkElementFactory.getWithOutcome(TAG, tag));
+        Optional<Node> node = Optional.ofNullable(networkElementFactory.getWithOutcome(TAG, tag, tx));
         node.ifPresent(entity -> deleteElementRecursive(entity, elementKeyType, action, Sets.newConcurrentHashSet()));
     }
 
@@ -651,7 +654,7 @@ public final class CsvTopologyLoader {
 
         Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, keyAttribute);
         if (!SCOPE_GLOBAL_TAG.equals(scope.tag)) {
-            return createElement(lineStrategy, line, keyAttribute);
+            return createElement(lineStrategy, line, keyAttribute, tx);
         }
 
         ImmutableCollection<HeaderElement> elementHeaders = lineStrategy.strategy.getElementHeaders(keyAttribute);

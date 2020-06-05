@@ -9,7 +9,7 @@ import com.livingobjects.neo4j.loader.TopologyLoader;
 import com.livingobjects.neo4j.model.iwan.Relationship;
 import com.livingobjects.neo4j.model.iwan.RelationshipStatus;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
-import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.dbms.api.DatabaseManagementService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,8 +34,8 @@ public final class LoadRelationshipsExtension {
     private final ObjectMapper json = new ObjectMapper();
     private final TopologyLoader topologyLoader;
 
-    public LoadRelationshipsExtension(@Context GraphDatabaseService graphDb) {
-        this.topologyLoader = new TopologyLoader(graphDb);
+    public LoadRelationshipsExtension(@Context DatabaseManagementService dbms) {
+        this.topologyLoader = new TopologyLoader(dbms.database(dbms.listDatabases().get(0)));
     }
 
     @POST
@@ -46,7 +46,7 @@ public final class LoadRelationshipsExtension {
 
             List<RelationshipStatus> status = Lists.newArrayList();
             try (JsonParser jsonParser = json.getFactory().createParser(jsonBody)) {
-                TypeReference<List<Relationship>> type = new TypeReference<List<Relationship>>() {
+                TypeReference<List<Relationship>> type = new TypeReference<>() {
                 };
                 List<Relationship> relationships = jsonParser.readValueAs(type);
                 load(relationships, status::add, updateOnly);

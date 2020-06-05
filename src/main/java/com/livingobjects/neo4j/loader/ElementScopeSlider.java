@@ -8,6 +8,7 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,16 +30,16 @@ final class ElementScopeSlider {
         this.templatedPlanetFactory = templatedPlanetFactory;
     }
 
-    Node slide(Node element, Scope toScope) {
+    Node slide(Node element, Scope toScope, Transaction tx) {
 
-        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope);
+        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope, tx);
         removeImproperParents(element, badScopes);
-        slideAllChildren(element, toScope);
+        slideAllChildren(element, toScope, tx);
 
         return element;
     }
 
-    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope) {
+    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope, Transaction tx) {
         ImmutableSet.Builder<String> oldScopesBldr = ImmutableSet.builder();
         for (Relationship plRelation : element.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
             Node planet = plRelation.getEndNode();
@@ -49,7 +50,7 @@ final class ElementScopeSlider {
             }
         }
 
-        UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element);
+        UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element, tx);
         if (LOGGER.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
@@ -74,7 +75,7 @@ final class ElementScopeSlider {
         });
     }
 
-    private void slideAllChildren(Node entity, Scope toScope) {
+    private void slideAllChildren(Node entity, Scope toScope, Transaction tx) {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
@@ -82,7 +83,7 @@ final class ElementScopeSlider {
                 String tag = childNode.getProperty(TAG).toString();
                 LOGGER.debug("child slide {} !", tag);
             }
-            slide(childNode, toScope);
+            slide(childNode, toScope, tx);
         });
     }
 }

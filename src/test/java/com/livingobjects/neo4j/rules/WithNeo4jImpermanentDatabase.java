@@ -151,8 +151,8 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
             cyphers.add(loadCqlFromInputStream(cypherStream.get()));
         }
         long start = System.currentTimeMillis();
-        try (Transaction tx = db.beginTx()) {
-            for (String q : cyphers) {
+        for (String q : cyphers) {
+            try (Transaction tx = db.beginTx()) {
                 String[] distinctQueries = q.split(";");
                 for (String query : distinctQueries) {
                     if (!query.trim().isEmpty()) {
@@ -164,8 +164,8 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
                         }
                     }
                 }
+                tx.commit();
             }
-            tx.commit();
         }
         LOGGER.debug("Graph database initialized with fixtures in {}s.", (System.currentTimeMillis() - start) / 1000);
     }

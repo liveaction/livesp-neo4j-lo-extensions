@@ -1,15 +1,14 @@
 CREATE INDEX ON :Attribute(name);
 CREATE INDEX ON :Attribute(_type);
 CREATE INDEX ON :Counter(name);
-CREATE CONSTRAINT ON (n:Planet) ASSERT n.name IS UNIQUE;
-CREATE CONSTRAINT ON (n:NetworkElement) ASSERT n.tag IS UNIQUE;
 CREATE INDEX ON :NetworkElement(name);
 CREATE INDEX ON :NetworkElement(_type);
 CREATE INDEX ON :Element(_scope);
 CREATE INDEX ON :Element(tag);
 CREATE INDEX ON :Element(_type);
+CREATE CONSTRAINT ON (n:Planet) ASSERT n.name IS UNIQUE;
+CREATE CONSTRAINT ON (n:NetworkElement) ASSERT n.tag IS UNIQUE;
 CREATE CONSTRAINT ON (n:Scope) ASSERT n.tag IS UNIQUE;
 CREATE CONSTRAINT ON (n:Schema) ASSERT n.id IS UNIQUE;
 CREATE CONSTRAINT ON (n:PlanetTemplate) ASSERT n.name IS UNIQUE;
 CREATE CONSTRAINT ON (n:RealmTemplate) ASSERT n.name IS UNIQUE;
-CREATE CONSTRAINT ON (n:Schema) ASSERT n.id IS UNIQUE;
