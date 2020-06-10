@@ -169,15 +169,27 @@ public final class ExportExtension {
     }
 
     private PaginatedLineages paginate(Lineages lineages, List<Lineage> filteredLineages, Optional<Pagination> pagination) {
+        Set<List<Long>> alreadySeenElements = Sets.newHashSet();
+        List<Lineage> distinctLineages = filteredLineages
+                .stream()
+                .filter(lineage -> {
+                    List<Long> ids = lineages.attributesToExport.stream()
+                            .map(keyAttribute -> Optional.ofNullable(lineage.nodesByType.get(keyAttribute))
+                                    .map(Node::getId)
+                                    .orElse(-1L))
+                            .collect(Collectors.toList());
+                    return alreadySeenElements.add(ids);
+                })
+                .collect(Collectors.toList());
         int end = pagination
-                .map(p -> Math.min(p.offset + p.limit, filteredLineages.size()))
-                .orElse(filteredLineages.size());
+                .map(p -> Math.min(p.offset + p.limit, distinctLineages.size()))
+                .orElse(distinctLineages.size());
         return new PaginatedLineages() {
 
             private List<Lineage> lineages() {
                 return pagination
-                        .map(p -> filteredLineages.subList(p.offset, end))
-                        .orElse(filteredLineages);
+                        .map(p -> distinctLineages.subList(p.offset, end))
+                        .orElse(distinctLineages);
             }
 
             @Override
@@ -218,7 +230,7 @@ public final class ExportExtension {
 
             @Override
             public int total() {
-                return filteredLineages.size();
+                return distinctLineages.size();
             }
         };
     }
@@ -441,7 +453,7 @@ public final class ExportExtension {
      * If scope only contains GLOBAL, return GLOBAL
      */
     private ImmutableSet<String> getApplicableScopes(Set<String> initialScopes) {
-        if(initialScopes.isEmpty()) {
+        if (initialScopes.isEmpty()) {
             return ImmutableSet.of();
         }
         return initialScopes.contains(GLOBAL_SCOPE.id) && initialScopes.size() == 1 ?
