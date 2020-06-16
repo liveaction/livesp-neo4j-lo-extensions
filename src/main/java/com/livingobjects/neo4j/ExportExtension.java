@@ -204,16 +204,16 @@ public final class ExportExtension {
         return csv;
     }
 
-    private PaginatedLineages paginate(List<Lineages> lineages, List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLineages, Optional<Pagination> pagination) {
+    private PaginatedLineages paginate(List<Lineages> lineages, List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLines, Optional<Pagination> pagination) {
         int end = pagination
-                .map(p -> Math.min(p.offset + p.limit, sortedLineages.size()))
-                .orElse(sortedLineages.size());
+                .map(p -> Math.min(p.offset + p.limit, sortedLines.size()))
+                .orElse(sortedLines.size());
         return new PaginatedLineages() {
 
             private List<Pair<List<Lineage>, List<Map<String, Object>>>> lineages() {
                 return pagination
-                        .map(p -> sortedLineages.subList(p.offset, end))
-                        .orElse(sortedLineages);
+                        .map(p -> sortedLines.subList(p.offset, end))
+                        .orElse(sortedLines);
             }
 
             @Override
@@ -258,7 +258,7 @@ public final class ExportExtension {
 
             @Override
             public int total() {
-                return sortedLineages.size();
+                return sortedLines.size();
             }
         };
     }
@@ -311,7 +311,8 @@ public final class ExportExtension {
                     initializePropertiesToExport(lineages.get(i), l);
                 }
             }
-            List<Pair<List<Lineage>, List<Map<String, Object>>>> filteredLinkedLineages = linkLineagesFromRelations(
+            List<Pair<List<Lineage>, List<Map<String, Object>>>> filteredLines = constructLines(
+                    lineages,
                     filteredLineages,
                     fullQuery.relationshipQueries,
                     ImmutableList.copyOf(relations),
@@ -332,25 +333,27 @@ public final class ExportExtension {
                     fullQuery.ordersByIndex,
                     new LineageListNaturalComparator(attributesOrdering)
             );
-            filteredLinkedLineages.sort((o1, o2) -> lineageSortComparator.compare(o1.first, o2.first));
-            return paginate(lineages, filteredLinkedLineages, fullQuery.pagination);
+            filteredLines.sort((o1, o2) -> lineageSortComparator.compare(o1.first, o2.first));
+            return paginate(lineages, filteredLines, fullQuery.pagination);
         }
     }
 
     /**
      * Returns all the tuples of Lineages linked by relationships, and the requested properties of the relationship
+     * Duplicate lines will be removed (two lines are duplicate if all the attributes and relations requested have the same id)
      */
-    private List<Pair<List<Lineage>, List<Map<String, Object>>>> linkLineagesFromRelations(List<List<Lineage>> lineages,
-                                                                                           ImmutableList<RelationshipQuery> relationQueries,
-                                                                                           ImmutableList<CrossRelationship> metaRelations,
-                                                                                           ImmutableList<ExportQuery> exportQueries) {
+    private List<Pair<List<Lineage>, List<Map<String, Object>>>> constructLines(List<Lineages> metaLineages,
+                                                                                List<List<Lineage>> lineages,
+                                                                                ImmutableList<RelationshipQuery> relationQueries,
+                                                                                ImmutableList<CrossRelationship> metaRelations,
+                                                                                ImmutableList<ExportQuery> exportQueries) {
         for (List<Lineage> l : lineages) {
             if (l.isEmpty()) {
                 return Lists.newArrayList();
             }
         }
-        List<Pair<List<Lineage>, List<Map<String, Object>>>> linkedLineages = Lists.newArrayList();
-        linkLineagesFromRelationsR(linkedLineages,
+        List<Pair<List<Lineage>, List<Relationship>>> lines = Lists.newArrayList();
+        constructLinesR(lines,
                 ImmutableList.copyOf(lineages.stream()
                         .map(ImmutableList::copyOf)
                         .collect(Collectors.toList())
@@ -362,65 +365,119 @@ public final class ExportExtension {
         for (int i = 0; i < exportQueries.size(); i++) {
             if (exportQueries.get(i).noResult) {
                 int finalI = i;
-                linkedLineages.forEach(l -> l.first.set(finalI, new Lineage(null)));
+                lines.forEach(l -> l.first.set(finalI, new Lineage(null)));
             }
         }
-        return linkedLineages;
+
+        // Removes duplicate lines
+        List<Integer> duplicateLineIndexes = Lists.newArrayList();
+        Set<List<Long>> alreadySeenLines = Sets.newHashSet();
+        for (int lineIdx = 0; lineIdx < lines.size(); lineIdx++) {
+            Pair<List<Lineage>, List<Relationship>> line = lines.get(lineIdx);
+            List<Long> lineIds = Lists.newArrayList();
+            // get ids of nodes
+            for (int i = 0; i < line.first.size(); i++) {
+                Lineages metaLineage = metaLineages.get(i);
+                Lineage lineage = line.first.get(i);
+                lineIds.addAll(
+                        metaLineage.attributesToExport.stream()
+                                .map(keyAttribute -> Optional.ofNullable(lineage.nodesByType.get(keyAttribute))
+                                        .map(Node::getId)
+                                        .orElse(-1L))
+                                .collect(Collectors.toList())
+                );
+            }
+
+            // get ids of relationships
+            for (int i = 0; i < line.second.size(); i++) {
+                Relationship relationship = line.second.get(i);
+                List<String> propertiesToExport = relationQueries.get(i).propertiesToExport;
+                if (propertiesToExport != null && !propertiesToExport.isEmpty()) {
+                    lineIds.add(relationship.getId());
+                }
+            }
+
+            if (!alreadySeenLines.add(lineIds)) {
+                duplicateLineIndexes.add(lineIdx);
+            }
+        }
+
+        // remove higher indexes first
+        Lists.reverse(duplicateLineIndexes)
+                .forEach(i -> lines.remove((int) i));
+
+        // Replace Relationship by Map<String, Object>, only keeping requested properties
+        return lines.stream()
+                .map(pair -> {
+                    List<Map<String, Object>> relationsProperties = Lists.newArrayList();
+                    for (int i = 0; i < pair.second.size(); i++) {
+                        Relationship r = pair.second.get(i);
+                        RelationshipQuery relationQuery = relationQueries.get(i);
+                        relationsProperties.add(r.getProperties(relationQuery.propertiesToExport.toArray(new String[0])));
+                    }
+                    return new Pair<>(pair.first, relationsProperties);
+                })
+                .collect(Collectors.toList());
     }
 
     /**
-     * Given allLineages, recursively fills linkedLineages. Each List inside will contain one and only one lineage from each List inside allLineages, with two consecutive lineages being linked
+     * Given allLineages, recursively fills lines. Each List inside will contain one and only one lineage from each List inside allLineages, with two consecutive lineages being linked
      * by a relationship described in relationQueries and metaRelations.
-     * linkedLineages[i] and linkedLineages[i+1] are linked by the relationship described by relationQueries[i] and metaRelations[i]
+     * lines[i] and lines[i+1] are linked by the relationship described by relationQueries[i] and metaRelations[i]
      */
-    private void linkLineagesFromRelationsR(List<Pair<List<Lineage>, List<Map<String, Object>>>> linkedLineages,
-                                            ImmutableList<ImmutableList<Lineage>> allLineages,
-                                            ImmutableList<RelationshipQuery> relationQueries,
-                                            ImmutableList<CrossRelationship> metaRelations) {
-        if (linkedLineages.isEmpty()) {
-            allLineages.get(0).forEach(l -> linkedLineages.add(new Pair<>(Lists.newArrayList(l), Lists.newArrayList())));
-            linkLineagesFromRelationsR(linkedLineages, allLineages, relationQueries, metaRelations);
+    private void constructLinesR(
+            List<Pair<List<Lineage>, List<Relationship>>> lines,
+            ImmutableList<ImmutableList<Lineage>> allLineages,
+            ImmutableList<RelationshipQuery> relationQueries,
+            ImmutableList<CrossRelationship> metaRelations
+    ) {
+        if (lines.isEmpty()) {
+            allLineages.get(0).forEach(l -> lines.add(new Pair<>(Lists.newArrayList(l), Lists.newArrayList())));
+            constructLinesR(lines, allLineages, relationQueries, metaRelations);
             return;
         }
-        int i = linkedLineages.get(0).first.size() - 1;
+        int i = lines.get(0).first.size() - 1;
         if (allLineages.size() == i + 1) {
             return;
         }
         List<Lineage> nextLineages = allLineages.get(i + 1);
-        ImmutableList.copyOf(linkedLineages)
+        ImmutableList.copyOf(lines)
                 .forEach(pair -> {
                     Lineage l = pair.first.get(i);
-                    List<Pair<Lineage, Map<String, Object>>> toAdd = getMatchingLineageAndRelationProperties(l, nextLineages, metaRelations.get(i), relationQueries.get(i));
-                    linkedLineages.remove(pair);
-                    linkedLineages.addAll(addNext(pair, toAdd));
+                    List<Pair<Lineage, Relationship>> toAdd = getMatchingLineageAndRelationProperties(l, nextLineages, metaRelations.get(i), relationQueries.get(i));
+                    lines.remove(pair);
+                    lines.addAll(addNext(pair, toAdd));
                 });
-        if (!linkedLineages.isEmpty()) {
-            linkLineagesFromRelationsR(linkedLineages, allLineages, relationQueries, metaRelations);
+        if (!lines.isEmpty()) {
+            constructLinesR(lines, allLineages, relationQueries, metaRelations);
         }
     }
 
-    private List<Pair<List<Lineage>, List<Map<String, Object>>>> addNext(Pair<List<Lineage>, List<Map<String, Object>>> initial, List<Pair<Lineage, Map<String, Object>>> next) {
+    private List<Pair<List<Lineage>, List<Relationship>>> addNext(
+            Pair<List<Lineage>, List<Relationship>> initial,
+            List<Pair<Lineage, Relationship>> next
+    ) {
         return next.stream()
                 .map(lineageMapPair -> {
                     List<Lineage> newLineages = Lists.newArrayList(initial.first);
-                    List<Map<String, Object>> newRelationProperties = Lists.newArrayList(initial.second);
+                    List<Relationship> newRelationProperties = Lists.newArrayList(initial.second);
                     newRelationProperties.add(lineageMapPair.second);
                     newLineages.add(lineageMapPair.first);
                     return new Pair<>(newLineages, newRelationProperties);
                 }).collect(Collectors.toList());
     }
 
-    private List<Pair<Lineage, Map<String, Object>>> getMatchingLineageAndRelationProperties(Lineage originLineage,
-                                                                                             List<Lineage> destLineage,
-                                                                                             CrossRelationship metaRelation,
-                                                                                             RelationshipQuery relationQuery) {
+    private List<Pair<Lineage, Relationship>> getMatchingLineageAndRelationProperties(Lineage originLineage,
+                                                                                      List<Lineage> destLineage,
+                                                                                      CrossRelationship metaRelation,
+                                                                                      RelationshipQuery relationQuery) {
         Direction direction = relationQuery.direction;
         String originType = direction == INCOMING ? metaRelation.originType : metaRelation.destinationType;
         String destType = direction == INCOMING ? metaRelation.destinationType : metaRelation.originType;
         return Streams.stream(originLineage.nodesByType.get(originType).getRelationships(CROSS_ATTRIBUTE, direction))
                 .map(r -> {
                     Node n = direction == INCOMING ? r.getStartNode() : r.getEndNode();
-                    return new Pair<>(n, r.getProperties(relationQuery.propertiesToExport.toArray(new String[0])));
+                    return new Pair<>(n, r);
                 })
                 .flatMap(pair -> destLineage.stream()
                         .filter(l -> l.nodesByType.get(destType).equals(pair.first))
@@ -552,7 +609,8 @@ public final class ExportExtension {
      * @param previousRel Relationship with the previous Lineage (in the order defined by the original query), the direction of this relationship is reversed
      * @return The predicate
      */
-    private Predicate<Node> nodeFilter(String nodeType, Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel, Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
+    private Predicate<Node> nodeFilter(String
+                                               nodeType, Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel, Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
         return node -> {
             AtomicBoolean result = new AtomicBoolean(true);
             // check if previousRel is satisfied
@@ -715,7 +773,8 @@ public final class ExportExtension {
                 .orElse(element);
     }
 
-    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren, ImmutableList<String> relAttrToExport) {
+    private Lineages initLineages(ExportQuery
+                                          exportQuery, Set<String> commonChildren, ImmutableList<String> relAttrToExport) {
         return new Lineages(metaSchema, exportQuery, commonChildren, relAttrToExport);
     }
 
