@@ -42,6 +42,7 @@ import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
@@ -413,7 +414,17 @@ public final class ExportExtension {
                     for (int i = 0; i < pair.second.size(); i++) {
                         Relationship r = pair.second.get(i);
                         RelationshipQuery relationQuery = relationQueries.get(i);
-                        relationsProperties.add(r.getProperties(relationQuery.propertiesToExport.toArray(new String[0])));
+                        relationsProperties.add(
+                                relationQuery.propertiesToExport.stream()
+                                        .map(property -> {
+                                            try {
+                                                return Maps.immutableEntry(property, r.getProperty(property));
+                                            } catch (NotFoundException e) {
+                                                LOGGER.warn(String.format("Requested property %s could not be found on relation %s, empty value will be returned instead", property, r));
+                                                return Maps.immutableEntry(property, "");
+                                            }
+                                        }).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))
+                        );
                     }
                     return new Pair<>(pair.first, relationsProperties);
                 })
