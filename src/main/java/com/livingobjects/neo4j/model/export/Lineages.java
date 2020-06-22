@@ -1,5 +1,6 @@
 package com.livingobjects.neo4j.model.export;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
@@ -11,7 +12,6 @@ import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,23 +25,19 @@ public final class Lineages {
 
     private static final Set<String> METADATA_PROPERTIES = ImmutableSet.of("tag", "createdAt", "updatedAt", "createdBy", "updatedBy");
 
-    private final List<Lineage> lineages;
-
-    public final Set<Node> visitedNodes;
-
     public final Map<String, SortedMap<String, String>> propertiesTypeByType;
-
     public final ImmutableSet<String> attributesToExtract;
     public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
-    public final Comparator<Lineage> lineageSortComparator;
+    public final boolean noResult;
 
+    private final List<Lineage> lineages;
+    private final Set<Node> visitedNodes;
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
-    private final ImmutableMap<String, Optional<ImmutableSet<String>>> propertiesToExtractByType;
 
-
-    public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
+    public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds, ImmutableList<String> relAttrToExport) {
+        this.noResult = exportQuery.noResult;
 
         Set<String> attributesToExport = Sets.union(exportQuery.parentAttributes, exportQuery.requiredAttributes);
         this.attributesToExport = ImmutableSortedSet.copyOf(metaSchema.lineageComparator, attributesToExport);
@@ -55,6 +51,7 @@ public final class Lineages {
         attributesToExtract.addAll(exportQuery.parentAttributes);
         attributesToExtract.addAll(exportQuery.requiredAttributes);
         attributesToExtract.addAll(filterKeyAttributes);
+        attributesToExtract.addAll(relAttrToExport);
         this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
 
         Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -metaSchema.lineageComparator.compare(o1, o2));
@@ -67,13 +64,7 @@ public final class Lineages {
         exportQuery.columns.forEach((att, set) -> builder.put(att, Optional.of(new HashSet<>(set))));
         attributesToExtract.forEach(att -> builder.computeIfAbsent(att, unused -> Optional.empty()));
         exportQuery.filter.columns().forEach(column -> builder.computeIfAbsent(column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(column.property)));
-        exportQuery.sort.forEach(columnOrder -> builder.computeIfAbsent(columnOrder.column.keyAttribute, unused -> Optional.of(Sets.newHashSet())).ifPresent(s -> s.add(columnOrder.column.property)));
 
-        this.propertiesToExtractByType = builder.entrySet().stream()
-                .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().map(ImmutableSet::copyOf)))
-                .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        lineageSortComparator = new LineageSortComparator(exportQuery.sort, new LineageNaturalComparator(Sets.union(this.attributesToExport, filterKeyAttributes).immutableCopy()));
         lineages = new ArrayList<>();
         visitedNodes = new HashSet<>();
         propertiesTypeByType = new HashMap<>();
@@ -105,6 +96,7 @@ public final class Lineages {
         visitedNodes.add(node);
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean ignoreProperty(String name) {
         if (name.startsWith("_")) {
             return true;
