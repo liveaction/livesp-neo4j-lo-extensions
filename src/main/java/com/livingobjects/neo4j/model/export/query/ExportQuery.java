@@ -31,6 +31,8 @@ public final class ExportQuery {
     public final Optional<Pagination> pagination;
     // scopes of the query (values can be <client_id>, global or sp). Allows filtering by planets
     public final ImmutableSet<String> scopes;
+    // true if you want to export one line for each parent when an element has several parents of the same type (ex: a Site with several Area)
+    public final boolean parentsCardinality;
 
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                        @JsonProperty("parentAttributes") List<String> parentAttributes,
@@ -39,6 +41,7 @@ public final class ExportQuery {
                        @JsonProperty("includeMetadata") boolean includeMetadata,
                        @JsonProperty("sort") List<ColumnOrder> sort,
                        @JsonProperty("pagination") @Nullable Pagination pagination,
+                       @JsonProperty("parentsCardinality") boolean parentsCardinality,
                        @JsonProperty("scopes") Set<String> scopes) {
         this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
         this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
@@ -48,6 +51,7 @@ public final class ExportQuery {
         this.sort = ImmutableList.copyOf(sort);
         this.pagination = Optional.ofNullable(pagination);
         this.scopes = ImmutableSet.copyOf(scopes);
+        this.parentsCardinality = parentsCardinality;
     }
 
     @Override
@@ -62,6 +66,7 @@ public final class ExportQuery {
                 Objects.equals(filter, that.filter) &&
                 Objects.equals(sort, that.sort) &&
                 Objects.equals(scopes, that.scopes) &&
+                Objects.equals(parentsCardinality, that.parentsCardinality) &&
                 Objects.equals(pagination, that.pagination);
     }
 
@@ -81,6 +86,7 @@ public final class ExportQuery {
                 .add("sort", sort)
                 .add("pagination", pagination)
                 .add("scopes", scopes)
+                .add("parentsCardinality", parentsCardinality)
                 .toString();
     }
 

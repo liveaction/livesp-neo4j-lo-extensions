@@ -35,6 +35,7 @@ public final class Lineages {
     public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
     public final Comparator<Lineage> lineageSortComparator;
+    public final boolean parentsCardinality;
 
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
@@ -42,6 +43,8 @@ public final class Lineages {
 
 
     public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds) {
+
+        this.parentsCardinality = exportQuery.parentsCardinality;
 
         Set<String> attributesToExport = Sets.union(exportQuery.parentAttributes, exportQuery.requiredAttributes);
         this.attributesToExport = ImmutableSortedSet.copyOf(metaSchema.lineageComparator, attributesToExport);
