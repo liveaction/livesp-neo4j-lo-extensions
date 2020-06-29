@@ -26,6 +26,8 @@ public final class ExportQuery {
     public final ImmutableSet<String> scopes;
     // true if this specific query should not return any results (only used for relationships purposes)
     public final boolean noResult;
+    // true if you want to export one line for each parent when an element has several parents of the same type (ex: a Site with several Area)
+    public final boolean parentsCardinality;
 
     public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
                        @JsonProperty("parentAttributes") List<String> parentAttributes,
@@ -33,6 +35,7 @@ public final class ExportQuery {
                        @JsonProperty("filter") Filter<Column> filter,
                        @JsonProperty("includeMetadata") boolean includeMetadata,
                        @JsonProperty("scopes") Set<String> scopes,
+                       @JsonProperty("parentsCardinality") boolean parentsCardinality,
                        @JsonProperty("noResult") boolean noResult) {
         this.requiredAttributes = ImmutableSet.copyOf(requiredAttributes);
         this.parentAttributes = ImmutableSet.copyOf(parentAttributes);
@@ -40,6 +43,7 @@ public final class ExportQuery {
         this.filter = filter;
         this.includeMetadata = includeMetadata;
         this.scopes = ImmutableSet.copyOf(scopes);
+        this.parentsCardinality = parentsCardinality;
         this.noResult = noResult;
     }
 
@@ -53,6 +57,7 @@ public final class ExportQuery {
                 Objects.equals(parentAttributes, that.parentAttributes) &&
                 Objects.equals(columns, that.columns) &&
                 Objects.equals(filter, that.filter) &&
+                Objects.equals(parentsCardinality, that.parentsCardinality) &&
                 Objects.equals(scopes, that.scopes);
     }
 
@@ -70,6 +75,8 @@ public final class ExportQuery {
                 .add("filter", filter)
                 .add("includeMetadata", includeMetadata)
                 .add("scopes", scopes)
+                .add("parentsCardinality", parentsCardinality)
+                .add("noResult", scopes)
                 .toString();
     }
 

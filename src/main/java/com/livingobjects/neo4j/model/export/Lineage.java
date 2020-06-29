@@ -28,17 +28,27 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 
 public final class Lineage {
 
-    public final Map<String, Node> nodesByType = Maps.newHashMap();
+    public final Map<String, Node> nodesByType;
     public final GraphDatabaseService graphDb;
     // Filled at the end of the process, with the properties to export only
-    public final Map<String, SortedMap<String, Object>> propertiesToExportByType = Maps.newLinkedHashMap();
-
+    public final Map<String, SortedMap<String, Object>> propertiesToExportByType;
     // Contains all properties used during the process, with lazy loading
-    private final Map<String, Map<String, Object>> propertiesByType = Maps.newHashMap();
+    private final Map<String, Map<String, Object>> propertiesByType;
+
     private String repr;
 
     public Lineage(GraphDatabaseService graphDb) {
+        this.nodesByType = Maps.newHashMap();
         this.graphDb = graphDb;
+        this.propertiesToExportByType = Maps.newLinkedHashMap();
+        this.propertiesByType = Maps.newHashMap();
+    }
+
+    public Lineage(Lineage toClone) {
+        this.nodesByType = Maps.newHashMap(toClone.nodesByType);
+        this.graphDb = toClone.graphDb;
+        this.propertiesToExportByType = Maps.newLinkedHashMap(toClone.propertiesToExportByType);
+        this.propertiesByType = Maps.newHashMap(toClone.propertiesByType);
     }
 
     @Override
@@ -53,6 +63,7 @@ public final class Lineage {
             return repr;
         }
     }
+
 
     public Object getProperty(String type, String property) {
         Optional<Object> optValue = Optional.ofNullable(propertiesByType.get(type)).map(values -> values.get(property));

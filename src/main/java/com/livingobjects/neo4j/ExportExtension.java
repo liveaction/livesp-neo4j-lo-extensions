@@ -366,7 +366,7 @@ public final class ExportExtension {
         for (int i = 0; i < exportQueries.size(); i++) {
             if (exportQueries.get(i).noResult) {
                 int finalI = i;
-                lines.forEach(l -> l.first.set(finalI, new Lineage(null)));
+                lines.forEach(l -> l.first.set(finalI, new Lineage((GraphDatabaseService) null)));
             }
         }
 
@@ -799,12 +799,17 @@ public final class ExportExtension {
             return;
         }
         Iterable<Relationship> parentRelationships = currentNode.getRelationships(OUTGOING, CONNECT);
+        Lineage copyLineage = new Lineage(lineage);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
             String parentType = parentNode.getProperty(_TYPE, "").toString();
 
             Node existingNode = lineage.nodesByType.get(parentType);
-            if (existingNode == null) {
+            if (existingNode != null && existingNode.getId() != parentNode.getId() && lineages.parentsCardinality) {
+                Lineage newLineage = new Lineage(copyLineage);
+                rewindLineage(parentNode, newLineage, lineages);
+                lineages.add(newLineage);
+            } else if(existingNode == null) {
                 rewindLineage(parentNode, lineage, lineages);
             }
         }
