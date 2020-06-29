@@ -339,13 +339,9 @@ public final class ExportExtension {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
                 getNodeIterator(leafAttribute, exportQuery).forEach(leaf -> {
                     if (!lineages.dejaVu(leaf)) {
-                        try {
-                            Lineage lineage = new Lineage(graphDb);
-                            rewindLineage(leaf, lineage, lineages);
-                            lineages.add(lineage);
-                        } catch (LineageCardinalityException e) {
-                            LOGGER.warn("Unable to export lineage {}!={} in {}", e.existingNode, e.parentNode, e.lineage);
-                        }
+                        Lineage lineage = new Lineage(graphDb);
+                        rewindLineage(leaf, lineage, lineages);
+                        lineages.add(lineage);
                     }
                 });
             }
@@ -474,7 +470,7 @@ public final class ExportExtension {
         return new Lineages(metaSchema, exportQuery, commonChildren);
     }
 
-    private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) throws LineageCardinalityException {
+    private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) {
         String type = currentNode.getProperty(_TYPE, "").toString();
         if (lineages.attributesToExtract.contains(type)) {
             lineage.nodesByType.put(type, currentNode);
@@ -484,12 +480,17 @@ public final class ExportExtension {
             return;
         }
         Iterable<Relationship> parentRelationships = currentNode.getRelationships(OUTGOING, CONNECT);
+        Lineage copyLineage = new Lineage(lineage);
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
             String parentType = parentNode.getProperty(_TYPE, "").toString();
 
             Node existingNode = lineage.nodesByType.get(parentType);
-            if (existingNode == null) {
+            if (existingNode != null && existingNode.getId() != parentNode.getId() && lineages.parentsCardinality) {
+                Lineage newLineage = new Lineage(copyLineage);
+                rewindLineage(parentNode, newLineage, lineages);
+                lineages.add(newLineage);
+            } else if(existingNode == null) {
                 rewindLineage(parentNode, lineage, lineages);
             }
         }
