@@ -6,7 +6,6 @@ import com.davfx.ninio.csv.CsvWriter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Stopwatch;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -59,16 +58,7 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -78,14 +68,8 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.CONNECT;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.CROSS_ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -523,7 +507,7 @@ public final class ExportExtension {
                         .forEach(filteredLineage -> writeCSVLine(filteredLineage, csv));
             }
         } catch (IOException e) {
-            Throwables.propagate(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -823,11 +807,11 @@ public final class ExportExtension {
                                 try {
                                     line.append(PropertyConverter.asString(value));
                                 } catch (IOException e) {
-                                    throw Throwables.propagate(e);
+                                    throw new RuntimeException(e);
                                 }
                             }));
         } catch (IOException e) {
-            throw Throwables.propagate(e);
+            throw new RuntimeException(e);
         }
     }
 
