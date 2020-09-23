@@ -76,10 +76,9 @@ public class SchemaReader {
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
         List<MemdexPathNode> children = Lists.newArrayList();
-        segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING).forEach(path -> {
-            readMemdexPath(path.getEndNode(), onlyUnamanagedCounters, countersDefinitionBuilder)
-                    .ifPresent(children::add);
-        });
+        segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING)
+                .forEach(path -> readMemdexPath(path.getEndNode(), onlyUnamanagedCounters, countersDefinitionBuilder)
+                        .ifPresent(children::add));
 
         String attribute = getAttribute(segment);
         if (counters.isEmpty() && children.isEmpty()) {
@@ -122,14 +121,12 @@ public class SchemaReader {
         CounterType counterType = Optional.ofNullable(node.getProperty("type", null))
                 .map(Object::toString)
                 .flatMap(type -> {
-                    switch (type) {
-                        case COUNT:
-                            return Optional.ofNullable(node.getProperty("countType", null))
-                                    .map(Object::toString)
-                                    .map(CountCounterType::new);
-                        default:
-                            return Optional.empty();
+                    if (COUNT.equals(type)) {
+                        return Optional.ofNullable(node.getProperty("countType", null))
+                                .map(Object::toString)
+                                .map(CountCounterType::new);
                     }
+                    return Optional.empty();
                 })
                 .orElse(null);
 

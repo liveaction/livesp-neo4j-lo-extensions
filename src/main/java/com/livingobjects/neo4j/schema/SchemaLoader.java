@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j.schema;
 
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -45,26 +44,12 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
-import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Collectors.*;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -338,7 +323,7 @@ public final class SchemaLoader {
     }
 
     private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
-        if (!schemaReader.isManaged(counterNode)) {
+        if (!SchemaReader.isManaged(counterNode)) {
 
             providedRelationship.delete();
             if (!counterNode.hasRelationship(INCOMING, VAR)) {
@@ -869,7 +854,7 @@ public final class SchemaLoader {
                 return result;
             }
         } catch (Throwable e) {
-            throw Throwables.propagate(e);
+            throw new RuntimeException(e);
         } finally {
             schemaLock.unlock();
         }

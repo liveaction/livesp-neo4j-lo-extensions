@@ -20,11 +20,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.Iterator;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -49,7 +45,7 @@ public final class LoadRelationshipsExtension {
             boolean updateOnly = Boolean.parseBoolean(strUpdateOnly);
 
             List<RelationshipStatus> status = Lists.newArrayList();
-            try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
+            try (JsonParser jsonParser = json.getFactory().createParser(jsonBody)) {
                 TypeReference<List<Relationship>> type = new TypeReference<List<Relationship>>() {
                 };
                 List<Relationship> relationships = jsonParser.readValueAs(type);
@@ -70,39 +66,6 @@ public final class LoadRelationshipsExtension {
                 return errorResponse(e);
             }
         }
-    }
-
-    private Iterable<Relationship> readRelationships(InputStream inputStream) {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-        return () -> new Iterator<Relationship>() {
-            String line = null;
-            boolean open = true;
-
-            @Override
-            public boolean hasNext() {
-                try {
-                    if (open) {
-                        line = reader.readLine();
-                        if (line == null) {
-                            open = false;
-                            reader.close();
-                        }
-                    }
-                } catch (IOException e) {
-                    throw new IllegalStateException(e);
-                }
-                return line != null;
-            }
-
-            @Override
-            public Relationship next() {
-                try {
-                    return JSON_MAPPER.readValue(line, Relationship.class);
-                } catch (IOException e) {
-                    throw new IllegalStateException(e);
-                }
-            }
-        };
     }
 
     private void load(Iterable<Relationship> relationships, Consumer<RelationshipStatus> relationshipStatusConsumer, boolean updateOnly) {

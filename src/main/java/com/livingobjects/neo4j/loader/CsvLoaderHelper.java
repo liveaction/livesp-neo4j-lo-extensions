@@ -7,23 +7,26 @@ import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import scala.Tuple2;
 
 import java.util.Optional;
 
 final class CsvLoaderHelper {
 
     private static final String CLASS_SCOPE = "class:scope";
+    public static final String TYPE_ATTR = "_type";
 
-    static ImmutableSet<String> getCrossAttributes(Node node) {
-        ImmutableSet.Builder<String> crossBldr = ImmutableSet.builder();
+    static ImmutableSet<Tuple2<String, String>> getCrossAttributes(Node node) {
+        ImmutableSet.Builder<Tuple2<String, String>> crossBldr = ImmutableSet.builder();
         node.getRelationships(Direction.OUTGOING, RelationshipTypes.CROSS_ATTRIBUTE).forEach(r -> {
             Node endNode = r.getEndNode();
+            String type = r.getProperty(TYPE_ATTR, "").toString();
             if (endNode.hasLabel(Labels.ATTRIBUTE)) {
                 Object typeProperty = endNode.getProperty(GraphModelConstants._TYPE);
                 Object nameProperty = endNode.getProperty(GraphModelConstants.NAME);
                 if (typeProperty != null && nameProperty != null) {
                     String endKeytype = typeProperty.toString() + GraphModelConstants.KEYTYPE_SEPARATOR + nameProperty.toString();
-                    crossBldr.add(endKeytype);
+                    crossBldr.add(new Tuple2<>(endKeytype, type));
                 }
             }
         });

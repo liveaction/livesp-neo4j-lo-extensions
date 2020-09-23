@@ -54,7 +54,7 @@ public class SchemaTemplateExtension {
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
     public Response loadSchema(String jsonBody) throws IOException {
-        try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
+        try (JsonParser jsonParser = json.getFactory().createParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             SchemaAndPlanets schema = jsonParser.readValueAs(SchemaAndPlanets.class);
             boolean updated = schemaLoader.load(schema);
@@ -69,7 +69,7 @@ public class SchemaTemplateExtension {
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
     public Response updateSchema(String jsonBody) throws IOException {
-        try (JsonParser jsonParser = json.getJsonFactory().createJsonParser(jsonBody)) {
+        try (JsonParser jsonParser = json.getFactory().createParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb);
             SchemaAndPlanetsUpdate schemaAndPlanetsUpdate = jsonParser.readValueAs(SchemaAndPlanetsUpdate.class);
             boolean updated = schemaLoader.update(schemaAndPlanetsUpdate);
@@ -95,7 +95,7 @@ public class SchemaTemplateExtension {
 
         StreamingOutput stream = outputStream -> {
             List<Node> realmNodes = Lists.newArrayList();
-            try (JsonGenerator jg = json.getJsonFactory().createJsonGenerator(outputStream, JsonEncoding.UTF8);
+            try (JsonGenerator jg = json.getFactory().createGenerator(outputStream, JsonEncoding.UTF8);
                  Transaction tx = graphDb.beginTx()) {
                 Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
 
