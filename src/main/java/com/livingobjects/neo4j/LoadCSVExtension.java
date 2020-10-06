@@ -7,7 +7,7 @@ import com.google.common.base.Stopwatch;
 import com.livingobjects.neo4j.loader.CsvTopologyLoader;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
-import com.sun.jersey.multipart.MultiPart;
+import org.glassfish.jersey.media.multipart.MultiPart;
 import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.slf4j.Logger;
@@ -41,6 +41,7 @@ public final class LoadCSVExtension {
     public LoadCSVExtension(@Context DatabaseManagementService dbms) {
         this.graphDb = dbms.database(dbms.listDatabases().get(0));
     }
+
 
     @POST
     @Consumes("multipart/form-data")
