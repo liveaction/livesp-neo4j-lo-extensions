@@ -44,7 +44,7 @@ public final class LoadCSVExtension {
 
 
     @POST
-    @Consumes("multipart/form-data")
+    @Consumes({MediaType.MULTIPART_FORM_DATA})
     public Response loadCSV(MultiPart multiPart) throws IOException {
         Stopwatch sWatch = Stopwatch.createStarted();
         long importedElementsCounter = 0;
