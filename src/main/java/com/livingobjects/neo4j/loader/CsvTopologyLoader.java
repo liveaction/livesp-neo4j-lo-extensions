@@ -507,7 +507,7 @@ public final class CsvTopologyLoader {
             UniqueEntity<Node> uniqueEntity;
             if (isOverridable) {
                 Scope scope = lineStrategy.guessElementScopeInLine(metaSchema, elementKeyType);
-                uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag);
+                uniqueEntity = overridableElementFactory.getOrOverride(scope, GraphModelConstants.TAG, tag, tx);
             } else {
                 uniqueEntity = networkElementFactory.getOrCreateWithOutcome(GraphModelConstants.TAG, tag, tx);
             }
@@ -528,14 +528,14 @@ public final class CsvTopologyLoader {
                     if (Iterables.isEmpty(schemasToApply)) {
                         throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + GraphModelConstants.SCHEMA));
                     }
-                    applySchemas(elementKeyType, uniqueEntity.entity, schemasToApply);
+                    applySchemas(elementKeyType, uniqueEntity.entity, schemasToApply, tx);
                 }
                 uniqueEntity.entity.setProperty(GraphModelConstants._TYPE, elementKeyType);
 
             } else {
                 if (isScope) {
                     if (!Iterables.isEmpty(schemasToApply)) {
-                        applySchema(lineStrategy.strategy, line, elementKeyType, tag, uniqueEntity.entity);
+                        applySchema(lineStrategy.strategy, line, elementKeyType, tag, uniqueEntity.entity, tx);
                     }
                 }
                 uniqueEntity.entity.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
@@ -620,10 +620,10 @@ public final class CsvTopologyLoader {
         }
     }
 
-    private void applySchema(CsvMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode) {
+    private void applySchema(CsvMappingStrategy strategy, String[] line, String elementKeyType, String tag, Node elementNode, Transaction tx) {
         try {
             Iterable<String> schemas = getSchemasToApply(strategy, line, elementKeyType);
-            applySchemas(elementKeyType, elementNode, schemas);
+            applySchemas(elementKeyType, elementNode, schemas, tx);
         } catch (NoSuchElementException e) {
             throw new InvalidScopeException(String.format("Unable to apply schema for '%s'. Column '%s' not found.", tag, elementKeyType + '.' + GraphModelConstants.SCHEMA));
         }
@@ -635,16 +635,14 @@ public final class CsvTopologyLoader {
                 .orElse(ImmutableSet.of());
     }
 
-    private void applySchemas(String elementKeyType, Node elementNode, Iterable<String> schemas) {
+    private void applySchemas(String elementKeyType, Node elementNode, Iterable<String> schemas, Transaction tx) {
         Set<Node> schemaNodes = Sets.newHashSet();
         schemas.forEach(schema -> {
-            try (Transaction tx = graphDb.beginTx()) {
-                Node schemaNode = tx.findNode(Labels.SCHEMA, GraphModelConstants.ID, schema);
-                if (schemaNode != null) {
-                    schemaNodes.add(schemaNode);
-                } else {
-                    throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
-                }
+            Node schemaNode = tx.findNode(Labels.SCHEMA, GraphModelConstants.ID, schema);
+            if (schemaNode != null) {
+                schemaNodes.add(schemaNode);
+            } else {
+                throw new InvalidScopeException(String.format("Unable to apply schema '%s' for node '%s'. Schema not found.", schema, elementKeyType));
             }
         });
         RelationshipUtils.updateRelationships(INCOMING, elementNode, APPLIED_TO, schemaNodes);
