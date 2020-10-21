@@ -16,7 +16,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
-import picocli.CommandLine;
 import scala.Tuple2;
 
 import java.util.ArrayList;
@@ -532,7 +531,7 @@ public final class MetaSchema {
 
         @Override
         public Iterable<Relationship> getRelationships(Direction direction, RelationshipType... types) {
-            switch(direction) {
+            switch (direction) {
                 case BOTH:
                     return getRelation(allRelations, types);
                 case INCOMING:
@@ -550,7 +549,7 @@ public final class MetaSchema {
 
         @Override
         public boolean hasRelationship(Direction direction, RelationshipType... types) {
-            switch(direction) {
+            switch (direction) {
                 case BOTH:
                     return containsRelation(allRelations, types);
                 case INCOMING:
@@ -604,7 +603,7 @@ public final class MetaSchema {
         public Relationship getSingleRelationship(RelationshipType type, Direction dir) {
 
             ArrayList<Relationship> relationships = Lists.newArrayList(getRelationships(dir, type));
-            if(relationships.size() != 1) {
+            if (relationships.size() != 1) {
                 throw new IllegalArgumentException(String.format("Only 1 relationship should match type %s and direction %s but %d were found", type, dir, relationships.size()));
             }
             return relationships.get(0);
@@ -652,6 +651,11 @@ public final class MetaSchema {
 
         @Override
         public boolean hasLabel(Label label) {
+            for (Label l : getLabels()) {
+                if (l.equals(label)) {
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -667,6 +671,11 @@ public final class MetaSchema {
 
         @Override
         public boolean hasProperty(String key) {
+            for (String p : getPropertyKeys()) {
+                if (p.equals(key)) {
+                    return true;
+                }
+            }
             return false;
         }
 
