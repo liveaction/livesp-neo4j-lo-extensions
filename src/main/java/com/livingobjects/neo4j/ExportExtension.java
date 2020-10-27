@@ -548,7 +548,8 @@ public final class ExportExtension {
         } finally {
             try {
                 outputStream.close();
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                LOGGER.error("Error occured while closign outputStream: ", e);
             }
         }
     }
