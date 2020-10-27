@@ -89,6 +89,7 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
+@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 @Path("/export")
 public final class ExportExtension {
 
