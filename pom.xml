@@ -16,7 +16,7 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.17.2</version>
+    <version>1.18.0</version>
 
     <packaging>bundle</packaging>
 
@@ -184,6 +184,15 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.amashchenko.maven.plugin</groupId>
+                <artifactId>gitflow-maven-plugin</artifactId>
+                <version>1.14.0</version>
+                <configuration>
+                    <postHotfixGoals>deploy</postHotfixGoals>
+                    <postReleaseGoals>deploy</postReleaseGoals>
+                </configuration>
             </plugin>
         </plugins>
     </build>
