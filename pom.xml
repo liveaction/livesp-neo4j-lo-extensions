@@ -23,7 +23,7 @@
     <properties>
         <neo4j.version>3.5.16</neo4j.version>
         <jersey.version>1.19.3</jersey.version>
-        <jackson.version>2.10.3</jackson.version>
+        <jackson.version>2.10.5.1</jackson.version>
         <javax.servlet.version>3.1.0</javax.servlet.version>
         <metrics.version>3.1.2</metrics.version>
         <junitparams.version>1.0.5</junitparams.version>
