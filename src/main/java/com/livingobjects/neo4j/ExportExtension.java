@@ -141,6 +141,39 @@ public final class ExportExtension {
     }
 
     @POST
+    @Path("/count")
+    public Response export(InputStream in) throws IOException {
+        Stopwatch stopWatch = Stopwatch.createStarted();
+        try {
+            FullQuery query = json.readValue(in, new TypeReference<FullQuery>() {
+            });
+
+            PaginatedLineages lineages = extract(query);
+
+            return Response.ok()
+                    .type(MediaType.APPLICATION_JSON_TYPE)
+                    .entity(JSON_MAPPER.writeValueAsString(lineages.total()))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            LOGGER.error("export extension : ", e);
+            String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
+            return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
+
+        } catch (Exception e) {
+            LOGGER.error("export extension : ", e);
+            if (e.getCause() != null) {
+                return errorResponse(e.getCause());
+            } else {
+                return errorResponse(e);
+            }
+
+        } finally {
+            LOGGER.info("Export count in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+        }
+
+    }
+
+    @POST
     public Response export(InputStream in, @HeaderParam("accept") String accept) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
