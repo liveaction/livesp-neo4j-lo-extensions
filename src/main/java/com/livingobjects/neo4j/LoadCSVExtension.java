@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Path("/load-csv")
@@ -54,7 +55,10 @@ public final class LoadCSVExtension {
 
             try (InputStream is = new FileInputStream(csv)) {
                 Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is);
-                importedElementsCounter = result.importedElementsByScope.values().size();
+                importedElementsCounter = result.importedElementsByScope.values()
+                        .stream()
+                        .mapToInt(Set::size)
+                        .sum();
                 String json = JSON_MAPPER.writeValueAsString(result);
                 return Response.ok().entity(json).type(MediaType.APPLICATION_JSON).build();
 
