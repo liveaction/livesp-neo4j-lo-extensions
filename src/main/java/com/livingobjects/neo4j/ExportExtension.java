@@ -759,16 +759,15 @@ public final class ExportExtension {
                                 .map(Relationship::getStartNode)) // All nodes which do not extend another
                         .map(node -> getOverridingNode(node, authorizedPlanets));
             } else {
+                PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
                 return scopes.stream()
-                        .flatMap(scopeId -> {
-                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
-                            return planetByContext.allPlanets().stream()
-                                    .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
-                                    .filter(Objects::nonNull)
-                                    .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
-                                            .map(Relationship::getStartNode))
-                                    .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext());
-                        });
+                        .flatMap(scopeId ->
+                                planetByContext.allPlanets().stream()
+                                        .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                        .filter(Objects::nonNull)
+                                        .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
+                                                .map(Relationship::getStartNode))
+                                        .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext()));
             }
         }
     }
