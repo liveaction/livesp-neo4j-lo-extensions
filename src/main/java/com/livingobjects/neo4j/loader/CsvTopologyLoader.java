@@ -33,9 +33,11 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.livingobjects.neo4j.model.result.TypedScope;
+import org.checkerframework.checker.units.qual.K;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -80,6 +82,7 @@ public final class CsvTopologyLoader {
 
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
+    private static final String KEEP_VALUE_TOKEN = "#KEEP_VALUE";
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -290,6 +293,7 @@ public final class CsvTopologyLoader {
             for (String requiredProperty : requiredProperties) {
                 node.ifPresent(entity -> {
                     Object value = inferValueFromParent(keyAttribute, requiredProperty, nodes);
+
                     if (value == null) {
                         throw new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be inferred from parents neither. Line not imported.", keyAttribute, requiredProperty));
                     } else {
@@ -676,8 +680,11 @@ public final class CsvTopologyLoader {
     private static <T extends PropertyContainer> void persistElementProperty(HeaderElement header, String[] line, T elementNode) {
         String field = line[header.index];
         Object value = PropertyConverter.convert(field, header.type, header.isArray);
+
         if (value != null) {
-            elementNode.setProperty(header.propertyName, value);
+            if (!value.equals(KEEP_VALUE_TOKEN)) {
+                elementNode.setProperty(header.propertyName, value);
+            }
         } else {
             elementNode.removeProperty(header.propertyName);
         }
