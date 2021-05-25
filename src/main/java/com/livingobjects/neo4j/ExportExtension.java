@@ -141,6 +141,39 @@ public final class ExportExtension {
     }
 
     @POST
+    @Path("/count")
+    public Response export(InputStream in) throws IOException {
+        Stopwatch stopWatch = Stopwatch.createStarted();
+        try {
+            FullQuery query = json.readValue(in, new TypeReference<FullQuery>() {
+            });
+
+            PaginatedLineages lineages = extract(query);
+
+            return Response.ok()
+                    .type(MediaType.APPLICATION_JSON_TYPE)
+                    .entity(JSON_MAPPER.writeValueAsString(lineages.total()))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            LOGGER.error("export extension : ", e);
+            String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
+            return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
+
+        } catch (Exception e) {
+            LOGGER.error("export extension : ", e);
+            if (e.getCause() != null) {
+                return errorResponse(e.getCause());
+            } else {
+                return errorResponse(e);
+            }
+
+        } finally {
+            LOGGER.info("Export count in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+        }
+
+    }
+
+    @POST
     public Response export(InputStream in, @HeaderParam("accept") String accept) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
@@ -759,16 +792,15 @@ public final class ExportExtension {
                                 .map(Relationship::getStartNode)) // All nodes which do not extend another
                         .map(node -> getOverridingNode(node, authorizedPlanets));
             } else {
+                PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
                 return scopes.stream()
-                        .flatMap(scopeId -> {
-                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
-                            return planetByContext.allPlanets().stream()
-                                    .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
-                                    .filter(Objects::nonNull)
-                                    .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
-                                            .map(Relationship::getStartNode))
-                                    .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext());
-                        });
+                        .flatMap(scopeId ->
+                                planetByContext.allPlanets().stream()
+                                        .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                        .filter(Objects::nonNull)
+                                        .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
+                                                .map(Relationship::getStartNode))
+                                        .filter(node -> !node.getRelationships(OUTGOING, EXTEND).iterator().hasNext()));
             }
         }
     }
