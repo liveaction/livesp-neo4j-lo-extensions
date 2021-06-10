@@ -114,7 +114,6 @@ public final class ExportExtension {
     @GET
     @Path("/properties")
     public Response exportProperties() throws IOException {
-        LOGGER.info("test");
         try (Transaction ignored = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
             graphDb.findNodes(Labels.ELEMENT)
