@@ -27,8 +27,9 @@ public class CsvTopologyLoaderTest {
     public void shouldSortElementsToDelete() {
         List<String> actual;
         try (Transaction tx = wNeo.getGraphDatabaseService().beginTx()) {
+            MetaSchema metaSchema = new MetaSchema(tx);
             actual = tested.sortKeyTypes(ImmutableSet.of("cluster:client", "cluster:site", "neType:cpe","cluster:application/group",
-                    "neType:viewpoint", "neType:wanLink", "cluster:area", "neType:application", "neType:cos"));
+                    "neType:viewpoint", "neType:wanLink", "cluster:area", "neType:application", "neType:cos"), metaSchema);
         }
         System.out.println(actual);
         Assertions.assertThat(actual.indexOf("neType:viewpoint")).isLessThan(actual.indexOf("neType:cpe"));
