@@ -121,8 +121,8 @@ public final class CsvTopologyLoader {
         Map<Integer, String> errors = Maps.newHashMap();
 
         Transaction tx = graphDb.beginTx();
+        InnerTransaction itx = new InnerTransaction(tx);
         try {
-            InnerTransaction itx = new InnerTransaction(tx);
             checkKeyAttributesExist(strategy, itx.metaSchema);
             checkCrossAttributeDefinitionExists(strategy, itx.metaSchema);
             while ((nextLine = reader.readNext()) != null) {
@@ -136,18 +136,18 @@ public final class CsvTopologyLoader {
                     imported++;
                     currentTransaction.add(nextLine);
                     if (currentTransaction.size() >= MAX_TRANSACTION_COUNT) {
-                        tx = txManager.renewTransaction(tx);
+                        itx = new InnerTransaction(txManager.renewTransaction(itx.tx));
                         currentTransaction.clear();
                     }
                 } catch (ImportException e) {
-                    tx = renewTransaction(strategy, currentTransaction, itx);
+                    itx = new InnerTransaction(renewTransaction(strategy, currentTransaction, itx));
                     errors.put(lineIndex, e.getMessage());
                     LOGGER.debug(e.getLocalizedMessage());
                     LOGGER.debug(Arrays.toString(nextLine));
                 } catch (Exception e) {
-                    tx = renewTransaction(strategy, currentTransaction, itx);
+                    itx = new InnerTransaction(renewTransaction(strategy, currentTransaction, itx));
                     errors.put(lineIndex, e.getMessage());
-                    LOGGER.error(e.getLocalizedMessage());
+                    LOGGER.error("error", e);
                     if (LOGGER.isDebugEnabled()) {
                         LOGGER.debug("STACKTRACE", e);
                         LOGGER.debug(Arrays.toString(nextLine));
@@ -155,9 +155,9 @@ public final class CsvTopologyLoader {
                 }
                 lineIndex++;
             }
-            tx.commit();
+            itx.tx.commit();
         } finally {
-            tx.close();
+            itx.tx.close();
         }
 
         return new Neo4jLoadResult(imported, errors, importedElementByScope);
@@ -174,7 +174,7 @@ public final class CsvTopologyLoader {
     private Transaction renewTransaction(CsvMappingStrategy strategy, List<String[]> currentTransaction, InnerTransaction itx) {
         return txManager.properlyRenewTransaction(itx.tx, currentTransaction, (ct, transaction) -> {
             ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(itx.metaSchema.getScopeTypes(), ct);
-            importLine(ct, scopeKeyTypes, strategy, new InnerTransaction(transaction, itx.metaSchema));
+            importLine(ct, scopeKeyTypes, strategy, new InnerTransaction(transaction));
         });
     }
 
