@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.loader;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.Optional;
 
@@ -13,24 +14,26 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 
 public final class LineMappingStrategy {
 
+    private final MetaSchema metaSchema;
     final CsvMappingStrategy strategy;
 
     public final String[] line;
 
-    LineMappingStrategy(CsvMappingStrategy strategy, String[] line) {
+    LineMappingStrategy(MetaSchema metaSchema, CsvMappingStrategy strategy, String[] line) {
+        this.metaSchema = metaSchema;
         this.strategy = strategy;
         this.line = line;
     }
 
-    Scope guessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
-        return tryToGuessElementScopeInLine(metaSchema, keyAttribute)
+    Scope guessElementScopeInLine(String keyAttribute, Transaction tx) {
+        return tryToGuessElementScopeInLine(keyAttribute, tx)
                 .orElseThrow(() -> new IllegalStateException(String.format("Unable to find a scope in the line to import '%s'.", keyAttribute)));
     }
 
-    String guessScopeAttributeInLine(MetaSchema metaSchema, String keyAttribute) {
-        ImmutableSet<String> authorizedScopes = metaSchema.getAuthorizedScopes(keyAttribute);
+    String guessScopeAttributeInLine(String keyAttribute, Transaction tx) {
+        ImmutableSet<String> authorizedScopes = metaSchema.getAuthorizedScopes(tx, keyAttribute);
         if (metaSchema.isOverridable(keyAttribute)) {
-            return guessScopeAttribute(keyAttribute, metaSchema.getScopeTypes(), metaSchema);
+            return guessScopeAttribute(keyAttribute, metaSchema.getScopeTypes());
         } else {
             if (authorizedScopes.isEmpty()) {
                 return GLOBAL_SCOPE.attribute;
@@ -38,21 +41,21 @@ public final class LineMappingStrategy {
                 if (authorizedScopes.size() == 1) {
                     return authorizedScopes.iterator().next();
                 } else {
-                    return guessScopeAttribute(keyAttribute, authorizedScopes, metaSchema);
+                    return guessScopeAttribute(keyAttribute, authorizedScopes);
                 }
             }
         }
     }
 
-    Optional<Scope> tryToGuessElementScopeInLine(MetaSchema metaSchema, String keyAttribute) {
-        String scopeAttribute = guessScopeAttributeInLine(metaSchema, keyAttribute);
+    Optional<Scope> tryToGuessElementScopeInLine(String keyAttribute, Transaction tx) {
+        String scopeAttribute = guessScopeAttributeInLine(keyAttribute, tx);
         return readScopeFromLine(scopeAttribute);
     }
 
-    private String guessScopeAttribute(String keyAttribute, ImmutableSet<String> parentScopes, MetaSchema metaSchema) {
+    private String guessScopeAttribute(String keyAttribute, ImmutableSet<String> parentScopes) {
         Optional<Integer> scopeColumnIndex = strategy.tryColumnIndex(keyAttribute, SCOPE);
         String parentScopeName;
-        if (!scopeColumnIndex.isPresent()) {
+        if (scopeColumnIndex.isEmpty()) {
             return metaSchema.getDefaultScope(keyAttribute)
                     .orElseThrow(() -> new IllegalStateException(String.format("Column '%s.%s' is required to import '%s'.", keyAttribute, SCOPE, keyAttribute)));
         } else {
