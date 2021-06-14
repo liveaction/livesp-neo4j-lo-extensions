@@ -10,8 +10,10 @@ import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,6 +31,7 @@ public final class Lineages {
     public final ImmutableSet<String> attributesToExtract;
     public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
+    private final Transaction tx;
     public final boolean noResult;
     public final boolean parentsCardinality;
 
@@ -37,27 +40,29 @@ public final class Lineages {
     private final ImmutableMap<String, Set<String>> columnsToExport;
     private final boolean includeMetadata;
 
-    public Lineages(MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds, ImmutableList<String> relAttrToExport) {
+    public Lineages(Transaction tx, MetaSchema metaSchema, ExportQuery exportQuery, Set<String> commonChilds, ImmutableList<String> relAttrToExport) {
+        this.tx = tx;
         this.noResult = exportQuery.noResult;
 
         this.parentsCardinality = exportQuery.parentsCardinality;
 
         Set<String> attributesToExport = Sets.union(exportQuery.parentAttributes, exportQuery.requiredAttributes);
-        this.attributesToExport = ImmutableSortedSet.copyOf(metaSchema.lineageComparator, attributesToExport);
+        Comparator<String> lineageComparator = metaSchema.getLineageComparator(tx);
+        this.attributesToExport = ImmutableSortedSet.copyOf(lineageComparator, attributesToExport);
 
         Set<String> filterKeyAttributes = exportQuery.filter.columns()
                 .stream()
                 .map(c -> c.keyAttribute)
                 .collect(Collectors.toSet());
 
-        Set<String> attributesToExtract = Sets.newTreeSet(metaSchema.lineageComparator);
+        Set<String> attributesToExtract = Sets.newTreeSet(lineageComparator);
         attributesToExtract.addAll(exportQuery.parentAttributes);
         attributesToExtract.addAll(exportQuery.requiredAttributes);
         attributesToExtract.addAll(filterKeyAttributes);
         attributesToExtract.addAll(relAttrToExport);
         this.attributesToExtract = ImmutableSet.copyOf(attributesToExtract);
 
-        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -metaSchema.lineageComparator.compare(o1, o2));
+        Set<String> orderedLeafAttributes = Sets.newTreeSet((o1, o2) -> -lineageComparator.compare(o1, o2));
         orderedLeafAttributes.addAll(commonChilds);
         orderedLeafAttributes.addAll(exportQuery.requiredAttributes);
         orderedLeafAttributes.addAll(filterKeyAttributes);
@@ -79,7 +84,7 @@ public final class Lineages {
 
     private void addScopeColumn(ImmutableSet<String> attributesToExport, MetaSchema metaSchema) {
         for (String keyAttribute : attributesToExport) {
-            if (metaSchema.isMultiScope(keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
+            if (metaSchema.isMultiScope(tx, keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
                 SortedMap<String, String> keyAttributeProperties = getKeyAttributePropertiesType(keyAttribute);
                 keyAttributeProperties.put(GraphModelConstants.SCOPE, "STRING");
             }
