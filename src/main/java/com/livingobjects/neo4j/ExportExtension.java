@@ -1,8 +1,5 @@
 package com.livingobjects.neo4j;
 
-import com.davfx.ninio.csv.AutoCloseableCsvWriter;
-import com.davfx.ninio.csv.Csv;
-import com.davfx.ninio.csv.CsvWriter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Stopwatch;
@@ -38,6 +35,7 @@ import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
+import com.opencsv.CSVWriter;
 import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -59,6 +57,7 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -522,7 +521,9 @@ public final class ExportExtension {
     }
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
-        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
+
+        try(CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))){
+//        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             if (paginatedLineages.results() != null &&
                     paginatedLineages.results()
                             .stream()
@@ -536,17 +537,15 @@ public final class ExportExtension {
             if (paginatedLineages.results().size() > 0 && paginatedLineages.results().get(0).first.size() > 0) {
                 String[] headers = generateCSVHeader(paginatedLineages);
                 if (headers.length > 0) {
-                    try (CsvWriter.Line headerLine = csv.line()) {
-                        for (String h : headers) {
-                            headerLine.append(h);
-                        }
-                    }
+                    csvWriter.writeNext(headers, false);
+                    csvWriter.flush();
                 }
                 paginatedLineages.results()
                         .stream()
                         .map(list -> list.first.get(0))
-                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csv));
+                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csvWriter));
             }
+            csvWriter.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -856,17 +855,14 @@ public final class ExportExtension {
         }
     }
 
-    private void writeCSVLine(ExportQueryResult result, AutoCloseableCsvWriter csv) {
-        try (CsvWriter.Line line = csv.line()) {
-            result.result.values()
-                    .forEach(properties -> properties.values()
-                            .forEach(value -> {
-                                try {
-                                    line.append(PropertyConverter.asString(value));
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }));
+    private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
+        try{
+            String[] line = result.result.values().stream()
+                    .flatMap(properties -> properties.values().stream())
+                    .map(PropertyConverter::asString)
+                    .toArray(String[]::new);
+            csv.writeNext(line, false);
+            csv.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

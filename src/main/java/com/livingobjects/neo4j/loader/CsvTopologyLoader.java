@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j.loader;
 
-import au.com.bytecode.opencsv.CSVReader;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.annotations.VisibleForTesting;
@@ -33,6 +32,8 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.livingobjects.neo4j.model.result.TypedScope;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Entity;
 import org.neo4j.graphdb.GraphDatabaseService;
@@ -111,7 +112,7 @@ public final class CsvTopologyLoader {
         }
     }
 
-    public Neo4jLoadResult loadFromStream(InputStream is) throws IOException {
+    public Neo4jLoadResult loadFromStream(InputStream is) throws IOException, CsvValidationException {
         CSVReader reader = new CSVReader(new InputStreamReader(is));
 
 

@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j.loader;
 
-import au.com.bytecode.opencsv.CSVReader;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -13,6 +12,8 @@ import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -39,7 +40,7 @@ class CsvMappingStrategy {
         this.metaSchema = metaSchema;
     }
 
-    static CsvMappingStrategy captureHeader(CSVReader reader, MetaSchema metaSchema) throws IOException {
+    static CsvMappingStrategy captureHeader(CSVReader reader, MetaSchema metaSchema) throws IOException, CsvValidationException {
         String[] headers = reader.readNext();
         ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
