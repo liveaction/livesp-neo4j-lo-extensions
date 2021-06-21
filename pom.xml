@@ -22,7 +22,7 @@
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>4.2.5</neo4j.version>
+        <neo4j.version>4.3.0</neo4j.version>
         <jackson.version>2.12.3</jackson.version>
         <metrics.version>4.1.8</metrics.version>
         <java.version>11</java.version>
