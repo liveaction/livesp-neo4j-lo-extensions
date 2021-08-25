@@ -33,11 +33,9 @@ import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import com.livingobjects.neo4j.model.result.TypedScope;
-import org.checkerframework.checker.units.qual.K;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.PropertyContainer;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -246,7 +244,7 @@ public final class CsvTopologyLoader {
 
             createConnectLink(lineStrategy, nodes);
 
-            checkRequiredProperties(nodes);
+            checkRequiredProperties(nodes, strategy, line);
 
             if (!markedToDelete.isEmpty()) {
                 deleteElements(lineStrategy, line, markedToDelete.keySet(), markedToDelete.values().iterator().next()); // We have checked that only one distinct action is present
@@ -285,32 +283,46 @@ public final class CsvTopologyLoader {
 
     }
 
-    private void checkRequiredProperties(ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
+    private void checkRequiredProperties(ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes, CsvMappingStrategy strategy, String[] line) {
         for (Entry<String, Optional<UniqueEntity<Node>>> nodeEntry : nodes.entrySet()) {
             String keyAttribute = nodeEntry.getKey();
             Optional<UniqueEntity<Node>> node = nodeEntry.getValue();
             ImmutableSet<String> requiredProperties = metaSchema.getRequiredProperties(keyAttribute);
             for (String requiredProperty : requiredProperties) {
                 node.ifPresent(entity -> {
-                    Object value = inferValueFromParent(keyAttribute, requiredProperty, nodes);
+                    Object value = inferFromLine(keyAttribute, requiredProperty, strategy, line)
+                            .orElseGet(() -> inferValueFromParent(keyAttribute, requiredProperty, nodes)
+                                    .orElseThrow(() -> new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be inferred from parents neither. Line not imported.", keyAttribute, requiredProperty))));
 
-                    if (value == null) {
-                        throw new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be inferred from parents neither. Line not imported.", keyAttribute, requiredProperty));
-                    } else {
-                        entity.entity.setProperty(requiredProperty, value);
-                    }
+                    entity.entity.setProperty(requiredProperty, value);
                 });
             }
         }
     }
 
-    private Object inferValueFromParent(String keyAttribute, String requiredProperty, ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
-        return nodes.getOrDefault(keyAttribute, Optional.empty())
-                .flatMap(node -> Optional.ofNullable(node.entity.getProperty(requiredProperty, null)))
-                .orElseGet(() -> metaSchema.getRequiredParents(keyAttribute)
-                        .map(parentKeyAttribute -> inferValueFromParent(parentKeyAttribute, requiredProperty, nodes))
-                        .filter(Objects::nonNull)
-                        .findFirst().orElse(null));
+    private Optional<Object> inferFromLine(String keyAttribute, String requiredProperty, CsvMappingStrategy strategy, String[] line) {
+        Optional<Object> maybeValue = strategy.tryColumnIndex(keyAttribute, requiredProperty)
+                .map(attIndex -> line[attIndex]);
+        if (!maybeValue.isPresent()) {
+            maybeValue = metaSchema.getRequiredParents(keyAttribute)
+                    .map(parentKeyAttribute -> inferFromLine(parentKeyAttribute, requiredProperty, strategy, line).orElse(null))
+                    .filter(Objects::nonNull)
+                    .findFirst();
+        }
+        return maybeValue;
+    }
+
+
+    private Optional<Object> inferValueFromParent(String keyAttribute, String requiredProperty, ImmutableMap<String, Optional<UniqueEntity<Node>>> nodes) {
+        Optional<Object> maybeValue = nodes.getOrDefault(keyAttribute, Optional.empty())
+                .flatMap(node -> Optional.ofNullable(node.entity.getProperty(requiredProperty, null)));
+        if (!maybeValue.isPresent()) {
+            maybeValue = metaSchema.getRequiredParents(keyAttribute)
+                    .map(parentKeyAttribute -> inferValueFromParent(parentKeyAttribute, requiredProperty, nodes).orElse(null))
+                    .filter(Objects::nonNull)
+                    .findFirst();
+        }
+        return maybeValue;
     }
 
     private void createCrossAttributeLinks(String[] line, CsvMappingStrategy strategy, Map<String, Optional<UniqueEntity<Node>>> nodes) {
