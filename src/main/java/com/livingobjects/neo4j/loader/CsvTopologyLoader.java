@@ -141,18 +141,18 @@ public final class CsvTopologyLoader {
                     currentTransaction.clear();
                 }
             } catch (ImportException e) {
-                tx = renewTransaction(strategy, currentTransaction, tx);
-                errors.put(lineIndex, e.getMessage());
                 LOGGER.debug(e.getLocalizedMessage());
                 LOGGER.debug(Arrays.toString(nextLine));
-            } catch (Exception e) {
                 tx = renewTransaction(strategy, currentTransaction, tx);
                 errors.put(lineIndex, e.getMessage());
+            } catch (Exception e) {
                 LOGGER.error(e.getLocalizedMessage());
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("STACKTRACE", e);
                     LOGGER.debug(Arrays.toString(nextLine));
                 }
+                tx = renewTransaction(strategy, currentTransaction, tx);
+                errors.put(lineIndex, e.getMessage());
             }
             lineIndex++;
         }
