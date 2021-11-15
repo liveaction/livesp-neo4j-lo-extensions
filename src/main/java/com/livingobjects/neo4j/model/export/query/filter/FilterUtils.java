@@ -52,7 +52,13 @@ public class FilterUtils {
 
     private static String asNonNullString(Object value) {
         if (value != null) {
-            return value.toString();
+            if (value.getClass().isArray()) {
+                return Arrays.toString((Object[]) value);
+            }else if (value instanceof Iterable) {
+                return ImmutableSet.copyOf((Iterable) value).toString();
+            } else {
+                return value.toString();
+            }
         } else {
             return "";
         }

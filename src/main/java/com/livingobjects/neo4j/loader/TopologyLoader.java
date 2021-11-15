@@ -35,13 +35,13 @@ public final class TopologyLoader {
     private final TopologyLoaderUtils topologyLoaderUtils;
 
     public TopologyLoader(GraphDatabaseService graphDb) {
-        try (Transaction ignore = graphDb.beginTx()) {
+        try (Transaction tx = graphDb.beginTx()) {
             this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
 
             Map<String, Set<String>> rels = Maps.newHashMap();
-            graphDb.findNodes(Labels.ATTRIBUTE)
+            tx.findNodes(Labels.ATTRIBUTE)
                     .forEachRemaining(a -> {
-                        for (org.neo4j.graphdb.Relationship relationship : a.getRelationships(RelationshipTypes.CROSS_ATTRIBUTE, Direction.OUTGOING)) {
+                        for (org.neo4j.graphdb.Relationship relationship : a.getRelationships(Direction.OUTGOING, RelationshipTypes.CROSS_ATTRIBUTE)) {
                             Node startNode = relationship.getStartNode();
                             Node endNode = relationship.getEndNode();
                             String from = startNode.getProperty(GraphModelConstants._TYPE).toString() + ':' + startNode.getProperty(GraphModelConstants.NAME).toString();
@@ -52,7 +52,6 @@ public final class TopologyLoader {
             this.crossAttributeRelationships = ImmutableMap.copyOf(Maps.transformValues(rels, ImmutableSet::copyOf));
 
             UniqueElementFactory scopeElementFactory = new UniqueElementFactory(graphDb, Labels.SCOPE, Optional.empty());
-            MetaSchema metaSchema = new MetaSchema(graphDb);
 
             this.topologyLoaderUtils = new TopologyLoaderUtils(scopeElementFactory);
         }
@@ -65,13 +64,13 @@ public final class TopologyLoader {
             List<RelationshipStatus> statuses = Lists.newArrayList();
             for (Relationship relationship : relationships) {
                 try {
-                    loadRelationship(relationship, updateOnly);
+                    loadRelationship(relationship, updateOnly, tx);
                     statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, true, null));
                 } catch (Throwable e) {
                     statuses.add(new RelationshipStatus(relationship.type, relationship.from, relationship.to, false, e.getMessage()));
                 }
             }
-            tx.success();
+            tx.commit();
             statuses.forEach(relationshipStatusConsumer);
         } catch (Throwable e) {
             String message = e.getMessage();
@@ -79,17 +78,17 @@ public final class TopologyLoader {
         }
     }
 
-    private void loadRelationship(Relationship relationship, boolean updateOnly) {
+    private void loadRelationship(Relationship relationship, boolean updateOnly, Transaction tx) {
         ImportRelationship relationshipType = ImportRelationship.of(relationship.type);
         if (relationshipType != null) {
             if (relationship.from.equals(relationship.to)) {
                 throw new IllegalArgumentException("From and to elements must be different");
             }
-            Node from = networkElementFactory.getWithOutcome(GraphModelConstants.TAG, relationship.from);
+            Node from = networkElementFactory.getWithOutcome(GraphModelConstants.TAG, relationship.from, tx);
             if (from == null) {
                 throw new IllegalArgumentException(String.format("Start element '%s' not found", relationship.from));
             }
-            Node to = networkElementFactory.getWithOutcome(GraphModelConstants.TAG, relationship.to);
+            Node to = networkElementFactory.getWithOutcome(GraphModelConstants.TAG, relationship.to, tx);
             if (to == null) {
                 throw new IllegalArgumentException(String.format("Target element '%s' not found", relationship.to));
             }
@@ -99,7 +98,7 @@ public final class TopologyLoader {
             ImmutableSet<String> authorizedRels = crossAttributeRelationships.get(fromType);
 
             if (authorizedRels != null && authorizedRels.contains(toType)) {
-                if (nodeScopesAreEqualOrGlobal(from, to)) {
+                if (nodeScopesAreEqualOrGlobal(from, to, tx)) {
                     org.neo4j.graphdb.Relationship r = mergeRelationship(from, to, relationshipType, updateOnly);
 
                     for (Map.Entry<String, Object> e : relationship.attributes.entrySet()) {
@@ -129,9 +128,9 @@ public final class TopologyLoader {
         }
     }
 
-    private boolean nodeScopesAreEqualOrGlobal(Node nodeLeft, Node nodeRight) {
-        Scope scopeLeft = topologyLoaderUtils.getScope(nodeLeft);
-        Scope scopeRight = topologyLoaderUtils.getScope(nodeRight);
+    private boolean nodeScopesAreEqualOrGlobal(Node nodeLeft, Node nodeRight, Transaction tx) {
+        Scope scopeLeft = topologyLoaderUtils.getScope(nodeLeft, tx);
+        Scope scopeRight = topologyLoaderUtils.getScope(nodeRight, tx);
 
         boolean scopeAreEqual = scopeLeft.equals(scopeRight);
         boolean oneScopeIsGlobal = scopeLeft.equals(GraphModelConstants.GLOBAL_SCOPE) || scopeRight.equals(GraphModelConstants.GLOBAL_SCOPE);
@@ -142,7 +141,7 @@ public final class TopologyLoader {
     private org.neo4j.graphdb.Relationship mergeRelationship(Node from, Node to, ImportRelationship relationshipType, boolean updateOnly) {
         org.neo4j.graphdb.Relationship existingRelationship = null;
 
-        for (org.neo4j.graphdb.Relationship r : from.getRelationships(relationshipType.relationshipType, Direction.OUTGOING)) {
+        for (org.neo4j.graphdb.Relationship r : from.getRelationships(Direction.OUTGOING, relationshipType.relationshipType)) {
             if (r.getEndNode().equals(to)) {
                 existingRelationship = r;
             }

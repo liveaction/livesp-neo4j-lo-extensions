@@ -4,6 +4,7 @@ import org.neo4j.graphdb.RelationshipType;
 
 public class RelationshipTypes {
 
+
     public static final RelationshipType ATTRIBUTE = RelationshipType.withName("Attribute");
     public static final RelationshipType CROSS_ATTRIBUTE = RelationshipType.withName("CrossAttribute");
     public static final RelationshipType CONNECT = RelationshipType.withName("Connect");

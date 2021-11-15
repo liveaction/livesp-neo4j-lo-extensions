@@ -1,8 +1,5 @@
 package com.livingobjects.neo4j;
 
-import com.davfx.ninio.csv.AutoCloseableCsvWriter;
-import com.davfx.ninio.csv.Csv;
-import com.davfx.ninio.csv.CsvWriter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Stopwatch;
@@ -38,6 +35,8 @@ import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
+import com.opencsv.CSVWriter;
+import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -58,16 +57,8 @@ import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.SortedMap;
+import java.io.OutputStreamWriter;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -88,6 +79,7 @@ import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.EXTEND;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
+@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 @Path("/export")
 public final class ExportExtension {
 
@@ -98,33 +90,32 @@ public final class ExportExtension {
     private final ObjectMapper json = new ObjectMapper();
 
     private final GraphDatabaseService graphDb;
-    private final MetaSchema metaSchema;
     private final TemplatedPlanetFactory templatedPlanetFactory;
     private final PlanetFactory planetFactory;
+    private final MetaSchema metaSchema;
 
-    public ExportExtension(@Context GraphDatabaseService graphDb) {
-        this.graphDb = graphDb;
-        try (Transaction ignore = graphDb.beginTx()) {
-            this.metaSchema = new MetaSchema(graphDb);
-            this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
-            this.planetFactory = new PlanetFactory(graphDb);
+    public ExportExtension(@Context DatabaseManagementService dbms) {
+        this.graphDb = dbms.database(dbms.listDatabases().get(0));
+        this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
+        this.planetFactory = new PlanetFactory(graphDb);
+        try (Transaction tx = graphDb.beginTx()) {
+            this.metaSchema = new MetaSchema(tx);
         }
     }
 
     @GET
     @Path("/properties")
     public Response exportProperties() throws IOException {
-        LOGGER.info("test");
-        try (Transaction ignored = graphDb.beginTx()) {
+        try (Transaction tx = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
-            graphDb.findNodes(Labels.ELEMENT)
+            tx.findNodes(Labels.ELEMENT)
                     .forEachRemaining(node -> {
                         String type = node.getProperty(_TYPE).toString();
                         Map<String, PropertyDefinition> properties = allProperties.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
                         node.getAllProperties()
                                 .forEach((name, value) -> {
                                     if (!name.startsWith("_") && !properties.containsKey(name)) {
-                                        boolean required = isRequired(type, name);
+                                        boolean required = isRequired(type, name, metaSchema);
                                         properties.put(name, new PropertyDefinition(PropertyConverter.getPropertyType(value), required));
                                     }
                                 });
@@ -145,7 +136,7 @@ public final class ExportExtension {
     public Response export(InputStream in) throws IOException {
         Stopwatch stopWatch = Stopwatch.createStarted();
         try {
-            FullQuery query = json.readValue(in, new TypeReference<FullQuery>() {
+            FullQuery query = json.readValue(in, new TypeReference<>() {
             });
 
             PaginatedLineages lineages = extract(query);
@@ -178,7 +169,7 @@ public final class ExportExtension {
         Stopwatch stopWatch = Stopwatch.createStarted();
 
         try {
-            FullQuery query = json.readValue(in, new TypeReference<FullQuery>() {
+            FullQuery query = json.readValue(in, new TypeReference<>() {
             });
             boolean csv = checkAcceptHeader(accept);
 
@@ -217,7 +208,7 @@ public final class ExportExtension {
         }
     }
 
-    private boolean isRequired(String type, String s) {
+    private boolean isRequired(String type, String s, MetaSchema metaSchema) {
         if (ImmutableSet.of("tag", "id").contains(s)) {
             return true;
         } else {
@@ -328,11 +319,12 @@ public final class ExportExtension {
     }
 
     private PaginatedLineages extract(FullQuery fullQuery) {
-        try (Transaction ignored = graphDb.beginTx()) {
+        try (Transaction tx = graphDb.beginTx()) {
+            MetaSchema metaSchema = new MetaSchema(tx);
             List<CrossRelationship> relations = fullQuery.relationshipQueries.stream()
                     .map(rq -> metaSchema.getRelationshipOfType(rq.type))
                     .collect(Collectors.toList());
-            List<Lineages> lineages = exportLineages(fullQuery, relations);
+            List<Lineages> lineages = exportLineages(fullQuery, relations, tx);
             List<List<Lineage>> filteredLineages = Lists.newArrayList();
             for (int i = 0; i < lineages.size(); i++) {
                 List<Lineage> filter = filter(fullQuery.exportQueries.get(i), lineages.get(i));
@@ -517,7 +509,7 @@ public final class ExportExtension {
         Direction direction = relationQuery.direction;
         String originType = direction == INCOMING ? metaRelation.originType : metaRelation.destinationType;
         String destType = direction == INCOMING ? metaRelation.destinationType : metaRelation.originType;
-        return Streams.stream(originLineage.nodesByType.get(originType).getRelationships(CROSS_ATTRIBUTE, direction))
+        return Streams.stream(originLineage.nodesByType.get(originType).getRelationships(direction, CROSS_ATTRIBUTE))
                 .map(r -> {
                     Node n = direction == INCOMING ? r.getStartNode() : r.getEndNode();
                     return new Pair<>(n, r);
@@ -529,7 +521,9 @@ public final class ExportExtension {
     }
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
-        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
+
+        try(CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))){
+//        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             if (paginatedLineages.results() != null &&
                     paginatedLineages.results()
                             .stream()
@@ -543,17 +537,15 @@ public final class ExportExtension {
             if (paginatedLineages.results().size() > 0 && paginatedLineages.results().get(0).first.size() > 0) {
                 String[] headers = generateCSVHeader(paginatedLineages);
                 if (headers.length > 0) {
-                    try (CsvWriter.Line headerLine = csv.line()) {
-                        for (String h : headers) {
-                            headerLine.append(h);
-                        }
-                    }
+                    csvWriter.writeNext(headers, false);
+                    csvWriter.flush();
                 }
                 paginatedLineages.results()
                         .stream()
                         .map(list -> list.first.get(0))
-                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csv));
+                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csvWriter));
             }
+            csvWriter.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -587,12 +579,12 @@ public final class ExportExtension {
         }
     }
 
-    private ImmutableList<Lineages> exportLineages(FullQuery fullQuery, List<CrossRelationship> relations) {
+    private ImmutableList<Lineages> exportLineages(FullQuery fullQuery, List<CrossRelationship> relations, Transaction tx) {
         ImmutableList.Builder<Lineages> lineagesBuilder = ImmutableList.builder();
         for (int i = 0; i < fullQuery.exportQueries.size(); i++) {
             ExportQuery exportQuery = fullQuery.exportQueries.get(i);
             ImmutableSet.Builder<String> requiredChildren = ImmutableSet.<String>builder()
-                    .addAll(getCommonChildren(exportQuery.requiredAttributes));
+                    .addAll(getCommonChildren(exportQuery.requiredAttributes, metaSchema));
             Optional<RelationshipQuery> previousQuery = i == 0 ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i - 1));
             Optional<RelationshipQuery> nextQuery = i == fullQuery.relationshipQueries.size() ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i));
 
@@ -603,7 +595,7 @@ public final class ExportExtension {
             previousRel.ifPresent(q -> requiredChildren.add(q.first.direction == INCOMING ? q.second.originType : q.second.destinationType));
             nextRel.ifPresent(q -> requiredChildren.add(q.first.direction == INCOMING ? q.second.destinationType : q.second.originType));
 
-            lineagesBuilder.add(exportLineagesSingleQuery(requiredChildren.build(), exportQuery, previousRel, nextRel));
+            lineagesBuilder.add(exportLineagesSingleQuery(requiredChildren.build(), exportQuery, previousRel, nextRel, tx));
         }
         return lineagesBuilder.build();
     }
@@ -611,8 +603,8 @@ public final class ExportExtension {
     private Lineages exportLineagesSingleQuery(ImmutableSet<String> requiredCommonChildren,
                                                ExportQuery exportQuery,
                                                Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel,
-                                               Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
-
+                                               Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel,
+                                               Transaction tx) {
         List<String> filterAttributes = exportQuery.filter.columns()
                 .stream()
                 .map(c -> c.keyAttribute)
@@ -631,17 +623,18 @@ public final class ExportExtension {
         ImmutableSet<String> filterCommonChildren = allCombinations
                 .stream()
                 .map(ImmutableSet::copyOf)
-                .map(this::getCommonChildren)
+                .map(types -> getCommonChildren(types, metaSchema))
                 .reduce((set, set2) -> Sets.union(set, set2).immutableCopy())
                 .orElseGet(ImmutableSet::of);
         ImmutableList.Builder<String> relationAttrToExport = ImmutableList.builder();
         previousRel.ifPresent(pair -> relationAttrToExport.add(pair.first.direction == INCOMING ? pair.second.originType : pair.second.destinationType));
         nextRel.ifPresent(pair -> relationAttrToExport.add(pair.first.direction == INCOMING ? pair.second.destinationType : pair.second.originType));
-        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy(), relationAttrToExport.build());
+        Lineages lineages = initLineages(exportQuery, Sets.union(requiredCommonChildren, filterCommonChildren).immutableCopy(),
+                relationAttrToExport.build(), tx);
         if (!lineages.attributesToExport.isEmpty() || lineages.noResult) {
             for (String leafAttribute : lineages.orderedLeafAttributes) {
-                getNodeIterator(leafAttribute, exportQuery)
-                        .filter(nodeFilter(leafAttribute, previousRel, nextRel))
+                getNodeIterator(leafAttribute, exportQuery, tx)
+                        .filter(nodeFilter(leafAttribute, previousRel, nextRel, tx))
                         .forEach(leaf -> {
                             if (!lineages.dejaVu(leaf)) {
                                 Lineage lineage = new Lineage(graphDb);
@@ -666,19 +659,21 @@ public final class ExportExtension {
      * @param previousRel Relationship with the previous Lineage (in the order defined by the original query), the direction of this relationship is reversed
      * @return The predicate
      */
-    private Predicate<Node> nodeFilter(String
-                                               nodeType, Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel, Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel) {
+    private Predicate<Node> nodeFilter(String nodeType,
+                                       Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel,
+                                       Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel,
+                                       Transaction tx) {
         return node -> {
             AtomicBoolean result = new AtomicBoolean(true);
             // check if previousRel is satisfied
             previousRel.ifPresent(pair -> {
                 String destType = pair.first.direction == INCOMING ? pair.second.originType : pair.second.destinationType;
-                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, destType);
+                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(tx, nodeType, destType);
                 AtomicBoolean relRes = new AtomicBoolean(false);
                 for (ImmutableList<String> path : upwardPaths) {
                     Optional<Node> optParent = getNodeFromPath(node, path);
                     optParent.ifPresent(parent -> relRes.set(relRes.get() ||
-                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, pair.first.direction == INCOMING ? OUTGOING : INCOMING))
+                            Streams.stream(parent.getRelationships(pair.first.direction == INCOMING ? OUTGOING : INCOMING, CROSS_ATTRIBUTE))
                                     .anyMatch(r -> pair.first.type.equals(r.getProperty(_TYPE).toString()))));
                 }
                 result.set(result.get() && relRes.get());
@@ -687,12 +682,12 @@ public final class ExportExtension {
             // check if nextRel is satisfied
             nextRel.ifPresent(pair -> {
                 String destType = pair.first.direction == INCOMING ? pair.second.destinationType : pair.second.originType;
-                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(nodeType, destType);
+                ImmutableList<ImmutableList<String>> upwardPaths = metaSchema.getUpwardPath(tx, nodeType, destType);
                 AtomicBoolean relRes = new AtomicBoolean(false);
                 for (ImmutableList<String> path : upwardPaths) {
                     Optional<Node> optParent = getNodeFromPath(node, path);
                     optParent.ifPresent(parent -> relRes.set(relRes.get() ||
-                            Streams.stream(parent.getRelationships(CROSS_ATTRIBUTE, pair.first.direction))
+                            Streams.stream(parent.getRelationships(pair.first.direction, CROSS_ATTRIBUTE))
                                     .anyMatch(r -> pair.first.type.equals(r.getProperty(_TYPE).toString()))));
                 }
                 result.set(result.get() && relRes.get());
@@ -705,7 +700,7 @@ public final class ExportExtension {
     private Optional<Node> getNodeFromPath(Node initialNode, ImmutableList<String> path) {
         return path.size() == 0 ?
                 Optional.of(initialNode) :
-                Streams.stream(initialNode.getRelationships(CONNECT, OUTGOING).iterator())
+                Streams.stream(initialNode.getRelationships(OUTGOING, CONNECT).iterator())
                         .map(Relationship::getEndNode)
                         .filter(node -> node.getProperty(_TYPE).equals(path.get(0)))
                         .findAny()
@@ -716,7 +711,7 @@ public final class ExportExtension {
     /**
      * For a set of types, gives their common children of higher rank. If a common child has childs himself, those won't be returned
      */
-    private ImmutableSet<String> getCommonChildren(ImmutableSet<String> types) {
+    private ImmutableSet<String> getCommonChildren(ImmutableSet<String> types, MetaSchema metaSchema) {
         List<ImmutableSet<ImmutableList<String>>> allLineages = types.stream()
                 .map(type -> metaSchema.getMetaLineagesForType(type)
                         .stream()
@@ -756,7 +751,7 @@ public final class ExportExtension {
         return ImmutableSet.copyOf(result);
     }
 
-    private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery) {
+    private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery, Transaction tx) {
         Set<String> initScopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
                 exportQuery.filter.columnsFilters().stream()
                         .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
@@ -768,7 +763,7 @@ public final class ExportExtension {
         ImmutableSet<String> scopes = getApplicableScopes(initScopes);
 
         if (scopes.isEmpty()) {
-            return graphDb.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
+            return tx.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
             if (metaSchema.isOverridable(leafAttribute)) {
                 List<Node> authorizedPlanets = scopes.stream()
@@ -784,7 +779,7 @@ public final class ExportExtension {
                             }
                             return possibleScopes.stream()
                                     .flatMap(scope -> planetByContext.allPlanets().stream()
-                                            .map(planetTemplate -> planetFactory.get(planetTemplate, scope))
+                                            .map(planetTemplate -> planetFactory.get(planetTemplate, scope, tx))
                                             .filter(Objects::nonNull));
                         }).collect(Collectors.toList());
                 return authorizedPlanets.stream()
@@ -796,7 +791,7 @@ public final class ExportExtension {
                 return scopes.stream()
                         .flatMap(scopeId ->
                                 planetByContext.allPlanets().stream()
-                                        .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId))
+                                        .map(planetTemplate -> planetFactory.get(planetTemplate, scopeId, tx))
                                         .filter(Objects::nonNull)
                                         .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, ATTRIBUTE).spliterator(), false)
                                                 .map(Relationship::getStartNode))
@@ -829,9 +824,9 @@ public final class ExportExtension {
                 .orElse(element);
     }
 
-    private Lineages initLineages(ExportQuery
-                                          exportQuery, Set<String> commonChildren, ImmutableList<String> relAttrToExport) {
-        return new Lineages(metaSchema, exportQuery, commonChildren, relAttrToExport);
+    private Lineages initLineages(ExportQuery exportQuery, Set<String> commonChildren,
+                                  ImmutableList<String> relAttrToExport, Transaction tx) {
+        return new Lineages(tx, metaSchema, exportQuery, commonChildren, relAttrToExport);
     }
 
     private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) {
@@ -860,17 +855,14 @@ public final class ExportExtension {
         }
     }
 
-    private void writeCSVLine(ExportQueryResult result, AutoCloseableCsvWriter csv) {
-        try (CsvWriter.Line line = csv.line()) {
-            result.result.values()
-                    .forEach(properties -> properties.values()
-                            .forEach(value -> {
-                                try {
-                                    line.append(PropertyConverter.asString(value));
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }));
+    private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
+        try{
+            String[] line = result.result.values().stream()
+                    .flatMap(properties -> properties.values().stream())
+                    .map(PropertyConverter::asString)
+                    .toArray(String[]::new);
+            csv.writeNext(line, false);
+            csv.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

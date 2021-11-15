@@ -14,6 +14,7 @@ import com.livingobjects.neo4j.model.schema.SchemaAndPlanetsUpdate;
 import com.livingobjects.neo4j.model.schema.managed.CountersDefinition;
 import com.livingobjects.neo4j.schema.SchemaLoader;
 import com.livingobjects.neo4j.schema.SchemaReader;
+import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -21,7 +22,13 @@ import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.ws.rs.*;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -46,8 +53,8 @@ public class SchemaTemplateExtension {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    public SchemaTemplateExtension(@Context GraphDatabaseService graphDb) {
-        this.graphDb = graphDb;
+    public SchemaTemplateExtension(@Context DatabaseManagementService dbms) {
+        this.graphDb = dbms.database(dbms.listDatabases().get(0));
     }
 
     @POST
@@ -84,82 +91,92 @@ public class SchemaTemplateExtension {
     @Path("{id}")
     @Produces({"application/json", "text/plain"})
     public Response getSchema(@PathParam("id") String schemaId) throws IOException {
-        SchemaReader schemaReader = new SchemaReader();
-        try (Transaction ignore = graphDb.beginTx()) {
-            Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
-
-            if (schemaNode == null) {
-                return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
+        try {
+            SchemaReader schemaReader = new SchemaReader();
+            try (Transaction tx = graphDb.beginTx()) {
+                try (Transaction tx2 = graphDb.beginTx()) {
+                    Node node = tx2.findNode(Labels.SCHEMA, ID, schemaId);
+                }
+                Node node = tx.findNode(Labels.SCHEMA, ID, schemaId);
             }
-        }
+            try (Transaction tx = graphDb.beginTx()) {
+                Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
+
+                if (schemaNode == null) {
+                    return errorResponse(new NoSuchElementException("Schema " + schemaId + " not found in database !"));
+                }
+            }
 
         StreamingOutput stream = outputStream -> {
             List<Node> realmNodes = Lists.newArrayList();
             try (JsonGenerator jg = json.getFactory().createGenerator(outputStream, JsonEncoding.UTF8);
                  Transaction tx = graphDb.beginTx()) {
-                Node schemaNode = graphDb.findNode(Labels.SCHEMA, ID, schemaId);
+                Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
 
-                if (schemaNode == null) {
-                    throw new NoSuchElementException("Schema " + schemaId + " not found in database !");
+                    if (schemaNode == null) {
+                        throw new NoSuchElementException("Schema " + schemaId + " not found in database !");
+                    }
+
+                    jg.writeStartObject();
+                    jg.writeStringField(ID, schemaId);
+                    jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
+
+                    schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
+                        Node targetNode = rel.getEndNode();
+                        if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
+                            realmNodes.add(targetNode);
+                        }
+                    });
+
+                    CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder();
+                    Map<String, RealmNode> realms = realmNodes.stream()
+                            .map(n -> schemaReader.readRealm(n, false, countersDefinitionBuilder))
+                            .filter(Optional::isPresent)
+                            .map(Optional::get)
+                            .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));
+
+                    jg.writeObjectFieldStart("counters");
+                    jg.flush();
+
+                    CountersDefinition countersDefinition = countersDefinitionBuilder.build();
+
+                    countersDefinition.counters.forEach((key, value) -> {
+                        try {
+                            jg.writeObjectField(key, value);
+                        } catch (IOException e) {
+                            LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                            if (LOGGER.isDebugEnabled()) {
+                                LOGGER.debug("STACKTRACE", e);
+                            }
+                        }
+                    });
+                    jg.writeEndObject();
+
+                    jg.writeObjectFieldStart("realms");
+                    jg.flush();
+                    realms.forEach((key, value) -> {
+                        try {
+                            jg.writeObjectField(key, value);
+                            jg.flush();
+                        } catch (IOException e) {
+                            LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
+                            if (LOGGER.isDebugEnabled()) {
+                                LOGGER.debug("STACKTRACE", e);
+                            }
+                        }
+                    });
+
+                    jg.writeEndObject();
+                    jg.writeEndObject();
+                    jg.flush();
+                } catch (Throwable e) {
+                    LOGGER.error("Unable to load schema '{}'", schemaId, e);
                 }
-
-                jg.writeStartObject();
-                jg.writeStringField(ID, schemaId);
-                jg.writeStringField(VERSION, schemaNode.getProperty(VERSION, "0").toString());
-
-                schemaNode.getRelationships(Direction.OUTGOING, RelationshipTypes.PROVIDED).forEach(rel -> {
-                    Node targetNode = rel.getEndNode();
-                    if (targetNode.hasLabel(Labels.REALM_TEMPLATE)) {
-                        realmNodes.add(targetNode);
-                    }
-                });
-
-                CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder();
-                Map<String, RealmNode> realms = realmNodes.stream()
-                        .map(n -> schemaReader.readRealm(n, false, countersDefinitionBuilder))
-                        .filter(Optional::isPresent)
-                        .map(Optional::get)
-                        .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));
-
-                jg.writeObjectFieldStart("counters");
-                jg.flush();
-
-                CountersDefinition countersDefinition = countersDefinitionBuilder.build();
-
-                countersDefinition.counters.forEach((key, value) -> {
-                    try {
-                        jg.writeObjectField(key, value);
-                    } catch (IOException e) {
-                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("STACKTRACE", e);
-                        }
-                    }
-                });
-                jg.writeEndObject();
-
-                jg.writeObjectFieldStart("realms");
-                jg.flush();
-                realms.forEach((key, value) -> {
-                    try {
-                        jg.writeObjectField(key, value);
-                        jg.flush();
-                    } catch (IOException e) {
-                        LOGGER.error("{}: {}", e.getClass(), e.getLocalizedMessage());
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("STACKTRACE", e);
-                        }
-                    }
-                });
-
-                jg.writeEndObject();
-                jg.writeEndObject();
-                jg.flush();
-            } catch (Throwable e) {
-                LOGGER.error("Unable to load schema '{}'", schemaId, e);
-            }
-        };
-        return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+            };
+            return Response.ok().entity(stream).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable t) {
+            throw t;
+        }
     }
 
     private Response errorResponse(Throwable cause) throws IOException {

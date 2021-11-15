@@ -3,19 +3,18 @@ package com.livingobjects.neo4j.loader;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.MoreCollectors;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
-import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import scala.Tuple2;
 
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,53 +26,45 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CARDINALITY_UNIQUE_PARENT;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.KEYTYPE_SEPARATOR;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._DEFAULT_SCOPE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._OVERRIDABLE;
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PARENT;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
 public final class MetaSchema {
 
-    private final Node theGlobalNode;
+    private final long theGlobalNode;
     private final ImmutableSet<String> overridableType;
     private final ImmutableMap<String, ImmutableSet<String>> requiredProperties;
     private final ImmutableMap<String, Optional<String>> defaultScopes;
     private final ImmutableSet<String> scopeTypes;
-    private final ImmutableMap<String, ImmutableList<Relationship>> childrenRelations;
-    private final ImmutableMap<String, ImmutableList<Relationship>> parentRelations;
+    private final ImmutableMap<String, ImmutableList<Long>> childrenRelations;
+    private final ImmutableMap<String, ImmutableList<Long>> parentRelations;
     // origin_type -> <dest_type, rel_type>
     private final ImmutableMap<String, ImmutableSet<Tuple2<String, String>>> crossAttributesRelations;
 
     private final ImmutableList<ImmutableList<String>> metaLineages;
 
     // Comparator for 2 attributes: o1 > o2 => o2 -[:Parent*0..n]-> o1
-    public final Comparator<String> lineageComparator = (o1, o2) -> {
-        if (recursiveLineageComparator(o1, o2)) {
+    private final Function<Transaction, Comparator<String>> lineageComparator = tx -> (o1, o2) -> {
+        if (recursiveLineageComparator(tx, o1, o2)) {
             return 1;
-        } else if (recursiveLineageComparator(o2, o1)) {
+        } else if (recursiveLineageComparator(tx, o2, o1)) {
             return -1;
         } else {
             return o1.compareTo(o2);
         }
     };
 
-    public MetaSchema(GraphDatabaseService graphDb) {
-        this.theGlobalNode = graphDb.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
-        Objects.requireNonNull(this.theGlobalNode, "Global Scope node not found in database !");
+    public MetaSchema(Transaction tx) {
+        Node globalNode = tx.findNode(Labels.SCOPE, TAG, GLOBAL_SCOPE.tag);
+        Objects.requireNonNull(globalNode, "Global Scope node not found in database !");
+        this.theGlobalNode = globalNode.getId();
 
         ImmutableMap.Builder<String, Node> importableKeyTypesBldr = ImmutableMap.builder();
         ImmutableSet.Builder<String> overrideBldr = ImmutableSet.builder();
-        ImmutableMap.Builder<String, ImmutableList<Relationship>> childrenRelationsBldr = ImmutableMap.builder();
-        ImmutableMap.Builder<String, ImmutableList<Relationship>> parentRelationsBldr = ImmutableMap.builder();
+        ImmutableMap.Builder<String, ImmutableList<Long>> childrenRelationsBldr = ImmutableMap.builder();
+        ImmutableMap.Builder<String, ImmutableList<Long>> parentRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<Tuple2<String, String>>> crossAttributesRelationsBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, ImmutableSet<String>> requiredPropertiesBldr = ImmutableMap.builder();
         ImmutableMap.Builder<String, Optional<String>> defaultScopesBldr = ImmutableMap.builder();
@@ -81,7 +72,7 @@ public final class MetaSchema {
         ImmutableMap.Builder<String, String> scopeByKeyTypesBldr = ImmutableMap.builder();
         ImmutableList.Builder<ImmutableList<String>> metaLineagesBuilder = ImmutableList.builder();
 
-        graphDb.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
+        tx.findNodes(Labels.ATTRIBUTE).forEachRemaining(n -> {
             String keytype = n.getProperty(_TYPE).toString();
             String key = keytype + KEYTYPE_SEPARATOR + n.getProperty(NAME).toString();
 
@@ -112,21 +103,21 @@ public final class MetaSchema {
                 if (GraphModelConstants.IMPORTABLE_KEY_TYPES.contains(keytype)) {
                     importableKeyTypesBldr.put(key, n);
                 }
-                ImmutableList.Builder<Relationship> crels = ImmutableList.builder();
-                ImmutableList.Builder<Relationship> prels = ImmutableList.builder();
-                n.getRelationships(INCOMING, PARENT).forEach(crels::add);
-                n.getRelationships(OUTGOING, PARENT).forEach(prels::add);
+                ImmutableList.Builder<Long> crels = ImmutableList.builder();
+                ImmutableList.Builder<Long> prels = ImmutableList.builder();
+                n.getRelationships(INCOMING, PARENT).forEach(r -> crels.add(r.getId()));
+                n.getRelationships(OUTGOING, PARENT).forEach(r -> prels.add(r.getId()));
                 ImmutableSet<Tuple2<String, String>> crossAttributes = CsvLoaderHelper.getCrossAttributes(n);
                 if (!GraphModelConstants.LABEL_TYPE.equals(keytype) && prels.build().isEmpty()) {
                     scopesBldr.put(n, key);
                 }
-                ImmutableList<Relationship> childrenRelations = crels.build();
+                ImmutableList<Long> childrenRelations = crels.build();
                 childrenRelationsBldr.put(key, childrenRelations);
                 parentRelationsBldr.put(key, prels.build());
                 crossAttributesRelationsBldr.put(key, crossAttributes);
 
                 if (childrenRelations.isEmpty()) {
-                    metaLineagesBuilder.addAll(generateMetaLineages(n, ImmutableList.of()));
+                    metaLineagesBuilder.addAll(generateMetaLineages(n));
                 }
             }
         });
@@ -158,19 +149,15 @@ public final class MetaSchema {
     /**
      * Generates all lineages for the given node
      */
-    private ImmutableList<ImmutableList<String>> generateMetaLineages(Node current, ImmutableList<String> previous) {
+    private ImmutableList<ImmutableList<String>> generateMetaLineages(Node current) {
         String key = current.getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + current.getProperty(NAME).toString();
         ImmutableList.Builder<ImmutableList<String>> builder = ImmutableList.builder();
-//        ImmutableList<String> currentLineage = ImmutableList.<String>builder()
-//                .addAll(previous)
-//                .add(key)
-//                .build();
         List<Relationship> relationships = Lists.newArrayList(current.getRelationships(OUTGOING, PARENT));
 
         if (relationships.isEmpty()) {
             builder.add(ImmutableList.of(key));
         } else {
-            relationships.forEach(r -> builder.addAll(generateMetaLineages(r.getEndNode(), null)
+            relationships.forEach(r -> builder.addAll(generateMetaLineages(r.getEndNode())
                     .stream()
                     .map(list -> ImmutableList.<String>builder().add(key).addAll(list).build())
                     .collect(Collectors.toList())));
@@ -178,12 +165,16 @@ public final class MetaSchema {
         return builder.build();
     }
 
+    public Comparator<String> getLineageComparator(Transaction tx) {
+        return lineageComparator.apply(tx);
+    }
+
     public ImmutableSet<String> getScopeTypes() {
         return scopeTypes;
     }
 
-    public Node getTheGlobalScopeNode() {
-        return theGlobalNode;
+    public Node getTheGlobalScopeNode(Transaction tx) {
+        return tx.getNodeById(theGlobalNode);
     }
 
     public boolean isOverridable(String elementKeyType) {
@@ -194,7 +185,7 @@ public final class MetaSchema {
         return scopeTypes.contains(elementKeyType);
     }
 
-    public final ImmutableSet<String> getRequiredProperties(String keyAttribute) {
+    public ImmutableSet<String> getRequiredProperties(String keyAttribute) {
         return requiredProperties.getOrDefault(keyAttribute, ImmutableSet.of());
     }
 
@@ -211,24 +202,26 @@ public final class MetaSchema {
         return ImmutableSet.copyOf(collect);
     }
 
-    public ImmutableList<Relationship> getChildren(String current) {
-        return childrenRelations.getOrDefault(current, ImmutableList.of());
+    public ImmutableList<Relationship> getChildren(Transaction tx, String current) {
+        return childrenRelations.getOrDefault(current, ImmutableList.of()).stream()
+                .map(tx::getRelationshipById)
+                .collect(ImmutableList.toImmutableList());
     }
 
-    public ImmutableList<String> getAllChildren(String current) {
-        return getChildrenOfCardinality(current, (s) -> true);
+    public ImmutableList<String> getAllChildren(Transaction tx, String current) {
+        return getChildrenOfCardinality(tx, current, (s) -> true);
     }
 
-    public ImmutableList<String> getStrongChildren(String current) {
-        return getChildrenOfCardinality(current, CARDINALITY_UNIQUE_PARENT::equals);
+    public ImmutableList<String> getStrongChildren(Transaction tx, String current) {
+        return getChildrenOfCardinality(tx, current, CARDINALITY_UNIQUE_PARENT::equals);
     }
 
-    private ImmutableList<String> getChildrenOfCardinality(String current, Predicate<String> expectedCardinaly) {
-        return ImmutableList.copyOf(getChildren(current).stream()
+    private ImmutableList<String> getChildrenOfCardinality(Transaction tx, String current, Predicate<String> expectedCardinaly) {
+        return ImmutableList.copyOf(getChildren(tx, current).stream()
                 .filter(r -> expectedCardinaly.test(r.getProperty(CARDINALITY, "").toString()))
                 .map(Relationship::getStartNode)
                 .map(this::getKeyAttribute)
-                .flatMap(child -> Stream.concat(Stream.of(child), getStrongChildren(child).stream()))
+                .flatMap(child -> Stream.concat(Stream.of(child), getStrongChildren(tx, child).stream()))
                 .collect(Collectors.toList()));
     }
 
@@ -248,25 +241,33 @@ public final class MetaSchema {
                 .orElseGet(() -> Optional.ofNullable(scopes.get(attributeNode)));
     }
 
-    public Stream<String> getMonoParentRelations(String keyAttribute) {
-        return filterParentRelations(keyAttribute, cardinality -> !GraphModelConstants.CARDINALITY_MULTIPLE.equals(cardinality));
+    public Stream<String> getMonoParentRelations(Transaction tx, String keyAttribute) {
+        return filterParentRelations(tx, keyAttribute, cardinality -> !GraphModelConstants.CARDINALITY_MULTIPLE.equals(cardinality));
     }
 
-    public Optional<String> getRequiredParent(String keyAttribute) {
-        return getRequiredParents(keyAttribute)
+    public Optional<String> getRequiredParent(Transaction tx, String keyAttribute) {
+        return getRequiredParents(tx, keyAttribute)
                 .findFirst();
     }
 
-    public ImmutableMap<String, ImmutableList<Relationship>> getParentRelations() {
-        return parentRelations;
+    public ImmutableMap<String, ImmutableList<Relationship>> getParentRelations(Transaction tx) {
+        return parentRelations.entrySet().stream()
+                .map(entry -> {
+                    ImmutableList<Relationship> relationships = entry.getValue().stream()
+                            .map(tx::getRelationshipById)
+                            .collect(ImmutableList.toImmutableList());
+                    return Maps.immutableEntry(entry.getKey(), relationships);
+                })
+                .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    public Stream<String> getRequiredParents(String keyAttribute) {
-        return filterParentRelations(keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality));
+    public Stream<String> getRequiredParents(Transaction tx, String keyAttribute) {
+        return filterParentRelations(tx, keyAttribute, cardinality -> cardinality == null || GraphModelConstants.CARDINALITY_UNIQUE_PARENT.equals(cardinality));
     }
 
-    private Stream<String> filterParentRelations(String keyAttribute, Function<String, Boolean> cardinalityFilter) {
+    private Stream<String> filterParentRelations(Transaction tx, String keyAttribute, Function<String, Boolean> cardinalityFilter) {
         return parentRelations.get(keyAttribute).stream()
+                .map(tx::getRelationshipById)
                 .filter(r -> cardinalityFilter.apply(r.getProperty(GraphModelConstants.CARDINALITY, "").toString()))
                 .map(Relationship::getEndNode)
                 .map(this::getKeyAttribute);
@@ -276,16 +277,16 @@ public final class MetaSchema {
         return node.getProperty(_TYPE).toString() + KEYTYPE_SEPARATOR + node.getProperty(NAME).toString();
     }
 
-    public ImmutableSet<String> getAuthorizedScopes(String keyAttribute) {
+    public ImmutableSet<String> getAuthorizedScopes(Transaction tx, String keyAttribute) {
         if (scopeTypes.contains(keyAttribute)) {
             return ImmutableSet.of(keyAttribute);
         } else {
-            return ImmutableSet.copyOf(getMonoParentRelations(keyAttribute)
+            return ImmutableSet.copyOf(getMonoParentRelations(tx, keyAttribute)
                     .flatMap(parent -> {
                         if (scopeTypes.contains(parent)) {
                             return Stream.of(parent);
                         } else {
-                            return getAuthorizedScopes(parent).stream();
+                            return getAuthorizedScopes(tx, parent).stream();
                         }
                     })
                     .collect(Collectors.toSet()));
@@ -296,8 +297,8 @@ public final class MetaSchema {
         return parentRelations.get(keyAttribute) != null;
     }
 
-    public boolean isMultiScope(String keyAttribute) {
-        return getAuthorizedScopes(keyAttribute).size() > 1;
+    public boolean isMultiScope(Transaction tx, String keyAttribute) {
+        return getAuthorizedScopes(tx, keyAttribute).size() > 1;
     }
 
     public Optional<String> getDefaultScope(String keyAttribute) {
@@ -330,18 +331,18 @@ public final class MetaSchema {
      * If destType is not a parent of originType, this method will always return an empty List
      * If destType and originType are the same, this method will return a List containing the empty List
      */
-    public ImmutableList<ImmutableList<String>> getUpwardPath(String originType, String destType) {
-        if(destType.equals(originType)) {
+    public ImmutableList<ImmutableList<String>> getUpwardPath(Transaction tx, String originType, String destType) {
+        if (destType.equals(originType)) {
             return ImmutableList.of(ImmutableList.of());
         }
-        return ImmutableList.copyOf(getParentRelations()
+        return ImmutableList.copyOf(getParentRelations(tx)
                 .get(originType)
                 .stream()
                 .map(Relationship::getEndNode)
                 .map(this::getKeyAttribute)
                 .flatMap(parentType -> parentType.equals(destType) ?
                         ImmutableList.of(ImmutableList.of(parentType)).stream() :
-                        getUpwardPath(parentType, destType).stream()
+                        getUpwardPath(tx, parentType, destType).stream()
                                 .map(path -> ImmutableList.<String>builder()
                                         .add(parentType)
                                         .addAll(path)
@@ -349,13 +350,13 @@ public final class MetaSchema {
                 .collect(Collectors.toList()));
     }
 
-    private boolean recursiveLineageComparator(String o1, String o2) {
-        if (getMonoParentRelations(o1)
+    private boolean recursiveLineageComparator(Transaction tx, String o1, String o2) {
+        if (getMonoParentRelations(tx, o1)
                 .anyMatch(o2::equals)) {
             return true;
         } else {
-            return getMonoParentRelations(o1)
-                    .anyMatch(s -> recursiveLineageComparator(s, o2));
+            return getMonoParentRelations(tx, o1)
+                    .anyMatch(s -> recursiveLineageComparator(tx, s, o2));
         }
     }
 }

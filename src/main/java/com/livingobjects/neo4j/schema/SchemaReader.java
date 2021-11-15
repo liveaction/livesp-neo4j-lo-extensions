@@ -49,7 +49,7 @@ public class SchemaReader {
                 return memdexPathNode
                         .map(n -> {
                             Set<String> attributes = Sets.newHashSet();
-                            Iterable<Relationship> attributesRel = realmTemplateNode.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING);
+                            Iterable<Relationship> attributesRel = realmTemplateNode.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE);
                             for (Relationship attribute : attributesRel) {
                                 String attType = attribute.getEndNode().getProperty(_TYPE).toString();
                                 String attName = attribute.getEndNode().getProperty(NAME).toString();
@@ -76,9 +76,11 @@ public class SchemaReader {
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
         List<MemdexPathNode> children = Lists.newArrayList();
-        segment.getRelationships(RelationshipTypes.MEMDEXPATH, Direction.OUTGOING)
-                .forEach(path -> readMemdexPath(path.getEndNode(), onlyUnamanagedCounters, countersDefinitionBuilder)
-                        .ifPresent(children::add));
+        segment.getRelationships(Direction.OUTGOING, RelationshipTypes.MEMDEXPATH).forEach(path -> readMemdexPath(
+                path.getEndNode(),
+                onlyUnamanagedCounters,
+                countersDefinitionBuilder
+        ).ifPresent(children::add));
 
         String attribute = getAttribute(segment);
         if (counters.isEmpty() && children.isEmpty()) {
@@ -89,7 +91,7 @@ public class SchemaReader {
 
     public static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         List<String> counters = Lists.newArrayList();
-        segment.getRelationships(RelationshipTypes.PROVIDED, Direction.INCOMING).forEach(link -> {
+        segment.getRelationships(Direction.INCOMING, RelationshipTypes.PROVIDED).forEach(link -> {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty(ID)) return;
 
@@ -142,7 +144,7 @@ public class SchemaReader {
 
     private String getAttribute(Node node) {
         List<String> attributes = Lists.newArrayList();
-        node.getRelationships(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).forEach(link -> {
+        node.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE).forEach(link -> {
             Node attributeNode = link.getEndNode();
             Object specializer = link.getProperty(LINK_PROP_SPECIALIZER, null);
             Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);

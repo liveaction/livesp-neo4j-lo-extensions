@@ -12,6 +12,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -33,11 +34,11 @@ public final class OverridableElementFactory {
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
-    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue) {
+    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue, Transaction tx) {
         ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
-        graphdb.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
+        tx.findNodes(keyLabel, keyProperty, keyValue).forEachRemaining(node -> {
             String nodeScope = getElementScopeFromPlanet(keyProperty, keyValue, node);
             expandsBldr.put(nodeScope, node);
         });
@@ -55,7 +56,7 @@ public final class OverridableElementFactory {
 
         UniqueEntity<Node> node = Optional.ofNullable(expands.get(scope.tag))
                 .map(UniqueEntity::existing)
-                .orElseGet(() -> UniqueEntity.created(initialize(graphdb.createNode(), keyProperty, keyValue, scope)));
+                .orElseGet(() -> UniqueEntity.created(initialize(tx.createNode(), keyProperty, keyValue, scope)));
 
         // Remove extra label from previous Scopes
         expands.forEach((sc, n) -> {

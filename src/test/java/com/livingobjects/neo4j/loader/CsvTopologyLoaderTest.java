@@ -28,9 +28,8 @@ public class CsvTopologyLoaderTest {
         List<String> actual;
         try (Transaction tx = wNeo.getGraphDatabaseService().beginTx()) {
             actual = tested.sortKeyTypes(ImmutableSet.of("cluster:client", "cluster:site", "neType:cpe","cluster:application/group",
-                    "neType:viewpoint", "neType:wanLink", "cluster:area", "neType:application", "neType:cos"));
+                    "neType:viewpoint", "neType:wanLink", "cluster:area", "neType:application", "neType:cos"), tx);
         }
-        System.out.println(actual);
         Assertions.assertThat(actual.indexOf("neType:viewpoint")).isLessThan(actual.indexOf("neType:cpe"));
         Assertions.assertThat(actual.indexOf("neType:wanLink")).isLessThan(actual.indexOf("neType:cpe"));
         Assertions.assertThat(actual.indexOf("cluster:site")).isLessThan(actual.indexOf("cluster:client"));

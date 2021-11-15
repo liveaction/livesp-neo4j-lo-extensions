@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j.loader;
 
-import au.com.bytecode.opencsv.CSVReader;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -13,8 +12,11 @@ import com.livingobjects.neo4j.model.header.HeaderElement.Visitor;
 import com.livingobjects.neo4j.model.header.MultiElementHeader;
 import com.livingobjects.neo4j.model.header.SimpleElementHeader;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -30,13 +32,15 @@ class CsvMappingStrategy {
 
     private final ImmutableMap<String, Integer> columnIndexes;
     private final ImmutableMultimap<String, HeaderElement> mapping;
+    private final MetaSchema metaSchema;
 
-    CsvMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping) {
+    CsvMappingStrategy(ImmutableMap<String, Integer> columnIndexes, ImmutableMultimap<String, HeaderElement> mapping, MetaSchema metaSchema) {
         this.columnIndexes = columnIndexes;
         this.mapping = mapping;
+        this.metaSchema = metaSchema;
     }
 
-    static CsvMappingStrategy captureHeader(CSVReader reader) throws IOException {
+    static CsvMappingStrategy captureHeader(CSVReader reader, MetaSchema metaSchema) throws IOException, CsvValidationException {
         String[] headers = reader.readNext();
         ImmutableMap.Builder<String, Integer> columnIndexesBldr = ImmutableMap.builder();
         ImmutableMultimap.Builder<String, HeaderElement> mappingBldr = ImmutableMultimap.builder();
@@ -50,7 +54,7 @@ class CsvMappingStrategy {
         }
 
         ImmutableMultimap<String, HeaderElement> mapping = mappingBldr.build();
-        return new CsvMappingStrategy(columnIndexesBldr.build(), mapping);
+        return new CsvMappingStrategy(columnIndexesBldr.build(), mapping, metaSchema);
     }
 
     ImmutableCollection<HeaderElement> getElementHeaders(String name) {
@@ -82,16 +86,16 @@ class CsvMappingStrategy {
         return ImmutableSet.copyOf(scopeKeyTypes);
     }
 
-    ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, MetaSchema metaSchema) {
+    ImmutableMap<String, Set<String>> guessElementCreationStrategy(Collection<String> scopeKeyTypes, Transaction tx) {
         Map<String, Set<String>> collect = Maps.newHashMap();
 
-        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, metaSchema));
+        scopeKeyTypes.forEach(s -> addChildrenAttribute(s, collect, tx));
 
         if (collect.isEmpty()) {
-            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, metaSchema);
+            addChildrenAttribute(GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE, collect, tx);
         }
         mapping.keySet()
-                .forEach(k -> addChildrenAttribute(k, collect, metaSchema));
+                .forEach(k -> addChildrenAttribute(k, collect, tx));
 
         return ImmutableMap.copyOf(collect);
     }
@@ -118,9 +122,9 @@ class CsvMappingStrategy {
     }
 
     private Map<String, Set<String>> addChildrenAttribute(
-            String current, Map<String, Set<String>> collect, MetaSchema metaSchema) {
+            String current, Map<String, Set<String>> collect, Transaction tx) {
 
-        Collection<Relationship> relationships = metaSchema.getChildren(current);
+        Collection<Relationship> relationships = metaSchema.getChildren(tx, current);
 
         if (!relationships.isEmpty()) {
             for (Relationship relationship : relationships) {
@@ -132,7 +136,7 @@ class CsvMappingStrategy {
                 String key = type + GraphModelConstants.KEYTYPE_SEPARATOR + name;
                 if (mapping.keySet().contains(key)) {
                     p.add(key);
-                    addChildrenAttribute(key, collect, metaSchema).forEach((k, v) -> {
+                    addChildrenAttribute(key, collect, tx).forEach((k, v) -> {
                         Set<String> values = collect.computeIfAbsent(k, k1 -> Sets.newHashSet());
                         values.addAll(v);
                     });

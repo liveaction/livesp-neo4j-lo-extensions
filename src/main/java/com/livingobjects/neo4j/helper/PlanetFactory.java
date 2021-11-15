@@ -4,6 +4,7 @@ import com.livingobjects.neo4j.loader.Scope;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.Transaction;
 
 import java.util.Optional;
 
@@ -18,20 +19,20 @@ public class PlanetFactory {
         delegate = new UniqueElementFactory(graphdb, Labels.PLANET, Optional.empty());
     }
 
-    public UniqueEntity<Node> getOrCreate(String planetTemplate, Scope scope) {
+    public UniqueEntity<Node> getOrCreate(String planetTemplate, Scope scope, Transaction tx) {
         String name = getPlanetName(planetTemplate, scope);
-        UniqueEntity<Node> planet = delegate.getOrCreateWithOutcome(NAME, name);
+        UniqueEntity<Node> planet = delegate.getOrCreateWithOutcome(NAME, name, tx);
         planet.wasCreated(p -> p.setProperty(SCOPE, scope.tag));
         return planet;
     }
 
-    public Node get(String planetTemplate, Scope scope) {
-        return get(planetTemplate, scope.id);
+    public Node get(String planetTemplate, Scope scope, Transaction tx) {
+        return get(planetTemplate, scope.id, tx);
     }
 
-    public Node get(String planetTemplate, String scopeId) {
+    public Node get(String planetTemplate, String scopeId, Transaction tx) {
         String name = getPlanetName(planetTemplate, scopeId);
-        return name.contains(scopeId) ? delegate.getWithOutcome(NAME, name) : null;
+        return name.contains(scopeId) ? delegate.getWithOutcome(NAME, name, tx) : null;
     }
 
     public String getPlanetName(String planetTemplate, Scope scope) {
