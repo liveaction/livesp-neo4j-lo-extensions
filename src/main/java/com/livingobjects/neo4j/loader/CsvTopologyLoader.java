@@ -5,6 +5,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -302,8 +303,9 @@ public final class CsvTopologyLoader {
 
     private Optional<Object> inferFromLine(String keyAttribute, String requiredProperty, CsvMappingStrategy strategy, String[] line) {
         Optional<Object> maybeValue = strategy.tryColumnIndex(keyAttribute, requiredProperty)
-                .map(attIndex -> line[attIndex]);
-        if (!maybeValue.isPresent()) {
+                .map(attIndex -> line[attIndex])
+                .map(string -> Strings.emptyToNull(string.trim()));
+        if (maybeValue.isEmpty()) {
             maybeValue = metaSchema.getRequiredParents(keyAttribute)
                     .map(parentKeyAttribute -> inferFromLine(parentKeyAttribute, requiredProperty, strategy, line).orElse(null))
                     .filter(Objects::nonNull)
