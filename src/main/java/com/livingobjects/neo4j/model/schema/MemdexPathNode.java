@@ -12,17 +12,20 @@ public final class MemdexPathNode {
     public final ImmutableSet<String> counters;
     public final ImmutableSet<MemdexPathNode> children;
     public final Integer topCount;
+    public final Integer nbParentsToAggregate;
 
     public MemdexPathNode(@JsonProperty("segment") String segment,
                           @JsonProperty("keyAttribute") String keyAttribute,
                           @JsonProperty("counters") List<String> counters,
                           @JsonProperty("children") List<MemdexPathNode> children,
-                          @JsonProperty("topCount") Integer topCount) {
+                          @JsonProperty("topCount") Integer topCount,
+                          @JsonProperty("nbParentsToAggregate") Integer nbParentsToAggregate) {
         this.segment = segment;
         this.keyAttribute = keyAttribute;
         this.counters = ImmutableSet.copyOf(counters);
         this.children = ImmutableSet.copyOf(children);
         this.topCount = topCount;
+        this.nbParentsToAggregate = nbParentsToAggregate;
     }
 
     @Override
@@ -45,7 +48,7 @@ public final class MemdexPathNode {
         result = 31 * result + (segment != null ? segment.hashCode() : 0);
         result = 31 * result + (counters != null ? counters.hashCode() : 0);
         result = 31 * result + (children != null ? children.hashCode() : 0);
-        result = 31 * result + (topCount!= null ? topCount.hashCode() : 0);
+        result = 31 * result + (topCount != null ? topCount.hashCode() : 0);
         return result;
     }
 
