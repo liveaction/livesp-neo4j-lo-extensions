@@ -69,8 +69,12 @@ public class SchemaReader {
     Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
         Integer topCount = null;
+        Integer nbParentsToAggregate = null;
         if (segment.hasProperty("topCount")) {
             topCount = Integer.parseInt(segment.getProperty("topCount").toString());
+            nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate"))
+                    .map(val -> Integer.parseInt(val.toString()))
+                    .orElse(0);
         }
 
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
@@ -84,7 +88,7 @@ public class SchemaReader {
         if (counters.isEmpty() && children.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount));
+        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount, nbParentsToAggregate));
     }
 
     public static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
