@@ -204,7 +204,7 @@ public final class SchemaLoader {
             mergedChildren.add(children.get(path));
         }
 
-        return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren, managedMemdexPath.topCount);
+        return new MemdexPathNode(managedMemdexPath.segment, managedMemdexPath.keyAttribute, mergedCounters, mergedChildren, managedMemdexPath.topCount, managedMemdexPath.nbParentsToAggregate);
     }
 
     private boolean migrateSchemas(ImmutableList<SchemaUpdate> schemaUpdates, String version, Transaction tx) {
@@ -652,6 +652,7 @@ public final class SchemaLoader {
         segmentNode.setProperty(PATH, memdexPathNode.segment);
         if (memdexPathNode.topCount != null) {
             segmentNode.setProperty("topCount", memdexPathNode.topCount);
+            segmentNode.setProperty("nbParentsToAggregate", Optional.ofNullable(memdexPathNode.nbParentsToAggregate).orElse(0));
         }
 
         updateCountersRelationships(realmTemplate, memdexPathNode, managedSchema, segmentNode, tx);
