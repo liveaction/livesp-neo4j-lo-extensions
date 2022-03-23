@@ -88,4 +88,14 @@ public final class LineMappingStrategy {
         }
     }
 
+    public Optional<String> getValue(String keyType, String property) {
+        return strategy.tryColumnIndex(keyType, property)
+                .map(index -> line[index])
+                .map(val -> Strings.emptyToNull(val.trim()));
+    }
+
+    public Optional<String> getValue(Integer index) {
+        return Optional.ofNullable(line[index])
+                .map(val -> Strings.emptyToNull(val.trim()));
+    }
 }
