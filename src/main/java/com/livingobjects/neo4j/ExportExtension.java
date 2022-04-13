@@ -766,9 +766,9 @@ public final class ExportExtension {
             return tx.findNodes(Labels.ELEMENT, GraphModelConstants._TYPE, leafAttribute).stream();
         } else {
             if (metaSchema.isOverridable(leafAttribute)) {
-                List<Node> authorizedPlanets = scopes.stream()
+                ImmutableSet<String> allPlanets = templatedPlanetFactory.getPlanetByContext(leafAttribute).allPlanets();
+                Set<Node> authorizedPlanets = scopes.stream()
                         .flatMap(scopeId -> {
-                            PlanetByContext planetByContext = templatedPlanetFactory.getPlanetByContext(leafAttribute);
                             List<String> possibleScopes;
                             if (scopeId.equals(GLOBAL_SCOPE.id)) {
                                 possibleScopes = Lists.newArrayList(GLOBAL_SCOPE.id);
@@ -778,10 +778,10 @@ public final class ExportExtension {
                                 possibleScopes = Lists.newArrayList(scopeId, SP_SCOPE.id, GLOBAL_SCOPE.id);
                             }
                             return possibleScopes.stream()
-                                    .flatMap(scope -> planetByContext.allPlanets().stream()
+                                    .flatMap(scope -> allPlanets.stream()
                                             .map(planetTemplate -> planetFactory.get(planetTemplate, scope, tx))
                                             .filter(Objects::nonNull));
-                        }).collect(Collectors.toList());
+                        }).collect(Collectors.toSet());
                 return authorizedPlanets.stream()
                         .flatMap(planetNode -> StreamSupport.stream(planetNode.getRelationships(INCOMING, RelationshipTypes.ATTRIBUTE).spliterator(), false)
                                 .map(Relationship::getStartNode)) // All nodes which do not extend another
@@ -815,7 +815,7 @@ public final class ExportExtension {
                 ImmutableSet.<String>builder().addAll(initialScopes).add(SP_SCOPE.id, GLOBAL_SCOPE.id).build();
     }
 
-    private Node getOverridingNode(Node element, List<Node> authorizedPlanets) {
+    private Node getOverridingNode(Node element, Set<Node> authorizedPlanets) {
         return StreamSupport.stream(element.getRelationships(INCOMING, EXTEND).spliterator(), false)
                 .map(Relationship::getStartNode)
                 .filter(node -> authorizedPlanets.contains(Lists.newArrayList(node.getRelationships(OUTGOING, ATTRIBUTE)).get(0).getEndNode()))
