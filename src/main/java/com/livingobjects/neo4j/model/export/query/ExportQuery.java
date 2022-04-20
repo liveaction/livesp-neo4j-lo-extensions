@@ -1,12 +1,11 @@
 package com.livingobjects.neo4j.model.export.query;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.model.export.query.filter.Filter;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -29,8 +28,8 @@ public final class ExportQuery {
     // true if you want to export one line for each parent when an element has several parents of the same type (ex: a Site with several Area)
     public final boolean parentsCardinality;
 
-    public ExportQuery(@JsonProperty("requiredAttributes") List<String> requiredAttributes,
-                       @JsonProperty("parentAttributes") List<String> parentAttributes,
+    public ExportQuery(@JsonProperty("requiredAttributes") Set<String> requiredAttributes,
+                       @JsonProperty("parentAttributes") Set<String> parentAttributes,
                        @JsonProperty("columns") Map<String, Set<String>> columns,
                        @JsonProperty("filter") Filter<Column> filter,
                        @JsonProperty("includeMetadata") boolean includeMetadata,
