@@ -23,6 +23,7 @@ import com.livingobjects.neo4j.model.export.LineageListSortComparator;
 import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.PropertyNameComparator;
+import com.livingobjects.neo4j.model.export.query.Column;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.ExportQueryResult;
 import com.livingobjects.neo4j.model.export.query.FullQuery;
@@ -30,6 +31,7 @@ import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.export.query.Pair;
 import com.livingobjects.neo4j.model.export.query.RelationshipQuery;
 import com.livingobjects.neo4j.model.export.query.RelationshipQueryResult;
+import com.livingobjects.neo4j.model.export.query.filter.Filter;
 import com.livingobjects.neo4j.model.export.query.filter.ValueFilter;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -70,6 +72,7 @@ import java.util.stream.StreamSupport;
 import static com.google.common.base.Charsets.UTF_8;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SP_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
 import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
@@ -318,9 +321,40 @@ public final class ExportExtension {
         }
     }
 
-    private PaginatedLineages extract(FullQuery fullQuery) {
+    private PaginatedLineages extract(FullQuery initQuery) {
         try (Transaction tx = graphDb.beginTx()) {
             MetaSchema metaSchema = new MetaSchema(tx);
+
+            // to be sure we isolate scopes, always add a filter on scope for each individual query
+            List<ExportQuery> queriesWithScopeFilter = initQuery.exportQueries.stream()
+                    .map(q -> {
+                        // any requiredAttributes is neither global or sp
+                        boolean isClientScope = q.requiredAttributes.stream()
+                                .map(attr -> metaSchema.getAuthorizedScopes(tx, attr))
+                                .anyMatch(scope -> !scope.contains(SCOPE_GLOBAL_ATTRIBUTE));
+                        if (q.scopes.isEmpty() || !isClientScope) {
+                            return q;
+                        }
+
+                        Set<String> initScopeFilters = getScopeFilters(q);
+                        List<Filter<Column>> scopeFilters = q.scopes.stream()
+                                // remove global scope
+                                .filter(s -> !s.equals(GLOBAL_SCOPE.id) && !s.equals(SP_SCOPE.id))
+                                // remove scopes already filtered
+                                .filter(f -> !initScopeFilters.contains(f))
+                                .map(s -> new Filter.ColumnFilter<>(new Column("cluster:client", ID), new ValueFilter(false, ValueFilter.Operator.eq, s)))
+                                .collect(Collectors.toList());
+
+                        Filter<Column> filterWithScopes = scopeFilters.isEmpty() ? q.filter :
+                                new Filter.AndFilter<>(Lists.newArrayList(q.filter, new Filter.OrFilter<>(scopeFilters)));
+                        return new ExportQuery(q.requiredAttributes,
+                                q.parentAttributes,
+                                q.columns,
+                                filterWithScopes,
+                                q.includeMetadata, q.scopes, q.parentsCardinality, q.noResult);
+                    }).collect(Collectors.toList());
+            FullQuery fullQuery = new FullQuery(queriesWithScopeFilter, initQuery.pagination.orElse(null), initQuery.ordersByIndex, initQuery.relationshipQueries);
+
             List<CrossRelationship> relations = fullQuery.relationshipQueries.stream()
                     .map(rq -> metaSchema.getRelationshipOfType(rq.type))
                     .collect(Collectors.toList());
@@ -361,6 +395,19 @@ public final class ExportExtension {
             filteredLines.sort((o1, o2) -> lineageSortComparator.compare(o1.first, o2.first));
             return paginate(lineages, filteredLines, fullQuery.pagination);
         }
+    }
+
+    /**
+     * returns a Stream of all Scope filters of the query
+     */
+    private Set<String> getScopeFilters(ExportQuery q) {
+        return q.filter.columnsFilters().stream()
+                .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
+                .filter(columnFilter -> columnFilter.column.property.equals(ID))
+                .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
+                        !columnFilter.valueFilter.not)
+                .map(columnFilter -> columnFilter.valueFilter.value.toString())
+                .collect(Collectors.toSet());
     }
 
     /**
@@ -522,7 +569,7 @@ public final class ExportExtension {
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
 
-        try(CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))){
+        try (CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))) {
 //        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             if (paginatedLineages.results() != null &&
                     paginatedLineages.results()
@@ -753,13 +800,8 @@ public final class ExportExtension {
 
     private Stream<Node> getNodeIterator(String leafAttribute, ExportQuery exportQuery, Transaction tx) {
         Set<String> initScopes = !exportQuery.scopes.isEmpty() ? exportQuery.scopes :
-                exportQuery.filter.columnsFilters().stream()
-                        .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
-                        .filter(columnFilter -> columnFilter.column.property.equals(ID))
-                        .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
-                                !columnFilter.valueFilter.not)
-                        .map(columnFilter -> columnFilter.valueFilter.value.toString())
-                        .collect(Collectors.toSet());
+                getScopeFilters(exportQuery);
+
         ImmutableSet<String> scopes = getApplicableScopes(initScopes);
 
         if (scopes.isEmpty()) {
@@ -856,7 +898,7 @@ public final class ExportExtension {
     }
 
     private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
-        try{
+        try {
             String[] line = result.result.values().stream()
                     .flatMap(properties -> properties.values().stream())
                     .map(PropertyConverter::asString)

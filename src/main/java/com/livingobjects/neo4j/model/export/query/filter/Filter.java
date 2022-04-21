@@ -82,7 +82,7 @@ public abstract class Filter<T> {
 
     }
 
-    static class AndFilter<T> extends Filter<T> {
+    public static class AndFilter<T> extends Filter<T> {
 
         private final ImmutableList<Filter<T>> filters;
 
@@ -111,7 +111,7 @@ public abstract class Filter<T> {
 
     }
 
-    static class OrFilter<T> extends Filter<T> {
+    public static class OrFilter<T> extends Filter<T> {
 
         private final ImmutableList<Filter<T>> filters;
 

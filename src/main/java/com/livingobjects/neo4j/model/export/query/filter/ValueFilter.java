@@ -15,7 +15,7 @@ public final class ValueFilter {
     public final Operator operator;
     public final Comparable value;
 
-    private ValueFilter(@JsonProperty("not") boolean not,
+    public ValueFilter(@JsonProperty("not") boolean not,
                         @JsonProperty("operator") Operator operator,
                         @JsonProperty("value") Object value) {
         this.not = not;
