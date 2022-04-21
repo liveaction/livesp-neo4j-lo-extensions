@@ -341,15 +341,16 @@ public final class ExportExtension {
                                 // remove global scope
                                 .filter(s -> !s.equals(GLOBAL_SCOPE.id) && !s.equals(SP_SCOPE.id))
                                 // remove scopes already filtered
-                                .filter(initScopeFilters::contains)
+                                .filter(f -> !initScopeFilters.contains(f))
                                 .map(s -> new Filter.ColumnFilter<>(new Column("cluster:client", ID), new ValueFilter(false, ValueFilter.Operator.eq, s)))
                                 .collect(Collectors.toList());
-                        Filter.OrFilter<Column> scopesFinalFilter = new Filter.OrFilter<>(scopeFilters);
 
+                        Filter<Column> filterWithScopes = scopeFilters.isEmpty() ? q.filter :
+                                new Filter.AndFilter<>(Lists.newArrayList(q.filter, new Filter.OrFilter<>(scopeFilters)));
                         return new ExportQuery(q.requiredAttributes,
                                 q.parentAttributes,
                                 q.columns,
-                                new Filter.AndFilter<>(Lists.newArrayList(q.filter, scopesFinalFilter)),
+                                filterWithScopes,
                                 q.includeMetadata, q.scopes, q.parentsCardinality, q.noResult);
                     }).collect(Collectors.toList());
             FullQuery fullQuery = new FullQuery(queriesWithScopeFilter, initQuery.pagination.orElse(null), initQuery.ordersByIndex, initQuery.relationshipQueries);
