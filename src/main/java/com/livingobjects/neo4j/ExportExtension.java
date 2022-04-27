@@ -24,9 +24,9 @@ import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.PropertyNameComparator;
 import com.livingobjects.neo4j.model.export.query.Column;
-import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.ExportQueryResult;
 import com.livingobjects.neo4j.model.export.query.FullQuery;
+import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.export.query.Pair;
 import com.livingobjects.neo4j.model.export.query.RelationshipQuery;
@@ -401,7 +401,8 @@ public final class ExportExtension {
      * returns a Stream of all Scope filters of the query
      */
     private Set<String> getScopeFilters(ExportQuery q) {
-        return q.filter.columnsFilters().stream()
+        ImmutableList<Filter.ColumnFilter<Column>> columnFilters = q.filter.columnsFilters();
+        return columnFilters == null || columnFilters.isEmpty() ? ImmutableSet.of() : columnFilters.stream()
                 .filter(columnColumnFilter -> metaSchema.isScope(columnColumnFilter.column.keyAttribute))
                 .filter(columnFilter -> columnFilter.column.property.equals(ID))
                 .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
