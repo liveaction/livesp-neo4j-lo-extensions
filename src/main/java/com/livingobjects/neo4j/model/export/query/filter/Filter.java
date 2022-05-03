@@ -155,7 +155,7 @@ public abstract class Filter<T> {
 
         @Override
         public ImmutableList<ColumnFilter<T>> columnsFilters() {
-            return null;
+            return ImmutableList.of();
         }
 
         @Override
