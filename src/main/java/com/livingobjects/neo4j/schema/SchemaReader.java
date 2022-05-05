@@ -99,17 +99,17 @@ public class SchemaReader {
             Node counterNode = link.getStartNode();
             if (!counterNode.hasProperty(ID)) return;
 
-            String name = counterNode.getProperty(NAME).toString();
+            String id = counterNode.getProperty(ID).toString();
             CounterNode counter = readCounter(counterNode);
             Boolean managed = isManaged(counterNode);
             if (onlyUnamanagedCounters) {
                 if (!managed) {
-                    counters.add(name);
-                    countersDefinitionBuilder.add(name, counter, managed);
+                    counters.add(id);
+                    countersDefinitionBuilder.add(id, counter, managed);
                 }
             } else {
-                counters.add(name);
-                countersDefinitionBuilder.add(name, counter, managed);
+                counters.add(id);
+                countersDefinitionBuilder.add(id, counter, managed);
             }
         });
         return ImmutableList.copyOf(counters);
