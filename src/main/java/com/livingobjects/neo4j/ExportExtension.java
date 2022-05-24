@@ -232,6 +232,9 @@ public final class ExportExtension {
     }
 
     private PaginatedLineages paginate(List<Lineages> lineages, List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLines, Optional<Pagination> pagination) {
+        if(pagination.isPresent() && pagination.get().offset > sortedLines.size()) {
+            return EMPTY_PAGINATED_LINEAGE;
+        }
         int end = pagination
                 .map(p -> Math.min(p.offset + p.limit, sortedLines.size()))
                 .orElse(sortedLines.size());
@@ -974,4 +977,36 @@ public final class ExportExtension {
         int total();
 
     }
+
+    private static final PaginatedLineages EMPTY_PAGINATED_LINEAGE = new PaginatedLineages() {
+        @Override
+        public ImmutableSet<String> attributesToExport() {
+            return ImmutableSet.of();
+        }
+
+        @Override
+        public Map<String, SortedMap<String, String>> header() {
+            return ImmutableMap.of();
+        }
+
+        @Override
+        public List<Pair<List<ExportQueryResult>, List<RelationshipQueryResult>>> results() {
+            return ImmutableList.of();
+        }
+
+        @Override
+        public int start() {
+            return 0;
+        }
+
+        @Override
+        public int end() {
+            return 0;
+        }
+
+        @Override
+        public int total() {
+            return 0;
+        }
+    };
 }
