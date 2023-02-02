@@ -15,7 +15,8 @@ public final class PropertyNameComparator implements Comparator<String> {
     public int compare(String o1, String o2) {
         int result = propertyPrecedence(o1) - propertyPrecedence(o2);
         if (result == 0) {
-            return o1.toLowerCase().compareTo(o2.toLowerCase());
+            int res = o1.toLowerCase().compareTo(o2.toLowerCase());
+            return res == 0 ? o1.compareTo(o2) : res;
         } else {
             return result;
         }
