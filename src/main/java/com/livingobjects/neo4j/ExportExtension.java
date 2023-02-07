@@ -6,6 +6,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.MoreCollectors;
@@ -24,9 +25,9 @@ import com.livingobjects.neo4j.model.export.Lineages;
 import com.livingobjects.neo4j.model.export.PropertyDefinition;
 import com.livingobjects.neo4j.model.export.PropertyNameComparator;
 import com.livingobjects.neo4j.model.export.query.Column;
+import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.ExportQueryResult;
 import com.livingobjects.neo4j.model.export.query.FullQuery;
-import com.livingobjects.neo4j.model.export.query.ExportQuery;
 import com.livingobjects.neo4j.model.export.query.Pagination;
 import com.livingobjects.neo4j.model.export.query.Pair;
 import com.livingobjects.neo4j.model.export.query.RelationshipQuery;
@@ -60,7 +61,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -232,7 +243,7 @@ public final class ExportExtension {
     }
 
     private PaginatedLineages paginate(List<Lineages> lineages, List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLines, Optional<Pagination> pagination) {
-        if(pagination.isPresent() && pagination.get().offset > sortedLines.size()) {
+        if (pagination.isPresent() && pagination.get().offset > sortedLines.size()) {
             return EMPTY_PAGINATED_LINEAGE;
         }
         int end = pagination
@@ -690,12 +701,13 @@ public final class ExportExtension {
                             if (!lineages.dejaVu(leaf)) {
                                 Lineage lineage = new Lineage(graphDb);
                                 if (!lineages.attributesToExtract.isEmpty()) {
-                                    rewindLineage(leaf, lineage, lineages);
+                                    rewindLineage(leaf, lineages)
+                                            .forEach(lineages::add);
                                 } else {
                                     // no attributesToExport => this is just used for relationships
                                     lineage.nodesByType.put(leaf.getProperty(_TYPE, "").toString(), leaf);
+                                    lineages.add(lineage);
                                 }
-                                lineages.add(lineage);
                             }
                         });
             }
@@ -875,30 +887,73 @@ public final class ExportExtension {
         return new Lineages(tx, metaSchema, exportQuery, commonChildren, relAttrToExport);
     }
 
-    private void rewindLineage(Node currentNode, Lineage lineage, Lineages lineages) {
+    private Set<Lineage> rewindLineage(Node currentNode, Lineages lineages) {
+        return doRewind(currentNode, new HashMap<>(), lineages).stream()
+                .map(nodesByType -> {
+                    Lineage lineage = new Lineage(graphDb);
+                    lineage.nodesByType.putAll(nodesByType);
+                    return lineage;
+                }).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private Set<Map<String, Node>> doRewind(Node currentNode, Map<String, Node> nodesByType, Lineages lineages) {
         String type = currentNode.getProperty(_TYPE, "").toString();
         if (lineages.attributesToExtract.contains(type)) {
-            lineage.nodesByType.put(type, currentNode);
+            nodesByType.put(type, currentNode);
         }
         lineages.markAsVisited(currentNode);
-        if (lineage.nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
-            return;
+        if (nodesByType.keySet().containsAll(lineages.attributesToExtract)) {
+            return ImmutableSet.of(nodesByType);
         }
         Iterable<Relationship> parentRelationships = currentNode.getRelationships(OUTGOING, CONNECT);
-        Lineage copyLineage = new Lineage(lineage);
+
+        ImmutableSetMultimap.Builder<String, Node> parentsByTypeB = ImmutableSetMultimap.builder();
         for (Relationship parentRelationship : parentRelationships) {
             Node parentNode = parentRelationship.getEndNode();
-            String parentType = parentNode.getProperty(_TYPE, "").toString();
-
-            Node existingNode = lineage.nodesByType.get(parentType);
-            if (existingNode != null && existingNode.getId() != parentNode.getId() && lineages.parentsCardinality) {
-                Lineage newLineage = new Lineage(copyLineage);
-                rewindLineage(parentNode, newLineage, lineages);
-                lineages.add(newLineage);
-            } else if (existingNode == null) {
-                rewindLineage(parentNode, lineage, lineages);
-            }
+            parentsByTypeB.put(parentNode.getProperty(_TYPE, "").toString(), parentNode);
         }
+        ImmutableSetMultimap<String, Node> parentsByType = parentsByTypeB.build();
+        if (parentsByType.size() == 0) {
+            return ImmutableSet.of(nodesByType);
+        } else if (!lineages.parentsCardinality) {
+            Map<String, Node> result = parentsByType.keySet()
+                    .stream()
+                    .map(parentsByType::get)
+                    .map(parents -> parents.stream().findFirst().get())
+                    .map(parent -> doRewind(parent, Maps.newHashMap(nodesByType), lineages))
+                    .map(lineage -> {
+                        if (lineage.size() > 1)
+                            throw new IllegalArgumentException("Can't have more than 1 Lineage while parentsCardinality = false");
+                        if (lineage.size() < 1)
+                            throw new IllegalArgumentException("Can't have no lineage");
+                        return lineage.stream().findFirst().get();
+                    }).reduce(new HashMap<>(), (m1, m2) -> {
+                        m1.putAll(m2);
+                        return m1;
+                    });
+            return ImmutableSet.of(result);
+        } else {
+            return parentsByType.keySet()
+                    .stream()
+                    .map(parentsByType::get)
+                    .map(parents -> parents.stream()
+                            .map(parent -> doRewind(parent, Maps.newHashMap(nodesByType), lineages))
+                            .reduce(ImmutableSet.of(), Sets::union)
+                    ).reduce(ImmutableSet.of(), this::mergeBranches);
+        }
+    }
+
+    private Set<Map<String, Node>> mergeBranches(Set<Map<String, Node>> left, Set<Map<String, Node>> right) {
+        if (left.isEmpty())
+            return right;
+        if (right.isEmpty())
+            return left;
+        return Sets.cartesianProduct(left, right).stream()
+                .map(list -> {
+                    HashMap<String, Node> builder = new HashMap<>();
+                    list.forEach(builder::putAll);
+                    return ImmutableMap.copyOf(builder);
+                }).collect(Collectors.toUnmodifiableSet());
     }
 
     private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
