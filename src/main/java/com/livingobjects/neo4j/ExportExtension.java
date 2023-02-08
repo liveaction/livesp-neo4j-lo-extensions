@@ -125,7 +125,8 @@ public final class ExportExtension {
             tx.findNodes(Labels.ELEMENT)
                     .forEachRemaining(node -> {
                         String type = node.getProperty(_TYPE).toString();
-                        Map<String, PropertyDefinition> properties = allProperties.computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+                        Map<String, PropertyDefinition> properties = allProperties
+                                .computeIfAbsent(type, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
                         node.getAllProperties()
                                 .forEach((name, value) -> {
                                     if (!name.startsWith("_") && !properties.containsKey(name)) {
@@ -242,7 +243,9 @@ public final class ExportExtension {
         return csv;
     }
 
-    private PaginatedLineages paginate(List<Lineages> lineages, List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLines, Optional<Pagination> pagination) {
+    private PaginatedLineages paginate(List<Lineages> lineages,
+                                       List<Pair<List<Lineage>, List<Map<String, Object>>>> sortedLines,
+                                       Optional<Pagination> pagination) {
         if (pagination.isPresent() && pagination.get().offset > sortedLines.size()) {
             return EMPTY_PAGINATED_LINEAGE;
         }
@@ -279,8 +282,12 @@ public final class ExportExtension {
                         .stream()
                         .map(lineagesAndRelProps ->
                                 new Pair<>(
-                                        Lists.transform(lineagesAndRelProps.first, l -> l == null ? new ExportQueryResult(ImmutableMap.of()) : new ExportQueryResult(ImmutableMap.copyOf(l.propertiesToExportByType))),
-                                        Lists.transform(lineagesAndRelProps.second, props -> props == null ? new RelationshipQueryResult(ImmutableMap.of()) : new RelationshipQueryResult(ImmutableMap.copyOf(props)))
+                                        Lists.transform(lineagesAndRelProps.first, l -> l == null ?
+                                                new ExportQueryResult(ImmutableMap.of()) :
+                                                new ExportQueryResult(ImmutableMap.copyOf(l.propertiesToExportByType))),
+                                        Lists.transform(lineagesAndRelProps.second, props -> props == null ?
+                                                new RelationshipQueryResult(ImmutableMap.of()) :
+                                                new RelationshipQueryResult(ImmutableMap.copyOf(props)))
                                 )
                         ).collect(Collectors.toList());
             }
@@ -367,7 +374,10 @@ public final class ExportExtension {
                                 filterWithScopes,
                                 q.includeMetadata, q.scopes, q.parentsCardinality, q.noResult);
                     }).collect(Collectors.toList());
-            FullQuery fullQuery = new FullQuery(queriesWithScopeFilter, initQuery.pagination.orElse(null), initQuery.ordersByIndex, initQuery.relationshipQueries);
+            FullQuery fullQuery = new FullQuery(queriesWithScopeFilter,
+                    initQuery.pagination.orElse(null),
+                    initQuery.ordersByIndex,
+                    initQuery.relationshipQueries);
 
             List<CrossRelationship> relations = fullQuery.relationshipQueries.stream()
                     .map(rq -> metaSchema.getRelationshipOfType(rq.type))
@@ -506,7 +516,8 @@ public final class ExportExtension {
                                             try {
                                                 return Maps.immutableEntry(property, r.getProperty(property));
                                             } catch (NotFoundException e) {
-                                                LOGGER.warn(String.format("Requested property %s could not be found on relation %s, empty value will be returned instead", property, r));
+                                                LOGGER.warn(String.format("Requested property %s could not be found on relation %s, " +
+                                                        "empty value will be returned instead", property, r));
                                                 return Maps.immutableEntry(property, "");
                                             }
                                         }).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))
@@ -518,8 +529,8 @@ public final class ExportExtension {
     }
 
     /**
-     * Given allLineages, recursively fills lines. Each List inside will contain one and only one lineage from each List inside allLineages, with two consecutive lineages being linked
-     * by a relationship described in relationQueries and metaRelations.
+     * Given allLineages, recursively fills lines. Each List inside will contain one and only one lineage from each List inside allLineages,
+     * with two consecutive lineages being linked by a relationship described in relationQueries and metaRelations.
      * lines[i] and lines[i+1] are linked by the relationship described by relationQueries[i] and metaRelations[i]
      */
     private void constructLinesR(
@@ -541,7 +552,11 @@ public final class ExportExtension {
         ImmutableList.copyOf(lines)
                 .forEach(pair -> {
                     Lineage l = pair.first.get(i);
-                    List<Pair<Lineage, Relationship>> toAdd = getMatchingLineageAndRelationProperties(l, nextLineages, metaRelations.get(i), relationQueries.get(i));
+                    List<Pair<Lineage, Relationship>> toAdd = getMatchingLineageAndRelationProperties(l,
+                            nextLineages,
+                            metaRelations.get(i),
+                            relationQueries.get(i)
+                    );
                     lines.remove(pair);
                     lines.addAll(addNext(pair, toAdd));
                 });
@@ -648,9 +663,12 @@ public final class ExportExtension {
             ImmutableSet.Builder<String> requiredChildren = ImmutableSet.<String>builder()
                     .addAll(getCommonChildren(exportQuery.requiredAttributes, metaSchema));
             Optional<RelationshipQuery> previousQuery = i == 0 ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i - 1));
-            Optional<RelationshipQuery> nextQuery = i == fullQuery.relationshipQueries.size() ? Optional.empty() : Optional.of(fullQuery.relationshipQueries.get(i));
+            Optional<RelationshipQuery> nextQuery = i == fullQuery.relationshipQueries.size() ?
+                    Optional.empty() :
+                    Optional.of(fullQuery.relationshipQueries.get(i));
 
-            Function<RelationshipQuery, Pair<RelationshipQuery, CrossRelationship>> queryToPair = q -> new Pair<>(q, relations.stream().filter(r -> r.type.equals(q.type)).collect(MoreCollectors.onlyElement()));
+            Function<RelationshipQuery, Pair<RelationshipQuery, CrossRelationship>> queryToPair =
+                    q -> new Pair<>(q, relations.stream().filter(r -> r.type.equals(q.type)).collect(MoreCollectors.onlyElement()));
             Optional<Pair<RelationshipQuery, CrossRelationship>> previousRel = previousQuery.map(queryToPair);
             Optional<Pair<RelationshipQuery, CrossRelationship>> nextRel = nextQuery.map(queryToPair);
 
@@ -893,7 +911,7 @@ public final class ExportExtension {
                     Lineage lineage = new Lineage(graphDb);
                     lineage.nodesByType.putAll(nodesByType);
                     return lineage;
-                }).collect(Collectors.toUnmodifiableSet());
+                }).collect(ImmutableSet.toImmutableSet());
     }
 
     private Set<Map<String, Node>> doRewind(Node currentNode, Map<String, Node> nodesByType, Lineages lineages) {
@@ -916,10 +934,8 @@ public final class ExportExtension {
         if (parentsByType.size() == 0) {
             return ImmutableSet.of(nodesByType);
         } else if (!lineages.parentsCardinality) {
-            Map<String, Node> result = parentsByType.keySet()
-                    .stream()
-                    .map(parentsByType::get)
-                    .map(parents -> parents.stream().findFirst().get())
+            Map<String, Node> result = parentsByType.asMap().values().stream()
+                    .map(parents -> parents.iterator().next())
                     .map(parent -> doRewind(parent, Maps.newHashMap(nodesByType), lineages))
                     .map(lineage -> {
                         if (lineage.size() > 1)
@@ -933,9 +949,7 @@ public final class ExportExtension {
                     });
             return ImmutableSet.of(result);
         } else {
-            return parentsByType.keySet()
-                    .stream()
-                    .map(parentsByType::get)
+            return parentsByType.asMap().values().stream()
                     .map(parents -> parents.stream()
                             .map(parent -> doRewind(parent, Maps.newHashMap(nodesByType), lineages))
                             .reduce(ImmutableSet.of(), Sets::union)
@@ -953,7 +967,7 @@ public final class ExportExtension {
                     HashMap<String, Node> builder = new HashMap<>();
                     list.forEach(builder::putAll);
                     return ImmutableMap.copyOf(builder);
-                }).collect(Collectors.toUnmodifiableSet());
+                }).collect(ImmutableSet.toImmutableSet());
     }
 
     private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
