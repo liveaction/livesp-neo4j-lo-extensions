@@ -154,6 +154,7 @@ public final class TopologyLoader {
 
             existingRelationship = from.createRelationshipTo(to, relationshipType.relationshipType);
             existingRelationship.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+            existingRelationship.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
         }
 
         return existingRelationship;

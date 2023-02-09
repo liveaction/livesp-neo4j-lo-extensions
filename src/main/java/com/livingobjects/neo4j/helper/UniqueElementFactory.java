@@ -110,6 +110,7 @@ public final class UniqueElementFactory {
             created.setProperty(key2, value2);
         }
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
         return created;
     }
 
