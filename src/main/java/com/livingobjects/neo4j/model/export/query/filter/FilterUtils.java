@@ -2,6 +2,7 @@ package com.livingobjects.neo4j.model.export.query.filter;
 
 import com.google.common.collect.ImmutableSet;
 
+import java.lang.reflect.Array;
 import java.util.Arrays;
 
 public class FilterUtils {
@@ -52,9 +53,20 @@ public class FilterUtils {
 
     private static String asNonNullString(Object value) {
         if (value != null) {
+            Object[] toCast;
             if (value.getClass().isArray()) {
-                return Arrays.toString((Object[]) value);
-            }else if (value instanceof Iterable) {
+                if (!(value instanceof Object[])) {
+                    int length = Array.getLength(value);
+                    toCast = new Object[length];
+                    for (int i = 0; i < length; i++) {
+                        toCast[i] = Array.get(value, i);
+                    }
+                } else {
+                    toCast = (Object[]) value;
+                }
+                return Arrays.toString(toCast);
+            }
+            else if (value instanceof Iterable) {
                 return ImmutableSet.copyOf((Iterable) value).toString();
             } else {
                 return value.toString();
