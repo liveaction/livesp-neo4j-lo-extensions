@@ -72,7 +72,7 @@ public class SchemaReader {
         Integer nbParentsToAggregate = null;
         if (segment.hasProperty("topCount")) {
             topCount = Integer.parseInt(segment.getProperty("topCount").toString());
-            nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate"))
+            nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate", null))
                     .map(val -> Integer.parseInt(val.toString()))
                     .orElse(0);
         }
