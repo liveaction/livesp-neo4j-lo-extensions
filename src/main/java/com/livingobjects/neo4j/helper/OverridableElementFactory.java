@@ -103,6 +103,7 @@ public final class OverridableElementFactory {
         created.setProperty(keyProperty, keyValue);
         created.setProperty(SCOPE, scope.tag);
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
         return created;
     }
 
