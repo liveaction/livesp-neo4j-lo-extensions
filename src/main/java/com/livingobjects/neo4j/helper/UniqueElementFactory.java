@@ -58,6 +58,10 @@ public final class UniqueElementFactory {
     }
 
     public synchronized UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
+        return getOrCreateRelation(true, from, to, type);
+    }
+
+    public synchronized UniqueEntity<Relationship> getOrCreateRelation(boolean createIfNotExists, Node from, Node to, RelationshipType type) {
         UniqueEntity<Relationship> relation = null;
         for (Relationship r : from.getRelationships(Direction.OUTGOING, type)) {
             if (r.getEndNode().equals(to)) { // put other conditions here, if needed
@@ -65,7 +69,7 @@ public final class UniqueElementFactory {
                 break;
             }
         }
-        if (relation == null) {
+        if (relation == null && createIfNotExists) {
             relation = UniqueEntity.created(from.createRelationshipTo(to, type));
         }
         return relation;
