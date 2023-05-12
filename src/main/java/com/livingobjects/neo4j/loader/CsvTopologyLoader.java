@@ -44,7 +44,8 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.Tuple2;
+import reactor.util.function.Tuple2;
+import reactor.util.function.Tuples;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -205,6 +206,21 @@ public final class CsvTopologyLoader {
                 throw new IllegalArgumentException("Several elements have been marked to delete with different strategy : " + markedToDelete);
             }
 
+            Map<Tuple2<String, String>, Action> xRelationsToDelete = strategy.getMultiElementHeader()
+                    .stream()
+                    .filter(header -> header.propertyName.equals(Action.STATUS_HEADER))
+                    .map(header -> Maps.immutableEntry(Tuples.of(header.elementName, header.targetElementName), lineStrategy.getValue(header.index).flatMap(Action::fromString)))
+                    .filter(e -> e.getValue().isPresent())
+                    .collect(Collectors.toMap(Entry::getKey, e -> e.getValue().get()));
+
+            if (xRelationsToDelete.values().stream()
+                    .distinct()
+                    .count() > 1 || xRelationsToDelete.values().iterator().next() != Action.DELETE_NO_CASCADE) {
+                throw new IllegalArgumentException("At least one relation is marked to delete with any other strategy than DELETE_NO_CASCADE : "
+                        + markedToDelete);
+            }
+
+
 
             Set<String> allElementToDeleteBld = ImmutableSet.of();
             if (!markedToDelete.isEmpty()) {
@@ -256,9 +272,29 @@ public final class CsvTopologyLoader {
             if (!markedToDelete.isEmpty()) {
                 deleteElements(lineStrategy, markedToDelete.keySet(), markedToDelete.values().iterator().next(), tx); // We have checked that only one distinct action is present
             }
+            if(!xRelationsToDelete.isEmpty()) {
+                deleteRelations(lineStrategy, xRelationsToDelete.keySet(), tx);
+            }
 
             return createOrUpdatePlanetLink(lineStrategy, nodes, tx);
         }
+    }
+
+    private void deleteRelations(LineMappingStrategy line, Set<Tuple2<String, String>> xRelationToDelete, Transaction tx) {
+        xRelationToDelete
+                .forEach(relation -> {
+                    Optional<Node> originNode = line.getValue(relation.getT1(), TAG)
+                            .map(tag -> networkElementFactory.getWithOutcome(TAG, tag, tx));
+                    Optional<Node> destNode = line.getValue(relation.getT2(), TAG)
+                            .map(tag -> networkElementFactory.getWithOutcome(TAG, tag, tx));
+                    if(originNode.isPresent() && destNode.isPresent()) {
+                        UniqueEntity<Relationship> rel =
+                                networkElementFactory.getOrCreateRelation(false, originNode.get(), destNode.get(), CROSS_ATTRIBUTE);
+                        if(rel != null) {
+                            rel.entity.delete();
+                        }
+                    }
+                });
     }
 
     private void deleteElements(LineMappingStrategy line, Set<String> keyTypes, Action action,
@@ -364,11 +400,11 @@ public final class CsvTopologyLoader {
 
     private Map<String, Relationship> createCrossAttributeRelationships(Map<String, Optional<UniqueEntity<Node>>> nodes) {
         Map<String, Relationship> multiElementLinks = Maps.newHashMap();
-        for (Entry<String, ImmutableSet<Tuple2<String, String>>> rel : metaSchema.getCrossAttributesRelations().entrySet()) {
+        for (Entry<String, ImmutableSet<scala.Tuple2<String, String>>> rel : metaSchema.getCrossAttributesRelations().entrySet()) {
             String keyType = rel.getKey();
             Optional<UniqueEntity<Node>> startNode = nodes.getOrDefault(keyType, Optional.empty());
             startNode.ifPresent(fromNode -> {
-                for (Tuple2<String, String> endKeyType : rel.getValue()) {
+                for (scala.Tuple2<String, String> endKeyType : rel.getValue()) {
                     if (!keyType.equals(endKeyType._1())) {
                         Optional<UniqueEntity<Node>> optEndNode = nodes.getOrDefault(endKeyType._1(), Optional.empty());
                         optEndNode.ifPresent(toNode -> {
@@ -417,7 +453,7 @@ public final class CsvTopologyLoader {
         boolean overridable = metaSchema.isOverridable(keyType);
 
         Scope scopeFromDatabase = topologyLoaderUtils.getScopeFromElementPlanet(element.entity, tx)
-                .orElseGet(() -> !overridable ? getScopeFromParent(keyType, nodes,tx).orElse(null) : null);
+                .orElseGet(() -> !overridable ? getScopeFromParent(keyType, nodes, tx).orElse(null) : null);
 
         return scopeFromImport
                 .map(scope -> {
