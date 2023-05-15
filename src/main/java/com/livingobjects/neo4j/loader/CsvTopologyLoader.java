@@ -214,13 +214,10 @@ public final class CsvTopologyLoader {
                     .collect(Collectors.toMap(Entry::getKey, e -> e.getValue().get()));
 
             if (xRelationsToDelete.values().stream()
-                    .distinct()
-                    .count() > 1 || xRelationsToDelete.values().iterator().next() != Action.DELETE_NO_CASCADE) {
+                    .anyMatch(action -> action != Action.DELETE_NO_CASCADE)) {
                 throw new IllegalArgumentException("At least one relation is marked to delete with any other strategy than DELETE_NO_CASCADE : "
                         + markedToDelete);
             }
-
-
 
             Set<String> allElementToDeleteBld = ImmutableSet.of();
             if (!markedToDelete.isEmpty()) {
