@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.rules.WithNeo4jImpermanentDatabase;
 import org.assertj.core.api.Assertions;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.neo4j.graphdb.Transaction;
@@ -25,7 +24,6 @@ public class CsvTopologyLoaderTest {
     }
 
     @Test
-    @Ignore
     public void shouldSortElementsToDelete() {
         List<String> actual;
         try (Transaction tx = wNeo.getGraphDatabaseService().beginTx()) {

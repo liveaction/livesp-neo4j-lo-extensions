@@ -138,7 +138,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 //        SLF4JBridgeHandler.removeHandlersForRootLogger();
 //        SLF4JBridgeHandler.install();
 
-        databaseManagementService = new DatabaseManagementServiceBuilder(Files.createTempDirectory("neo4j-test-db").toFile())
+        databaseManagementService = new DatabaseManagementServiceBuilder(Files.createTempDirectory("neo4j-test-db"))
                 .build();
         db = databaseManagementService.database(DEFAULT_DATABASE_NAME);
 
