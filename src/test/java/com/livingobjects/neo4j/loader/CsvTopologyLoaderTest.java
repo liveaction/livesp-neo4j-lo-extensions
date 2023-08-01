@@ -19,7 +19,7 @@ public class CsvTopologyLoaderTest {
     private CsvTopologyLoader tested;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         tested = new CsvTopologyLoader(wNeo.getGraphDatabaseService(), new MetricRegistry());
     }
 

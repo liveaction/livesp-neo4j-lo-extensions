@@ -13,10 +13,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Request;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import java.io.IOException;
@@ -41,11 +43,12 @@ public final class LoadCSVExtension {
 
     @POST
     @Consumes({MediaType.APPLICATION_OCTET_STREAM})
-    public Response loadCSV(InputStream is) throws IOException {
+    public Response loadCSV(@HeaderParam("X-User") String username, InputStream is) throws IOException {
         Stopwatch sWatch = Stopwatch.createStarted();
+
         long importedElementsCounter = 0;
         try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
-            Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is);
+            Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics).loadFromStream(is, username);
             importedElementsCounter = result.importedElementsByScope.values()
                     .stream()
                     .mapToInt(Set::size)

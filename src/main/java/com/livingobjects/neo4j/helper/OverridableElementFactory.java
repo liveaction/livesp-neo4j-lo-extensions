@@ -34,7 +34,7 @@ public final class OverridableElementFactory {
         this.extraLabel = ImmutableSet.copyOf(extraLabels);
     }
 
-    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue, Transaction tx) {
+    public UniqueEntity<Node> getOrOverride(Scope scope, String keyProperty, Object keyValue, String username, Transaction tx) {
         ImmutableList<String> tmpScopes = ImmutableList.of(scope.tag, SP_SCOPE.tag, GLOBAL_SCOPE.tag);
         ImmutableList<String> scopes = tmpScopes.subList(tmpScopes.lastIndexOf(scope.tag), tmpScopes.size());
         ImmutableMap.Builder<String, Node> expandsBldr = ImmutableMap.builder();
@@ -56,7 +56,7 @@ public final class OverridableElementFactory {
 
         UniqueEntity<Node> node = Optional.ofNullable(expands.get(scope.tag))
                 .map(UniqueEntity::existing)
-                .orElseGet(() -> UniqueEntity.created(initialize(tx.createNode(), keyProperty, keyValue, scope)));
+                .orElseGet(() -> UniqueEntity.created(initialize(tx.createNode(), keyProperty, keyValue, scope, username)));
 
         // Remove extra label from previous Scopes
         expands.forEach((sc, n) -> {
@@ -98,12 +98,14 @@ public final class OverridableElementFactory {
         return node;
     }
 
-    private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope) {
+    private Node initialize(Node created, String keyProperty, Object keyValue, Scope scope, String username) {
         created.addLabel(keyLabel);
         created.setProperty(keyProperty, keyValue);
         created.setProperty(SCOPE, scope.tag);
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.CREATED_BY, username);
         created.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
+        created.setProperty(GraphModelConstants.UPDATED_BY, username);
         return created;
     }
 
