@@ -28,37 +28,31 @@ public final class UniqueElementFactory {
         this.extraLabel = extraLabel;
     }
 
-    public Label keyLabel() {
-        return keyLabel;
-    }
-
     public Node getWithOutcome(String keyProperty, Object keyValue, Transaction tx) {
-        return getWithOutcome(keyProperty, keyValue, null, null, tx);
-    }
-
-    public Node getWithOutcome(MatchProperties matchProperties, Transaction tx) {
-        return getWithOutcome(matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2, tx);
-    }
-
-    public Node getWithOutcome(String key1, Object value1, String key2, Object value2, Transaction tx) {
-        UniqueEntity<Node> entity = getOrCreateWithOutcome(false, key1, value1, key2, value2, tx);
+        UniqueEntity<Node> entity = getOrCreateWithOutcome(false, keyProperty, keyValue, null, null, null, tx);
         return entity == null ? null : entity.entity;
     }
 
+    /**
+     * Only this one method has the username parameter, because it's used by the CsvTopologyLoader to create network elements,
+     * which is the only use case where we want the username related information (such as createdBy or updatedBy).
+     * For relations between network elements, for the metaschema or for creating planets/realms for example,
+     * we do not care about the username related information (it would always be system, and would be redundant)
+     */
+    public UniqueEntity<Node> getOrCreateWithOutcome(String keyProperty, Object keyValue, String username, Transaction tx) {
+        return getOrCreateWithOutcome(true, keyProperty, keyValue, null, null, username, tx);
+    }
+
     public UniqueEntity<Node> getOrCreateWithOutcome(String keyProperty, Object keyValue, Transaction tx) {
-        return getOrCreateWithOutcome(true, keyProperty, keyValue, null, null, tx);
+        return getOrCreateWithOutcome(true, keyProperty, keyValue, null, null, null, tx);
     }
 
     public UniqueEntity<Node> getOrCreateWithOutcome(String key1, Object value1, String key2, Object value2, Transaction tx) {
-        return getOrCreateWithOutcome(true, key1, value1, key2, value2, tx);
+        return getOrCreateWithOutcome(true, key1, value1, key2, value2, null, tx);
     }
 
     public UniqueEntity<Node> getOrCreateWithOutcome(MatchProperties matchProperties, Transaction tx) {
-        return getOrCreateWithOutcome(true, matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2, tx);
-    }
-
-    public synchronized UniqueEntity<Relationship> getOrCreateRelation(Node from, Node to, RelationshipType type) {
-        return getOrCreateRelation(true, from, to, type);
+        return getOrCreateWithOutcome(true, matchProperties.key1, matchProperties.value1, matchProperties.key2, matchProperties.value2, null, tx);
     }
 
     public synchronized UniqueEntity<Relationship> getOrCreateRelation(boolean createIfNotExists, Node from, Node to, RelationshipType type) {
@@ -75,7 +69,8 @@ public final class UniqueElementFactory {
         return relation;
     }
 
-    private synchronized UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2, Transaction tx) {
+    private synchronized UniqueEntity<Node> getOrCreateWithOutcome(boolean createIfNotExist, String key1, Object value1, String key2, Object value2,
+                                                                   String username, Transaction tx) {
         Node node;
         if (key2 == null) {
             node = tx.findNode(keyLabel, key1, value1);
@@ -88,7 +83,7 @@ public final class UniqueElementFactory {
 
         if (createIfNotExist) {
             node = tx.createNode();
-            return UniqueEntity.created(initialize(node, key1, value1, key2, value2));
+            return UniqueEntity.created(initialize(node, key1, value1, key2, value2, username));
         } else {
             return null;
         }
@@ -106,7 +101,7 @@ public final class UniqueElementFactory {
         return null;
     }
 
-    private Node initialize(Node created, String key1, Object value1, String key2, Object value2) {
+    private Node initialize(Node created, String key1, Object value1, String key2, Object value2, String username) {
         created.addLabel(keyLabel);
         extraLabel.ifPresent(created::addLabel);
         created.setProperty(key1, value1);
@@ -115,6 +110,13 @@ public final class UniqueElementFactory {
         }
         created.setProperty(GraphModelConstants.CREATED_AT, Instant.now().toEpochMilli());
         created.setProperty(GraphModelConstants.UPDATED_AT, Instant.now().toEpochMilli());
+
+        Optional.ofNullable(username)
+                .filter(usernameValue -> !usernameValue.isBlank())
+                .ifPresent(usernameValue -> {
+                    created.setProperty(GraphModelConstants.CREATED_BY, usernameValue);
+                    created.setProperty(GraphModelConstants.UPDATED_BY, usernameValue);
+                });
         return created;
     }
 

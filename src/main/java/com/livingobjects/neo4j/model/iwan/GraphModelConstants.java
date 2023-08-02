@@ -28,15 +28,17 @@ public final class GraphModelConstants {
     public static final String MANAGED = "managed";
     public static final String DESCRIPTION = "description";
     public static final String PATH = "path";
-    public static final String CREATED_AT = "createdAt";
     public static final String CARDINALITY = "cardinality";
     public static final String TAG = "tag";
     public static final String SCHEMA = "schema";
+    public static final String CREATED_AT = "createdAt";
+    public static final String CREATED_BY = "createdBy";
     public static final String UPDATED_AT = "updatedAt";
+    public static final String UPDATED_BY = "updatedBy";
     public static final String _OVERRIDABLE = "_overridable";
     public static final String OVERRIDE = "override";
     public static final String CONTEXT = "context";
 
-    public static final ImmutableSet<String> RESERVED_PROPERTIES = ImmutableSet.of(TAG, SCOPE, _TYPE, CREATED_AT, UPDATED_AT);
+    public static final ImmutableSet<String> RESERVED_PROPERTIES = ImmutableSet.of(TAG, SCOPE, _TYPE, CREATED_AT, UPDATED_AT, CREATED_BY, UPDATED_BY);
 
 }
