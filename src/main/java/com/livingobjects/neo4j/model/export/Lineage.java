@@ -1,7 +1,5 @@
 package com.livingobjects.neo4j.model.export;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.livingobjects.neo4j.model.iwan.GraphModelConstants;
 import com.livingobjects.neo4j.model.iwan.Labels;
@@ -13,10 +11,9 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.SortedMap;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
@@ -32,30 +29,25 @@ public final class Lineage {
     public final Map<String, Node> nodesByType;
     public final GraphDatabaseService graphDb;
     // Filled at the end of the process, with the properties to export only
-    public final Map<String, SortedMap<String, Object>> propertiesToExportByType;
+    public final Map<String, Map<String, Object>> propertiesToExportByType;
     // Contains all properties used during the process, with lazy loading
     private final Map<String, Map<String, Object>> propertiesByType;
 
     private String repr;
 
     public Lineage(GraphDatabaseService graphDb) {
-        this.nodesByType = Maps.newHashMap();
+        this.nodesByType = new HashMap<>();
         this.graphDb = graphDb;
-        this.propertiesToExportByType = Maps.newLinkedHashMap();
-        this.propertiesByType = Maps.newHashMap();
-    }
-
-    public Lineage(Lineage toClone) {
-        this.nodesByType = Maps.newHashMap(toClone.nodesByType);
-        this.graphDb = toClone.graphDb;
-        this.propertiesToExportByType = Maps.newLinkedHashMap(toClone.propertiesToExportByType);
-        this.propertiesByType = Maps.newHashMap(toClone.propertiesByType);
+        this.propertiesToExportByType = new HashMap<>();
+        this.propertiesByType = new HashMap<>();
     }
 
     @Override
     public String toString() {
         try {
-            repr = nodesByType.entrySet().stream().map(e -> e.getValue().getProperty(TAG).toString()).collect(Collectors.joining(" - "));
+            repr = nodesByType.values().stream()
+                    .map(node -> node.getProperty(TAG).toString())
+                    .collect(Collectors.joining(" - "));
             return repr;
         } catch (Exception e) {
             if (repr == null) {
@@ -86,14 +78,14 @@ public final class Lineage {
         }
     }
 
-    public List<String> getAllPropertiesForType(String keyAttribute) {
+    public Set<String> getAllPropertiesForType(String keyAttribute) {
         Node node = nodesByType.get(keyAttribute);
         if (node == null) {
-            return Lists.newArrayList();
+            return Set.of();
         }
         Map<String, Object> allProperties = node.getAllProperties();
         propertiesByType.computeIfAbsent(keyAttribute, k -> Maps.newHashMap()).putAll(allProperties);
-        return ImmutableList.copyOf(allProperties.keySet());
+        return allProperties.keySet();
     }
 
     private String getElementScopeFromPlanet(Node node) {
