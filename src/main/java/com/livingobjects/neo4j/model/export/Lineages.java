@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.livingobjects.neo4j.loader.MetaSchema;
 import com.livingobjects.neo4j.model.export.query.ExportQuery;
@@ -20,14 +19,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.stream.Collectors;
+
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 
 public final class Lineages {
 
     private static final Set<String> METADATA_PROPERTIES = ImmutableSet.of("tag", "createdAt", "updatedAt", "createdBy", "updatedBy");
 
-    public final Map<String, SortedMap<String, String>> propertiesTypeByType;
+    public Map<String, Map<String, String>> propertiesTypeByType;
     public final ImmutableSet<String> attributesToExtract;
     public final ImmutableSortedSet<String> attributesToExport;
     public final ImmutableSet<String> orderedLeafAttributes;
@@ -85,8 +85,7 @@ public final class Lineages {
     private void addScopeColumn(ImmutableSet<String> attributesToExport, MetaSchema metaSchema) {
         for (String keyAttribute : attributesToExport) {
             if (metaSchema.isMultiScope(tx, keyAttribute) && filterColumn(keyAttribute, GraphModelConstants.SCOPE)) {
-                SortedMap<String, String> keyAttributeProperties = getKeyAttributePropertiesType(keyAttribute);
-                keyAttributeProperties.put(GraphModelConstants.SCOPE, "STRING");
+                getKeyAttributePropertiesType(keyAttribute).put(GraphModelConstants.SCOPE, "STRING");
             }
         }
     }
@@ -134,9 +133,14 @@ public final class Lineages {
         return ImmutableSet.copyOf(lineages);
     }
 
-    public SortedMap<String, String> getKeyAttributePropertiesType(String keyAttribute) {
-        return propertiesTypeByType.computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
+    public Map<String, String> getKeyAttributePropertiesType(String keyAttribute) {
+        return propertiesTypeByType.computeIfAbsent(keyAttribute, k -> new HashMap<>());
     }
 
-
+    public void consolidatePropertiesTypeByType() {
+        propertiesTypeByType = propertiesTypeByType.entrySet().stream()
+                .collect(toImmutableMap(Map.Entry::getKey, entry -> entry.getValue().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey(PropertyNameComparator.PROPERTY_NAME_COMPARATOR))
+                        .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue))));
+    }
 }

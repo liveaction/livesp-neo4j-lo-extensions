@@ -66,12 +66,12 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -81,6 +81,8 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.GLOBAL_SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE;
@@ -269,7 +271,7 @@ public final class ExportExtension {
             }
 
             @Override
-            public Map<String, SortedMap<String, String>> header() {
+            public Map<String, Map<String, String>> header() {
                 if (lineages.size() > 1) {
                     throw new UnsupportedOperationException("Queries with relationships can't be exported as csv");
                 }
@@ -289,7 +291,7 @@ public final class ExportExtension {
                                                 new RelationshipQueryResult(ImmutableMap.of()) :
                                                 new RelationshipQueryResult(ImmutableMap.copyOf(props)))
                                 )
-                        ).collect(Collectors.toList());
+                        ).collect(toImmutableList());
             }
 
             @Override
@@ -316,13 +318,13 @@ public final class ExportExtension {
      */
     private void initializePropertiesList(Lineages lineages, Lineage lineage) {
         for (String keyAttribute : lineages.attributesToExport) {
-            SortedMap<String, String> propertiesType = lineages.getKeyAttributePropertiesType(keyAttribute);
+            Map<String, String> propertiesType = lineages.getKeyAttributePropertiesType(keyAttribute);
             lineages.getPropertiesToExport(keyAttribute)
-                    .map(elements -> (List<String>) Lists.newArrayList(elements))
+                    .map(elements -> (Set<String>) elements)
                     .orElseGet(() -> lineage.getAllPropertiesForType(keyAttribute))
                     .stream()
                     .filter(property -> !lineages.ignoreProperty(property) && lineages.filterColumn(keyAttribute, property))
-                    .forEach(property -> propertiesType.putIfAbsent(property, PropertyConverter.getPropertyType(property)));
+                    .forEach(property -> propertiesType.computeIfAbsent(property, k -> PropertyConverter.getPropertyType(property)));
         }
     }
 
@@ -332,11 +334,10 @@ public final class ExportExtension {
     private void initializePropertiesToExport(Lineages lineages, Lineage lineage) {
         for (String keyAttribute : lineages.attributesToExport) {
             Map<String, Object> values = lineage.propertiesToExportByType
-                    .computeIfAbsent(keyAttribute, k -> Maps.newTreeMap(PropertyNameComparator.PROPERTY_NAME_COMPARATOR));
-            List<String> propertiesToExport = Lists.newArrayList(lineages.propertiesTypeByType.get(keyAttribute).keySet());
-            for (String property : propertiesToExport) {
+                    .computeIfAbsent(keyAttribute, k -> new LinkedHashMap<>());
+            for (String property : lineages.propertiesTypeByType.get(keyAttribute).keySet()) {
                 if (!lineages.ignoreProperty(property)) {
-                    values.put(property, lineage.getProperty(keyAttribute, property));
+                    values.computeIfAbsent(property, k -> lineage.getProperty(keyAttribute, property));
                 }
             }
         }
@@ -364,7 +365,7 @@ public final class ExportExtension {
                                 // remove scopes already filtered
                                 .filter(f -> !initScopeFilters.contains(f))
                                 .map(s -> new Filter.ColumnFilter<>(new Column("cluster:client", ID), new ValueFilter(false, ValueFilter.Operator.eq, s)))
-                                .collect(Collectors.toList());
+                                .collect(toImmutableList());
 
                         Filter<Column> filterWithScopes = scopeFilters.isEmpty() ? q.filter :
                                 new Filter.AndFilter<>(Lists.newArrayList(q.filter, new Filter.OrFilter<>(scopeFilters)));
@@ -373,7 +374,7 @@ public final class ExportExtension {
                                 q.columns,
                                 filterWithScopes,
                                 q.includeMetadata, q.scopes, q.parentsCardinality, q.noResult);
-                    }).collect(Collectors.toList());
+                    }).collect(toImmutableList());
             FullQuery fullQuery = new FullQuery(queriesWithScopeFilter,
                     initQuery.pagination.orElse(null),
                     initQuery.ordersByIndex,
@@ -381,7 +382,7 @@ public final class ExportExtension {
 
             List<CrossRelationship> relations = fullQuery.relationshipQueries.stream()
                     .map(rq -> metaSchema.getRelationshipOfType(rq.type))
-                    .collect(Collectors.toList());
+                    .collect(toImmutableList());
             List<Lineages> lineages = exportLineages(fullQuery, relations, tx);
             List<List<Lineage>> filteredLineages = Lists.newArrayList();
             for (int i = 0; i < lineages.size(); i++) {
@@ -390,6 +391,7 @@ public final class ExportExtension {
                 for (Lineage l : filter) {
                     initializePropertiesList(lineages.get(i), l);
                 }
+                lineages.get(i).consolidatePropertiesTypeByType();
                 for (Lineage l : filter) {
                     initializePropertiesToExport(lineages.get(i), l);
                 }
@@ -432,7 +434,7 @@ public final class ExportExtension {
                 .filter(columnFilter -> columnFilter.valueFilter.operator.equals(ValueFilter.Operator.eq) &&
                         !columnFilter.valueFilter.not)
                 .map(columnFilter -> columnFilter.valueFilter.value.toString())
-                .collect(Collectors.toSet());
+                .collect(toImmutableSet());
     }
 
     /**
@@ -453,7 +455,7 @@ public final class ExportExtension {
         constructLinesR(lines,
                 ImmutableList.copyOf(lineages.stream()
                         .map(ImmutableList::copyOf)
-                        .collect(Collectors.toList())
+                        .collect(toImmutableList())
                 ),
                 relationQueries,
                 metaRelations);
@@ -481,7 +483,7 @@ public final class ExportExtension {
                                 .map(keyAttribute -> Optional.ofNullable(lineage.nodesByType.get(keyAttribute))
                                         .map(Node::getId)
                                         .orElse(-1L))
-                                .collect(Collectors.toList())
+                                .collect(toImmutableList())
                 );
             }
 
@@ -567,8 +569,7 @@ public final class ExportExtension {
 
     private List<Pair<List<Lineage>, List<Relationship>>> addNext(
             Pair<List<Lineage>, List<Relationship>> initial,
-            List<Pair<Lineage, Relationship>> next
-    ) {
+            List<Pair<Lineage, Relationship>> next) {
         return next.stream()
                 .map(lineageMapPair -> {
                     List<Lineage> newLineages = Lists.newArrayList(initial.first);
@@ -576,7 +577,7 @@ public final class ExportExtension {
                     newRelationProperties.add(lineageMapPair.second);
                     newLineages.add(lineageMapPair.first);
                     return new Pair<>(newLineages, newRelationProperties);
-                }).collect(Collectors.toList());
+                }).collect(toImmutableList());
     }
 
     private List<Pair<Lineage, Relationship>> getMatchingLineageAndRelationProperties(Lineage originLineage,
@@ -594,13 +595,11 @@ public final class ExportExtension {
                 .flatMap(pair -> destLineage.stream()
                         .filter(l -> l.nodesByType.get(destType).equals(pair.first))
                         .map(lineage -> new Pair<>(lineage, pair.second)))
-                .collect(Collectors.toList());
+                .collect(toImmutableList());
     }
 
     private void exportAsCsv(PaginatedLineages paginatedLineages, OutputStream outputStream) {
-
         try (CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream))) {
-//        try (AutoCloseableCsvWriter csv = Csv.write().to(outputStream).autoClose()) {
             if (paginatedLineages.results() != null &&
                     paginatedLineages.results()
                             .stream()
@@ -611,8 +610,9 @@ public final class ExportExtension {
                 throw new UnsupportedOperationException("Queries with relationships can't be exported as csv");
             }
             // If there is no lineage to write, don't even write the headers
-            if (paginatedLineages.results().size() > 0 && paginatedLineages.results().get(0).first.size() > 0) {
-                String[] headers = generateCSVHeader(paginatedLineages);
+            if (!paginatedLineages.results().isEmpty() && !paginatedLineages.results().get(0).first.isEmpty()) {
+                List<Pair<String, String>> columns = generateColumns(paginatedLineages);
+                String[] headers = generateCSVHeader(columns);
                 if (headers.length > 0) {
                     csvWriter.writeNext(headers, false);
                     csvWriter.flush();
@@ -620,7 +620,7 @@ public final class ExportExtension {
                 paginatedLineages.results()
                         .stream()
                         .map(list -> list.first.get(0))
-                        .forEach(filteredLineage -> writeCSVLine(filteredLineage, csvWriter));
+                        .forEach(filteredLineage -> writeCSVLine(columns, filteredLineage, csvWriter));
             }
             csvWriter.flush();
         } catch (IOException e) {
@@ -629,11 +629,9 @@ public final class ExportExtension {
     }
 
     private List<Lineage> filter(ExportQuery exportQuery, Lineages lineages) {
-        return ImmutableList.copyOf(lineages.lineages().stream()
-                .map(lineage -> filterLineage(exportQuery, lineages, lineage))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList()));
+        return lineages.lineages().stream()
+                .filter(lineage -> filterLineage(exportQuery, lineages, lineage))
+                .collect(toImmutableList());
     }
 
     private void exportAsJson(PaginatedLineages paginatedLineages, OutputStream outputStream) {
@@ -651,7 +649,7 @@ public final class ExportExtension {
             try {
                 outputStream.close();
             } catch (IOException e) {
-                LOGGER.error("Error occured while closign outputStream: ", e);
+                LOGGER.error("Error occurred while closing outputStream: ", e);
             }
         }
     }
@@ -688,7 +686,7 @@ public final class ExportExtension {
         List<String> filterAttributes = exportQuery.filter.columns()
                 .stream()
                 .map(c -> c.keyAttribute)
-                .collect(Collectors.toList());
+                .collect(toImmutableList());
         Set<List<String>> allCombinations;
         if (exportQuery.requiredAttributes.isEmpty()) {
             allCombinations = ImmutableSet.of(filterAttributes);
@@ -779,7 +777,7 @@ public final class ExportExtension {
     }
 
     private Optional<Node> getNodeFromPath(Node initialNode, ImmutableList<String> path) {
-        return path.size() == 0 ?
+        return path.isEmpty() ?
                 Optional.of(initialNode) :
                 Streams.stream(initialNode.getRelationships(OUTGOING, CONNECT).iterator())
                         .map(Relationship::getEndNode)
@@ -797,9 +795,8 @@ public final class ExportExtension {
                 .map(type -> metaSchema.getMetaLineagesForType(type)
                         .stream()
                         .map(lineage -> lineage.subList(0, lineage.indexOf(type) + 1))
-                        .collect(Collectors.toList()))
-                .map(ImmutableSet::copyOf)
-                .collect(Collectors.toList());
+                        .collect(toImmutableSet()))
+                .collect(toImmutableList());
         HashSet<String> result = Sets.cartesianProduct(allLineages).stream()
                 .map(ImmutableSet::copyOf)
                 .map(lineages -> lineages.stream()
@@ -911,7 +908,7 @@ public final class ExportExtension {
                     Lineage lineage = new Lineage(graphDb);
                     lineage.nodesByType.putAll(nodesByType);
                     return lineage;
-                }).collect(ImmutableSet.toImmutableSet());
+                }).collect(toImmutableSet());
     }
 
     private Set<Map<String, Node>> doRewind(Node currentNode, Map<String, Node> nodesByType, Lineages lineages) {
@@ -931,7 +928,7 @@ public final class ExportExtension {
             parentsByTypeB.put(parentNode.getProperty(_TYPE, "").toString(), parentNode);
         }
         ImmutableSetMultimap<String, Node> parentsByType = parentsByTypeB.build();
-        if (parentsByType.size() == 0) {
+        if (parentsByType.isEmpty()) {
             return ImmutableSet.of(nodesByType);
         } else if (!lineages.parentsCardinality) {
             Map<String, Node> result = parentsByType.asMap().values().stream()
@@ -940,7 +937,7 @@ public final class ExportExtension {
                     .map(lineage -> {
                         if (lineage.size() > 1)
                             throw new IllegalArgumentException("Can't have more than 1 Lineage while parentsCardinality = false");
-                        if (lineage.size() < 1)
+                        if (lineage.isEmpty())
                             throw new IllegalArgumentException("Can't have no lineage");
                         return lineage.stream().findFirst().get();
                     }).reduce(new HashMap<>(), (m1, m2) -> {
@@ -967,26 +964,13 @@ public final class ExportExtension {
                     HashMap<String, Node> builder = new HashMap<>();
                     list.forEach(builder::putAll);
                     return ImmutableMap.copyOf(builder);
-                }).collect(ImmutableSet.toImmutableSet());
-    }
-
-    private void writeCSVLine(ExportQueryResult result, CSVWriter csv) {
-        try {
-            String[] line = result.result.values().stream()
-                    .flatMap(properties -> properties.values().stream())
-                    .map(PropertyConverter::asString)
-                    .toArray(String[]::new);
-            csv.writeNext(line, false);
-            csv.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+                }).collect(toImmutableSet());
     }
 
     /**
      * @return the Lineage given as input if it matches the filters, empty otherwise.
      */
-    private Optional<Lineage> filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
+    private boolean filterLineage(ExportQuery exportQuery, Lineages lineages, Lineage lineage) {
         int missingRequired = 0;
         boolean filtered = exportQuery.filter
                 .test(column -> {
@@ -994,7 +978,7 @@ public final class ExportExtension {
                     return node != null ? lineage.getProperty(column.keyAttribute, column.property) : null;
                 });
         if (!filtered) {
-            return Optional.empty();
+            return false;
         }
         for (String attribute : lineages.attributesToExport) {
             Node node = lineage.nodesByType.get(attribute);
@@ -1002,27 +986,42 @@ public final class ExportExtension {
                 if (exportQuery.requiredAttributes.contains(attribute)) {
                     missingRequired++;
                     if (missingRequired == exportQuery.requiredAttributes.size()) {
-                        return Optional.empty();
+                        return false;
                     }
                 }
             }
         }
-        return Optional.of(lineage);
+        return true;
     }
 
-    private String[] generateCSVHeader(PaginatedLineages lineages) {
-        List<String> header = Lists.newArrayList();
-        for (String attribute : lineages.attributesToExport()) {
-            SortedMap<String, String> properties = lineages.header().get(attribute);
-            if (properties != null) {
-                String[] split = attribute.split(":");
-                String attributeName = split[1];
-                for (Map.Entry<String, String> property : properties.entrySet()) {
-                    header.add(attributeName + '.' + property.getKey());
-                }
-            }
+    private List<Pair<String, String>> generateColumns(PaginatedLineages lineages) {
+        return lineages.attributesToExport().stream()
+                .flatMap(attribute -> Optional.ofNullable(lineages.header().get(attribute)).stream()
+                        .flatMap(properties -> properties.keySet().stream()
+                                .sorted(PropertyNameComparator.PROPERTY_NAME_COMPARATOR)
+                                .map(property -> new Pair<>(attribute, property))))
+                .collect(toImmutableList());
+    }
+
+    private String[] generateCSVHeader(List<Pair<String, String>> columns) {
+        return columns.stream()
+                .map(pair -> pair.first.split(":")[1] + "." + pair.second)
+                .toArray(String[]::new);
+    }
+
+    private void writeCSVLine(List<Pair<String, String>> columns, ExportQueryResult result, CSVWriter csv) {
+        try {
+            String[] line = columns.stream()
+                    .map(pair -> Optional.ofNullable(result.result.get(pair.first))
+                            .map(values -> values.get(pair.second))
+                            .orElse(null))
+                    .map(PropertyConverter::asString)
+                    .toArray(String[]::new);
+            csv.writeNext(line, false);
+            csv.flush();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-        return header.toArray(new String[0]);
     }
 
     private Response errorResponse(Throwable cause) throws IOException {
@@ -1035,7 +1034,7 @@ public final class ExportExtension {
     public interface PaginatedLineages {
         ImmutableSet<String> attributesToExport();
 
-        Map<String, SortedMap<String, String>> header();
+        Map<String, Map<String, String>> header();
 
         List<Pair<List<ExportQueryResult>, List<RelationshipQueryResult>>> results();
 
@@ -1054,7 +1053,7 @@ public final class ExportExtension {
         }
 
         @Override
-        public Map<String, SortedMap<String, String>> header() {
+        public Map<String, Map<String, String>> header() {
             return ImmutableMap.of();
         }
 
