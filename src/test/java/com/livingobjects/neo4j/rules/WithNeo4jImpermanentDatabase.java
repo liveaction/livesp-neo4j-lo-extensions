@@ -55,7 +55,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
             try {
                 ImmutableSet<ResourceInfo> resources = ClassPath.from(ClassLoader.getSystemClassLoader()).getResources();
                 return resources.stream().filter(resourceInfo ->
-                        resourceInfo.getResourceName().matches("datapacks/" + name + ".*\\.cql"))
+                                resourceInfo.getResourceName().matches("datapacks/" + name + ".*\\.cql"))
                         .sorted(Comparator.comparing(ResourceInfo::getResourceName))
                         .collect(Collectors.toList());
             } catch (IOException e) {
@@ -106,14 +106,10 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
     }
 
     private void readInputStreamAsQuery(InputStream in) {
-        try {
-            String cypher = IOUtils.readLines(in).stream()
-                    .filter(l -> !l.startsWith("//"))
-                    .collect(Collectors.joining(" "));
-            this.cyphers.add(cypher);
-        } catch (IOException e) {
-            fail(e.getLocalizedMessage());
-        }
+        String cypher = IOUtils.readLines(in).stream()
+                .filter(l -> !l.startsWith("//"))
+                .collect(Collectors.joining(" "));
+        this.cyphers.add(cypher);
     }
 
     public final WithNeo4jImpermanentDatabase withFixture(String... cypherQuery) {
