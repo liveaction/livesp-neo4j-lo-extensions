@@ -22,13 +22,13 @@ public class FilterUtils {
             case eq:
                 return valueFilter.value.equals(value);
             case lt:
-                return valueFilter.value.compareTo(value) < 0;
-            case lte:
-                return valueFilter.value.compareTo(value) <= 0;
-            case gt:
                 return valueFilter.value.compareTo(value) > 0;
-            case gte:
+            case lte:
                 return valueFilter.value.compareTo(value) >= 0;
+            case gt:
+                return valueFilter.value.compareTo(value) < 0;
+            case gte:
+                return valueFilter.value.compareTo(value) <= 0;
             case regex:
                 return asNonNullString(value).matches(valueFilter.value.toString());
             case is_null:
