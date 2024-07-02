@@ -61,6 +61,8 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,6 +87,8 @@ public final class CsvTopologyLoader {
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
     private static final String KEEP_VALUE_TOKEN = "#KEEP_VALUE";
+    private static final String KEEP_VALUE_ELSE_TOKEN = "#KEEP_VALUE_ELSE";
+    private static final Pattern KEEP_VALUE_ELSE_PATTERN = Pattern.compile(KEEP_VALUE_ELSE_TOKEN + "\\((.*)\\)");
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -269,7 +273,7 @@ public final class CsvTopologyLoader {
             if (!markedToDelete.isEmpty()) {
                 deleteElements(lineStrategy, markedToDelete.keySet(), markedToDelete.values().iterator().next(), username, tx); // We have checked that only one distinct action is present
             }
-            if(!xRelationsToDelete.isEmpty()) {
+            if (!xRelationsToDelete.isEmpty()) {
                 deleteRelations(lineStrategy, xRelationsToDelete.keySet(), username, tx);
             }
 
@@ -284,10 +288,10 @@ public final class CsvTopologyLoader {
                             .map(tag -> networkElementFactory.getWithOutcome(TAG, tag, tx));
                     Optional<Node> destNode = line.getValue(relation.getT2(), TAG)
                             .map(tag -> networkElementFactory.getWithOutcome(TAG, tag, tx));
-                    if(originNode.isPresent() && destNode.isPresent()) {
+                    if (originNode.isPresent() && destNode.isPresent()) {
                         UniqueEntity<Relationship> rel =
                                 networkElementFactory.getOrCreateRelation(false, originNode.get(), destNode.get(), CROSS_ATTRIBUTE);
-                        if(rel != null) {
+                        if (rel != null) {
                             rel.entity.delete();
                         }
                     }
@@ -742,16 +746,35 @@ public final class CsvTopologyLoader {
     }
 
     private static <T extends Entity> void persistElementProperty(HeaderElement header, LineMappingStrategy line, T elementNode) {
+        String propertyName = header.propertyName;
         Object value = line.getValue(header.index)
                 .map(field -> PropertyConverter.convert(field, header.type, header.isArray))
                 .orElse(null);
 
         if (value != null) {
-            if (!value.equals(KEEP_VALUE_TOKEN)) {
-                elementNode.setProperty(header.propertyName, value);
+            if (value instanceof String stringValue && stringValue.equals(KEEP_VALUE_ELSE_TOKEN)) {
+                String newValue = getNewValue(elementNode, propertyName, stringValue);
+                elementNode.setProperty(propertyName, newValue);
+            } else if (!value.equals(KEEP_VALUE_TOKEN)) {
+                elementNode.setProperty(propertyName, value);
             }
         } else {
-            elementNode.removeProperty(header.propertyName);
+            elementNode.removeProperty(propertyName);
         }
+    }
+
+    @VisibleForTesting
+    static <T extends Entity> String getNewValue(T elementNode, String propertyName, String value) {
+        Object existingValue = elementNode.getProperty(propertyName);
+
+        if (existingValue == null) {
+            Matcher matcher = KEEP_VALUE_ELSE_PATTERN.matcher(value);
+
+            if (matcher.matches()) {
+                return matcher.group(1);
+            }
+        }
+
+        return null;
     }
 }
