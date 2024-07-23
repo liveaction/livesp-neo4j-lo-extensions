@@ -18,25 +18,26 @@ public class FilterUtils {
 
     @SuppressWarnings("unchecked")
     private static boolean testFilterInternal(Object value, ValueFilter valueFilter) {
+        if (value == null) {
+            // if object is null, only Operator.is_null is correct
+            return valueFilter.operator == ValueFilter.Operator.is_null;
+        }
         switch (valueFilter.operator) {
             case eq:
                 return valueFilter.value.equals(value);
             case lt:
-                return valueFilter.value.compareTo(value) < 0;
-            case lte:
-                return valueFilter.value.compareTo(value) <= 0;
-            case gt:
                 return valueFilter.value.compareTo(value) > 0;
-            case gte:
+            case lte:
                 return valueFilter.value.compareTo(value) >= 0;
+            case gt:
+                return valueFilter.value.compareTo(value) < 0;
+            case gte:
+                return valueFilter.value.compareTo(value) <= 0;
             case regex:
                 return asNonNullString(value).matches(valueFilter.value.toString());
             case is_null:
-                return value == null;
+                return false;
             case contains:
-                if (value == null) {
-                    return false;
-                }
                 if (value.getClass().isArray()) {
                     Object[] array = (Object[]) value;
                     return ImmutableSet.copyOf(array).contains(valueFilter.value);
