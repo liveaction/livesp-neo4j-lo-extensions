@@ -20,6 +20,8 @@ import java.util.List;
 
 public final class PropertyConverter {
 
+    public static final String KEEP_VALUE_TOKEN = "#KEEP_VALUE";
+
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private static final TypeReference STRING_LIST_TYPE = new TypeReference<String[]>() {
@@ -39,6 +41,10 @@ public final class PropertyConverter {
     }
 
     public static Object convert(String value, PropertyType propertyType, boolean isArray) {
+        if (value.equals(KEEP_VALUE_TOKEN)) {
+            return value;
+        }
+
         try {
             switch (propertyType) {
                 case BOOLEAN:

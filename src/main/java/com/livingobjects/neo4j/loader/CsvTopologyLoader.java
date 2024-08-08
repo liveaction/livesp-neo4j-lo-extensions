@@ -64,6 +64,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.livingobjects.neo4j.helper.PropertyConverter.KEEP_VALUE_TOKEN;
 import static com.livingobjects.neo4j.helper.RelationshipUtils.replaceRelationships;
 import static com.livingobjects.neo4j.model.header.HeaderElement.ELEMENT_SEPARATOR;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
@@ -84,7 +85,6 @@ public final class CsvTopologyLoader {
 
     private static final int MAX_TRANSACTION_COUNT = 500;
     private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
-    private static final String KEEP_VALUE_TOKEN = "#KEEP_VALUE";
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
