@@ -338,7 +338,9 @@ public final class CsvTopologyLoader {
                             .orElseGet(() -> inferValueFromParent(keyAttribute, requiredProperty, nodes, tx)
                                     .orElseThrow(() -> new IllegalArgumentException(String.format("%s.%s required column is missing. Cannot be inferred from parents neither. Line not imported.", keyAttribute, requiredProperty))));
 
-                    entity.entity.setProperty(requiredProperty, value);
+                    if (!value.equals(KEEP_VALUE_TOKEN)) {
+                        entity.entity.setProperty(requiredProperty, value);
+                    }
                 });
             }
         }
