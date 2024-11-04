@@ -10,6 +10,7 @@ import com.livingobjects.neo4j.model.iwan.Relationship;
 import com.livingobjects.neo4j.model.iwan.RelationshipStatus;
 import com.livingobjects.neo4j.model.result.Neo4jErrorResult;
 import org.neo4j.dbms.api.DatabaseManagementService;
+import org.neo4j.logging.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,13 +30,14 @@ public final class LoadRelationshipsExtension {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private static final String PARAM_UPDATE_ONLY = "updateOnly";
-    private static final Logger LOGGER = LoggerFactory.getLogger(LoadRelationshipsExtension.class);
 
     private final ObjectMapper json = new ObjectMapper();
     private final TopologyLoader topologyLoader;
+    private final Log log;
 
-    public LoadRelationshipsExtension(@Context DatabaseManagementService dbms) {
+    public LoadRelationshipsExtension(@Context DatabaseManagementService dbms, @Context Log log) {
         this.topologyLoader = new TopologyLoader(dbms.database(dbms.listDatabases().get(0)));
+        this.log = log;
     }
 
     @POST
@@ -55,11 +57,11 @@ public final class LoadRelationshipsExtension {
             return Response.ok().entity(result)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (IllegalArgumentException e) {
-            LOGGER.error("load-relationships extension : bad request", e);
+            log.error("load-relationships extension : bad request", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Throwable e) {
-            LOGGER.error("load-relationships extension : unable to execute query", e);
+            log.error("load-relationships extension : unable to execute query", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {

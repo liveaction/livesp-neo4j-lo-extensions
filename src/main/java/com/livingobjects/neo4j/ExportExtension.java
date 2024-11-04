@@ -46,8 +46,7 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.NotFoundException;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
@@ -101,7 +100,6 @@ public final class ExportExtension {
 
     private static final MediaType TEXT_CSV_MEDIATYPE = MediaType.valueOf("text/csv");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final Logger LOGGER = LoggerFactory.getLogger(ExportExtension.class);
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -109,11 +107,13 @@ public final class ExportExtension {
     private final TemplatedPlanetFactory templatedPlanetFactory;
     private final PlanetFactory planetFactory;
     private final MetaSchema metaSchema;
+    private final Log log;
 
-    public ExportExtension(@Context DatabaseManagementService dbms) {
+    public ExportExtension(@Context DatabaseManagementService dbms, @Context Log log) {
         this.graphDb = dbms.database(dbms.listDatabases().get(0));
         this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
         this.planetFactory = new PlanetFactory(graphDb);
+        this.log = log;
         try (Transaction tx = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(tx);
         }
@@ -142,7 +142,7 @@ public final class ExportExtension {
                     .type(MediaType.APPLICATION_JSON_TYPE)
                     .build();
         } catch (Throwable e) {
-            LOGGER.error("export properties extension : ", e);
+            log.error("export properties extension : ", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
         }
@@ -163,12 +163,12 @@ public final class ExportExtension {
                     .entity(JSON_MAPPER.writeValueAsString(lineages.total()))
                     .build();
         } catch (IllegalArgumentException e) {
-            LOGGER.error("export extension : ", e);
+            log.error("export extension : ", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
 
         } catch (Exception e) {
-            LOGGER.error("export extension : ", e);
+            log.error("export extension : ", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {
@@ -176,7 +176,7 @@ public final class ExportExtension {
             }
 
         } finally {
-            LOGGER.info("Export count in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            log.info("Export count in %s ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
 
     }
@@ -208,12 +208,12 @@ public final class ExportExtension {
                     .build();
 
         } catch (IllegalArgumentException e) {
-            LOGGER.error("export extension : ", e);
+            log.error("export extension : ", e);
             String ex = JSON_MAPPER.writeValueAsString(new Neo4jErrorResult(e.getClass().getSimpleName(), e.getLocalizedMessage()));
             return Response.status(Response.Status.BAD_REQUEST).entity(ex).type(MediaType.APPLICATION_JSON_TYPE).build();
 
         } catch (Exception e) {
-            LOGGER.error("export extension : ", e);
+            log.error("export extension : ", e);
             if (e.getCause() != null) {
                 return errorResponse(e.getCause());
             } else {
@@ -221,7 +221,7 @@ public final class ExportExtension {
             }
 
         } finally {
-            LOGGER.info("Export in {} ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            log.info("Export in %s ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
@@ -515,7 +515,7 @@ public final class ExportExtension {
                                             try {
                                                 return Maps.immutableEntry(property, r.getProperty(property));
                                             } catch (NotFoundException e) {
-                                                LOGGER.warn(String.format("Requested property %s could not be found on relation %s, " +
+                                                log.warn(String.format("Requested property %s could not be found on relation %s, " +
                                                         "empty value will be returned instead", property, r));
                                                 return Maps.immutableEntry(property, "");
                                             }
@@ -640,13 +640,13 @@ public final class ExportExtension {
                 outputStream.write('\n');
             }
         } catch (Throwable e) {
-            LOGGER.error("export extension : ", e);
+            log.error("export extension : ", e);
             throw new RuntimeException(e);
         } finally {
             try {
                 outputStream.close();
             } catch (IOException e) {
-                LOGGER.error("Error occurred while closing outputStream: ", e);
+                log.error("Error occurred while closing outputStream: ", e);
             }
         }
     }
