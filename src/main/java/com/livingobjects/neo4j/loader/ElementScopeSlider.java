@@ -9,8 +9,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.neo4j.logging.Log;
 
 import java.util.Set;
 
@@ -23,11 +22,12 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
  */
 final class ElementScopeSlider {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ElementScopeSlider.class);
     private final TemplatedPlanetFactory templatedPlanetFactory;
+    private final Log log;
 
-    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory) {
+    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory, Log log) {
         this.templatedPlanetFactory = templatedPlanetFactory;
+        this.log = log;
     }
 
     Node slide(Node element, Scope toScope, Transaction tx) {
@@ -51,10 +51,10 @@ final class ElementScopeSlider {
         }
 
         UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element, tx);
-        if (LOGGER.isDebugEnabled()) {
+        if (log.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
-            LOGGER.debug("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
+            log.debug("Create link between (%s)-[:Attribute]->(%s) !", tag, planetName);
         }
         element.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
         return oldScopesBldr.build();
@@ -79,9 +79,9 @@ final class ElementScopeSlider {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
-            if (LOGGER.isDebugEnabled()) {
+            if (log.isDebugEnabled()) {
                 String tag = childNode.getProperty(TAG).toString();
-                LOGGER.debug("child slide {} !", tag);
+                log.debug("child slide %s !", tag);
             }
             slide(childNode, toScope, tx);
         });
