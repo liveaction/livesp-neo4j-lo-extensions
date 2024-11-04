@@ -9,7 +9,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
+import org.neo4j.logging.Log;
 import org.slf4j.LoggerFactory;
 
 import java.util.Set;
@@ -23,23 +23,22 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
  */
 final class ElementScopeSlider {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ElementScopeSlider.class);
     private final TemplatedPlanetFactory templatedPlanetFactory;
 
     ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory) {
         this.templatedPlanetFactory = templatedPlanetFactory;
     }
 
-    Node slide(Node element, Scope toScope, Transaction tx) {
+    Node slide(Node element, Scope toScope, Transaction tx, Log log) {
 
-        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope, tx);
+        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope, tx, log);
         removeImproperParents(element, badScopes);
-        slideAllChildren(element, toScope, tx);
+        slideAllChildren(element, toScope, tx, log);
 
         return element;
     }
 
-    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope, Transaction tx) {
+    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope, Transaction tx, Log log) {
         ImmutableSet.Builder<String> oldScopesBldr = ImmutableSet.builder();
         for (Relationship plRelation : element.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
             Node planet = plRelation.getEndNode();
@@ -51,10 +50,10 @@ final class ElementScopeSlider {
         }
 
         UniqueEntity<Node> planet = templatedPlanetFactory.localizePlanetForElement(toScope, element, tx);
-        if (LOGGER.isDebugEnabled()) {
+        if (log.isDebugEnabled()) {
             String tag = element.getProperty(TAG).toString();
             String planetName = planet.entity.getProperty(NAME).toString();
-            LOGGER.debug("Create link between ({})-[:Attribute]->({}) !", tag, planetName);
+            log.debug("Create link between (%s)-[:Attribute]->(%s) !", tag, planetName);
         }
         element.createRelationshipTo(planet.entity, RelationshipTypes.ATTRIBUTE);
         return oldScopesBldr.build();
@@ -75,15 +74,15 @@ final class ElementScopeSlider {
         });
     }
 
-    private void slideAllChildren(Node entity, Scope toScope, Transaction tx) {
+    private void slideAllChildren(Node entity, Scope toScope, Transaction tx, Log log) {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
-            if (LOGGER.isDebugEnabled()) {
+            if (log.isDebugEnabled()) {
                 String tag = childNode.getProperty(TAG).toString();
-                LOGGER.debug("child slide {} !", tag);
+                log.debug("child slide %s !", tag);
             }
-            slide(childNode, toScope, tx);
+            slide(childNode, toScope, tx, log);
         });
     }
 }
