@@ -42,7 +42,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
-import org.slf4j.Logger;
+import org.neo4j.logging.Log;
 import org.slf4j.LoggerFactory;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
@@ -84,7 +84,6 @@ import static org.neo4j.graphdb.Direction.OUTGOING;
 public final class CsvTopologyLoader {
 
     private static final int MAX_TRANSACTION_COUNT = 500;
-    private static final Logger LOGGER = LoggerFactory.getLogger(CsvTopologyLoader.class);
 
     private final MetricRegistry metrics;
     private final GraphDatabaseService graphDb;
@@ -95,10 +94,12 @@ public final class CsvTopologyLoader {
     private final TransactionManager txManager;
     private final TopologyLoaderUtils topologyLoaderUtils;
     private final MetaSchema metaSchema;
+    private final Log log;
 
-    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics) {
+    public CsvTopologyLoader(GraphDatabaseService graphDb, MetricRegistry metrics, Log log) {
         this.metrics = metrics;
         this.graphDb = graphDb;
+        this.log = log;
         this.txManager = new TransactionManager(graphDb);
 
         this.networkElementFactory = UniqueElementFactory.networkElementFactory(graphDb);
@@ -136,7 +137,7 @@ public final class CsvTopologyLoader {
             while ((nextLine = reader.readNext()) != null) {
                 try {
                     ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), nextLine);
-                    ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy, username, tx);
+                    ImmutableMultimap<TypedScope, String> importedElementByScopeInLine = importLine(nextLine, scopeKeyTypes, strategy, username, tx, log);
                     for (Entry<TypedScope, Collection<String>> importedElements : importedElementByScopeInLine.asMap().entrySet()) {
                         Set<String> set = importedElementByScope.computeIfAbsent(importedElements.getKey(), k -> Sets.newHashSet());
                         set.addAll(importedElements.getValue());
@@ -148,15 +149,15 @@ public final class CsvTopologyLoader {
                         currentTransaction.clear();
                     }
                 } catch (ImportException e) {
-                    LOGGER.debug(e.getLocalizedMessage());
-                    LOGGER.debug(Arrays.toString(nextLine));
+                    log.debug(e.getLocalizedMessage());
+                    log.debug(Arrays.toString(nextLine));
                     tx = renewTransaction(strategy, currentTransaction, username, tx);
                     errors.put(lineIndex, e.getMessage());
                 } catch (Exception e) {
-                    LOGGER.error("error", e);
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("STACKTRACE", e);
-                        LOGGER.debug(Arrays.toString(nextLine));
+                    log.error("error", e);
+                    if (log.isDebugEnabled()) {
+                        log.debug("STACKTRACE", e);
+                        log.debug(Arrays.toString(nextLine));
                     }
                     tx = renewTransaction(strategy, currentTransaction, username, tx);
                     errors.put(lineIndex, e.getMessage());
@@ -182,12 +183,12 @@ public final class CsvTopologyLoader {
     private Transaction renewTransaction(CsvMappingStrategy strategy, List<String[]> currentTransaction, String username, Transaction tx) {
         return txManager.properlyRenewTransaction(tx, currentTransaction, (ct, transaction) -> {
             ImmutableSet<String> scopeKeyTypes = strategy.guessKeyTypesForLine(metaSchema.getScopeTypes(), ct);
-            importLine(ct, scopeKeyTypes, strategy, username, transaction);
+            importLine(ct, scopeKeyTypes, strategy, username, transaction, log);
         });
     }
 
     private ImmutableMultimap<TypedScope, String> importLine(String[] line, ImmutableSet<String> scopeKeytypes, CsvMappingStrategy strategy,
-                                                             String username, Transaction tx) {
+                                                             String username, Transaction tx, Log log) {
         try (Context ignore = metrics.timer("IWanTopologyLoader-importLine").time()) {
             ImmutableMap<String, Set<String>> lineage = strategy.guessElementCreationStrategy(scopeKeytypes, tx);
             LineMappingStrategy lineStrategy = new LineMappingStrategy(metaSchema, strategy, line);
@@ -435,7 +436,7 @@ public final class CsvTopologyLoader {
             if (GraphModelConstants.SCOPE_GLOBAL_ATTRIBUTE.equals(keyAttribute)) continue;
 
             importedElementByScopeBuilder.put(
-                    reviewPlanetElement(lineStrategy, element, nodes, tx),
+                    reviewPlanetElement(lineStrategy, element, nodes, tx, log),
                     element.entity.getProperty(GraphModelConstants.TAG).toString()
             );
         }
@@ -445,7 +446,8 @@ public final class CsvTopologyLoader {
     private TypedScope reviewPlanetElement(LineMappingStrategy lineStrategy,
                                            UniqueEntity<Node> element,
                                            Map<String, Optional<UniqueEntity<Node>>> nodes,
-                                           Transaction tx) {
+                                           Transaction tx,
+                                           Log log) {
         String keyType = element.entity.getProperty(_TYPE).toString();
 
         Optional<Scope> scopeFromImport = lineStrategy.tryToGuessElementScopeInLine(keyType, tx);
@@ -459,7 +461,7 @@ public final class CsvTopologyLoader {
                     if (scopeFromDatabase != null && !scope.tag.equals(scopeFromDatabase.tag)) {
                         // If the imported element scope is different than the existing one
                         // slide the element to the new scope
-                        elementScopeSlider.slide(element.entity, scope, tx);
+                        elementScopeSlider.slide(element.entity, scope, tx, log);
                     }
                     UniqueEntity<Node> planet = planetFactory.localizePlanetForElement(scope, element.entity, tx);
                     replaceRelationships(OUTGOING, element.entity, ATTRIBUTE, ImmutableSet.of(planet.entity));

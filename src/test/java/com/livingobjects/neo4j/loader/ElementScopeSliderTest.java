@@ -7,22 +7,26 @@ import com.livingobjects.neo4j.rules.WithNeo4jImpermanentDatabase;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.logging.Log;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ElementScopeSliderTest {
+    private static final Log MOCKED_LOG = Mockito.mock(Log.class);
 
     @Rule
     public WithNeo4jImpermanentDatabase wNeo = new WithNeo4jImpermanentDatabase()
             .withDatapacks("neo4j-test-database");
 
     private ElementScopeSlider tested;
+
 
     @Before
     public void setUp() {
@@ -40,11 +44,10 @@ public class ElementScopeSliderTest {
             Node element = tx.findNode(Labels.NETWORK_ELEMENT, TAG, "class=neType,cpe=AA_RJ45,neType=cpe");
 
             Scope expectedScope = new Scope("boots", "class=cluster,client=boots,cluster=client");
-            Node actual = tested.slide(element, expectedScope, tx);
+            Node actual = tested.slide(element, expectedScope, tx, MOCKED_LOG);
 
             Node planetNode = actual.getSingleRelationship(RelationshipTypes.ATTRIBUTE, Direction.OUTGOING).getEndNode();
             assertThat(planetNode.getProperty(SCOPE).toString()).isEqualTo(expectedScope.tag);
         }
     }
-
 }

@@ -35,6 +35,7 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.logging.Log;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -44,12 +45,26 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.*;
-import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.*;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.CONTEXT;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.DESCRIPTION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.ID;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.LINK_PROP_SPECIALIZER;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.MANAGED;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.NAME;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.PATH;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
+import static com.livingobjects.neo4j.model.iwan.GraphModelConstants._TYPE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.ATTRIBUTE;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.MEMDEXPATH;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.PROVIDED;
+import static com.livingobjects.neo4j.model.iwan.RelationshipTypes.VAR;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.DELETE;
 import static com.livingobjects.neo4j.model.schema.planet.PlanetUpdateStatus.UPDATE;
 import static com.livingobjects.neo4j.model.schema.type.type.CounterType.COUNT;
-import static java.util.stream.Collectors.*;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
+import static java.util.stream.Collectors.toSet;
 import static org.neo4j.graphdb.Direction.INCOMING;
 import static org.neo4j.graphdb.Direction.OUTGOING;
 
@@ -73,7 +88,9 @@ public final class SchemaLoader {
 
     private final SchemaReader schemaReader;
 
-    public SchemaLoader(GraphDatabaseService graphDb) {
+    private final Log log;
+
+    public SchemaLoader(GraphDatabaseService graphDb, Log log) {
         this.graphDb = graphDb;
         this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
         this.planetTemplateFactory = new UniqueElementFactory(graphDb, Labels.PLANET_TEMPLATE, Optional.empty());
@@ -81,7 +98,8 @@ public final class SchemaLoader {
         this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
-        this.schemaReader = new SchemaReader();
+        this.log = log;
+        this.schemaReader = new SchemaReader(log);
     }
 
     public boolean update(SchemaAndPlanetsUpdate schemaAndPlanetsUpdate) {
@@ -92,7 +110,6 @@ public final class SchemaLoader {
             migratePlanets(schemaAndPlanetsUpdate.planetUpdates, tx);
 
             return modified;
-
         });
     }
 
@@ -134,12 +151,11 @@ public final class SchemaLoader {
                 if (inputRealm != null) {
                     mergedRealms.put(name, mergeManagedWithUnmanagedRealm(inputRealm, realmTemplateNode, countersDefinitionBuilder));
                 } else {
-                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder)
+                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder, log)
                             .ifPresent(r -> mergedRealms.put(r.name, r));
                 }
             }
         }
-
 
         return new ManagedSchema(ImmutableMap.copyOf(mergedRealms), countersDefinitionBuilder.build());
     }
@@ -259,7 +275,6 @@ public final class SchemaLoader {
                         }
 
                         break;
-
                     }
                 }
             }
@@ -302,7 +317,6 @@ public final class SchemaLoader {
                                 }
                             }
                         }
-
                     } else {
                         if (deleteCounterFromRealmPath(tail, counter, memdexPathNode)) {
                             deleted = true;
@@ -459,7 +473,8 @@ public final class SchemaLoader {
         migrations.forEach(planetUpdate -> scopes.forEach(scope -> migratePlanets(planetUpdate, scope, tx)));
 
         deletePlanetTemplates(deletedPlanets, tx);
-        if (!deletedPlanets.isEmpty()) scopes.forEach(scope -> deletePlanets(deletedPlanets, scope, tx));
+        if (!deletedPlanets.isEmpty())
+            scopes.forEach(scope -> deletePlanets(deletedPlanets, scope, tx));
     }
 
     private void createPlanetTemplates(ImmutableSet<PlanetNode> createdPlanets, Transaction tx) {
@@ -513,7 +528,6 @@ public final class SchemaLoader {
         PlanetNode newPlanet = Iterables.getOnlyElement(planetUpdate.newPlanets);
         localizePlanet(oldPlanet.name, scope, tx).ifPresent(node ->
                 node.setProperty(NAME, planetFactory.getPlanetName(newPlanet.name, scope)));
-
     }
 
     private void movePlanetTemplates(ImmutableList<PlanetUpdate> planetUpdates, Transaction tx) {
@@ -553,7 +567,6 @@ public final class SchemaLoader {
                             node.getRelationships().forEach(Relationship::delete);
                             node.delete();
                         }));
-
     }
 
     private void deletePlanets(ImmutableSet<PlanetNode> deletedPlanets, Scope scope, Transaction tx) {
@@ -865,5 +878,4 @@ public final class SchemaLoader {
             schemaLock.unlock();
         }
     }
-
 }
