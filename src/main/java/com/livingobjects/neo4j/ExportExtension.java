@@ -358,12 +358,9 @@ public final class ExportExtension {
                             return q;
                         }
 
-                        Set<String> initScopeFilters = getScopeFilters(q);
                         List<Filter<Column>> scopeFilters = q.scopes.stream()
                                 // remove global scope
                                 .filter(s -> !s.equals(GLOBAL_SCOPE.id) && !s.equals(SP_SCOPE.id))
-                                // remove scopes already filtered
-                                .filter(f -> !initScopeFilters.contains(f))
                                 .map(s -> new Filter.ColumnFilter<>(new Column("cluster:client", ID), new ValueFilter(false, ValueFilter.Operator.eq, s)))
                                 .collect(toImmutableList());
 
