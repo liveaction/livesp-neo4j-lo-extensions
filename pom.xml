@@ -22,9 +22,9 @@
     <packaging>bundle</packaging>
 
     <properties>
-        <neo4j.version>5.22.0</neo4j.version>
+        <neo4j.version>2025.01.0</neo4j.version>
         <jackson.version>2.17.2</jackson.version>
-        <metrics.version>4.2.27</metrics.version>
+        <metrics.version>4.2.30</metrics.version>
         <java.version>17</java.version>
         <junitparams.version>1.1.1</junitparams.version>
         <slf4j.version>1.7.36</slf4j.version>
@@ -32,9 +32,9 @@
         <guava.version>31.0.1-jre</guava.version>
         <jsr305.version>3.0.2</jsr305.version>
         <logstash-logback-encoder.version>8.0</logstash-logback-encoder.version>
-        <opencsv.version>5.9</opencsv.version>
+        <opencsv.version>5.10</opencsv.version>
         <junit.version>4.13.2</junit.version>
-        <assertj-core.version>3.26.3</assertj-core.version>
+        <assertj-core.version>3.27.3</assertj-core.version>
     </properties>
 
     <dependencies>
