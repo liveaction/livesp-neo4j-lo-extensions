@@ -17,7 +17,7 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.26.1</version>
+    <version>1.27-SNAPSHOT</version>
 
     <packaging>bundle</packaging>
 
