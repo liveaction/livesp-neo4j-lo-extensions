@@ -176,7 +176,7 @@ public final class ExportExtension {
             }
 
         } finally {
-            log.info("Export count in %s ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            log.info("Export count in %d ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
 
     }
@@ -221,7 +221,7 @@ public final class ExportExtension {
             }
 
         } finally {
-            log.info("Export in %s ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
+            log.info("Export in %d ms.", stopWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
@@ -515,8 +515,8 @@ public final class ExportExtension {
                                             try {
                                                 return Maps.immutableEntry(property, r.getProperty(property));
                                             } catch (NotFoundException e) {
-                                                log.warn(String.format("Requested property %s could not be found on relation %s, " +
-                                                        "empty value will be returned instead", property, r));
+                                                log.warn("Requested property %s could not be found on relation %s, " +
+                                                        "empty value will be returned instead", property, r);
                                                 return Maps.immutableEntry(property, "");
                                             }
                                         }).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))

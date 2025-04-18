@@ -57,7 +57,7 @@ public final class LoadCSVExtension {
             return errorResponse(e);
 
         } finally {
-            log.info("Import %s element(s) in %s ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
+            log.info("Import %d element(s) in %d ms.", importedElementsCounter, sWatch.elapsed(TimeUnit.MILLISECONDS));
         }
     }
 
