@@ -28,10 +28,12 @@
         <java.version>17</java.version>
         <junitparams.version>1.1.1</junitparams.version>
         <slf4j.version>1.7.36</slf4j.version>
-        <logback.version>1.4.11</logback.version>
+        <!-- logback > 1.2.x is incompatible with slf4j 1.7.x-->
+        <logback.version>1.2.11</logback.version>
         <guava.version>31.0.1-jre</guava.version>
         <jsr305.version>3.0.2</jsr305.version>
-        <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
+        <!-- logstash-logback-encoder > 7.2 is incompatible with logback 1.2.x-->
+        <logstash-logback-encoder.version>7.2</logstash-logback-encoder.version>
         <opencsv.version>5.8</opencsv.version>
         <junit.version>4.13.2</junit.version>
         <assertj-core.version>3.24.2</assertj-core.version>
