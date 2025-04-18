@@ -121,7 +121,7 @@ public final class ExportExtension {
 
     @GET
     @Path("/properties")
-    public Response exportProperties(@Context Log log) throws IOException {
+    public Response exportProperties() throws IOException {
         try (Transaction tx = graphDb.beginTx()) {
             Map<String, Map<String, PropertyDefinition>> allProperties = Maps.newHashMap();
             tx.findNodes(Labels.ELEMENT)
@@ -398,8 +398,7 @@ public final class ExportExtension {
                     filteredLineages,
                     fullQuery.relationshipQueries,
                     ImmutableList.copyOf(relations),
-                    fullQuery.exportQueries,
-                    log
+                    fullQuery.exportQueries
             );
 
             List<String> attrs = lineages.stream()
@@ -443,8 +442,7 @@ public final class ExportExtension {
                                                                                 List<List<Lineage>> lineages,
                                                                                 ImmutableList<RelationshipQuery> relationQueries,
                                                                                 ImmutableList<CrossRelationship> metaRelations,
-                                                                                ImmutableList<ExportQuery> exportQueries,
-                                                                                Log log) {
+                                                                                ImmutableList<ExportQuery> exportQueries) {
         for (List<Lineage> l : lineages) {
             if (l.isEmpty()) {
                 return Lists.newArrayList();

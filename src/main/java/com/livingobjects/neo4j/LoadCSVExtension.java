@@ -1,7 +1,5 @@
 package com.livingobjects.neo4j;
 
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Stopwatch;
 import com.livingobjects.neo4j.loader.CsvTopologyLoader;
@@ -10,8 +8,6 @@ import com.livingobjects.neo4j.model.result.Neo4jLoadResult;
 import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.logging.Log;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.HeaderParam;
@@ -34,8 +30,6 @@ public final class LoadCSVExtension {
     private final GraphDatabaseService graphDb;
     private final Log log;
 
-    private final MetricRegistry metrics = new MetricRegistry();
-
     public LoadCSVExtension(@Context DatabaseManagementService dbms, @Context Log log) {
         this.graphDb = dbms.database(dbms.listDatabases().get(0));
         this.log = log;
@@ -48,8 +42,8 @@ public final class LoadCSVExtension {
         Stopwatch sWatch = Stopwatch.createStarted();
 
         long importedElementsCounter = 0;
-        try (Timer.Context ignore = metrics.timer("loadCSV").time()) {
-            Neo4jLoadResult result = new CsvTopologyLoader(graphDb, metrics, log).loadFromStream(is, username);
+        try {
+            Neo4jLoadResult result = new CsvTopologyLoader(graphDb, log).loadFromStream(is, username);
             importedElementsCounter = result.importedElementsByScope.values()
                     .stream()
                     .mapToInt(Set::size)

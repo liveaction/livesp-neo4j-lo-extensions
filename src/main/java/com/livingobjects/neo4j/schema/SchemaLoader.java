@@ -88,8 +88,6 @@ public final class SchemaLoader {
 
     private final SchemaReader schemaReader;
 
-    private final Log log;
-
     public SchemaLoader(GraphDatabaseService graphDb, Log log) {
         this.graphDb = graphDb;
         this.schemaFactory = new UniqueElementFactory(graphDb, Labels.SCHEMA, Optional.empty());
@@ -98,7 +96,6 @@ public final class SchemaLoader {
         this.attributeNodeFactory = new UniqueElementFactory(graphDb, Labels.ATTRIBUTE, Optional.empty());
         this.counterNodeFactory = new UniqueElementFactory(graphDb, Labels.COUNTER, Optional.of(Labels.KPI));
         this.planetFactory = new PlanetFactory(graphDb);
-        this.log = log;
         this.schemaReader = new SchemaReader(log);
     }
 
@@ -151,7 +148,7 @@ public final class SchemaLoader {
                 if (inputRealm != null) {
                     mergedRealms.put(name, mergeManagedWithUnmanagedRealm(inputRealm, realmTemplateNode, countersDefinitionBuilder));
                 } else {
-                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder, log)
+                    schemaReader.readRealm(realmTemplateNode, true, countersDefinitionBuilder)
                             .ifPresent(r -> mergedRealms.put(r.name, r));
                 }
             }

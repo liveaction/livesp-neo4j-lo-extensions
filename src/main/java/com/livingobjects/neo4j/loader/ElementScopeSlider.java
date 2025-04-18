@@ -10,7 +10,6 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.logging.Log;
-import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 
@@ -24,21 +23,23 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 final class ElementScopeSlider {
 
     private final TemplatedPlanetFactory templatedPlanetFactory;
+    private final Log log;
 
-    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory) {
+    ElementScopeSlider(TemplatedPlanetFactory templatedPlanetFactory, Log log) {
         this.templatedPlanetFactory = templatedPlanetFactory;
+        this.log = log;
     }
 
-    Node slide(Node element, Scope toScope, Transaction tx, Log log) {
+    Node slide(Node element, Scope toScope, Transaction tx) {
 
-        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope, tx, log);
+        ImmutableSet<String> badScopes = changeElementPlanet(element, toScope, tx);
         removeImproperParents(element, badScopes);
-        slideAllChildren(element, toScope, tx, log);
+        slideAllChildren(element, toScope, tx);
 
         return element;
     }
 
-    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope, Transaction tx, Log log) {
+    private ImmutableSet<String> changeElementPlanet(Node element, Scope toScope, Transaction tx) {
         ImmutableSet.Builder<String> oldScopesBldr = ImmutableSet.builder();
         for (Relationship plRelation : element.getRelationships(Direction.OUTGOING, RelationshipTypes.ATTRIBUTE)) {
             Node planet = plRelation.getEndNode();
@@ -74,7 +75,7 @@ final class ElementScopeSlider {
         });
     }
 
-    private void slideAllChildren(Node entity, Scope toScope, Transaction tx, Log log) {
+    private void slideAllChildren(Node entity, Scope toScope, Transaction tx) {
         entity.getRelationships(Direction.INCOMING, RelationshipTypes.CONNECT).forEach(childRelation -> {
             Node childNode = childRelation.getStartNode();
             if (!childNode.hasLabel(Labels.ELEMENT)) return;
@@ -82,7 +83,7 @@ final class ElementScopeSlider {
                 String tag = childNode.getProperty(TAG).toString();
                 log.debug("child slide %s !", tag);
             }
-            slide(childNode, toScope, tx, log);
+            slide(childNode, toScope, tx);
         });
     }
 }

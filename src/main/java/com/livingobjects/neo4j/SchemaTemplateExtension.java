@@ -20,8 +20,6 @@ import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.logging.Log;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -132,7 +130,7 @@ public class SchemaTemplateExtension {
 
                     CountersDefinition.Builder countersDefinitionBuilder = CountersDefinition.builder();
                     Map<String, RealmNode> realms = realmNodes.stream()
-                            .map(n -> schemaReader.readRealm(n, false, countersDefinitionBuilder, log))
+                            .map(n -> schemaReader.readRealm(n, false, countersDefinitionBuilder))
                             .filter(Optional::isPresent)
                             .map(Optional::get)
                             .collect(Collectors.toMap(r -> "realm:" + r.name, r -> r));
