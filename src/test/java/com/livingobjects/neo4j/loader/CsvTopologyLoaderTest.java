@@ -1,13 +1,14 @@
 package com.livingobjects.neo4j.loader;
 
-import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.ImmutableSet;
 import com.livingobjects.neo4j.rules.WithNeo4jImpermanentDatabase;
 import org.assertj.core.api.Assertions;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.logging.Log;
 
 import java.util.List;
 
@@ -20,7 +21,7 @@ public class CsvTopologyLoaderTest {
 
     @Before
     public void setUp() {
-        tested = new CsvTopologyLoader(wNeo.getGraphDatabaseService(), new MetricRegistry());
+        tested = new CsvTopologyLoader(wNeo.getGraphDatabaseService(), Mockito.mock(Log.class));
     }
 
     @Test

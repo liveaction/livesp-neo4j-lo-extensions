@@ -7,16 +7,19 @@ import com.livingobjects.neo4j.rules.WithNeo4jImpermanentDatabase;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.logging.Log;
 
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.SCOPE;
 import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.TAG;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ElementScopeSliderTest {
+    private static final Log MOCKED_LOG = Mockito.mock(Log.class);
 
     @Rule
     public WithNeo4jImpermanentDatabase wNeo = new WithNeo4jImpermanentDatabase()
@@ -24,12 +27,13 @@ public class ElementScopeSliderTest {
 
     private ElementScopeSlider tested;
 
+
     @Before
     public void setUp() {
         GraphDatabaseService graphDb = wNeo.getGraphDatabaseService();
         try (Transaction ignore = graphDb.beginTx()) {
             TemplatedPlanetFactory templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
-            tested = new ElementScopeSlider(templatedPlanetFactory);
+            tested = new ElementScopeSlider(templatedPlanetFactory, MOCKED_LOG);
         }
     }
 
@@ -46,5 +50,4 @@ public class ElementScopeSliderTest {
             assertThat(planetNode.getProperty(SCOPE).toString()).isEqualTo(expectedScope.tag);
         }
     }
-
 }
