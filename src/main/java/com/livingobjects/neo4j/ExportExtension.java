@@ -582,8 +582,8 @@ public final class ExportExtension {
                                                                                       CrossRelationship metaRelation,
                                                                                       RelationshipQuery relationQuery) {
         Direction direction = relationQuery.direction;
-        String originType = direction == INCOMING ? metaRelation.originType : metaRelation.destinationType;
-        String destType = direction == INCOMING ? metaRelation.destinationType : metaRelation.originType;
+        String destType = direction == INCOMING ? metaRelation.originType : metaRelation.destinationType;
+        String originType = direction == INCOMING ? metaRelation.destinationType : metaRelation.originType;
         return Streams.stream(originLineage.nodesByType.get(originType).getRelationships(direction, CROSS_ATTRIBUTE))
                 .map(r -> {
                     Node n = direction == INCOMING ? r.getStartNode() : r.getEndNode();
