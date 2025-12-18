@@ -66,6 +66,7 @@ public class SchemaReader {
                 return Optional.empty();
             }
         } catch (NotFoundException e) {
+            log.warn("Error when reading realm %s", name, e);
             throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
         }
     }
