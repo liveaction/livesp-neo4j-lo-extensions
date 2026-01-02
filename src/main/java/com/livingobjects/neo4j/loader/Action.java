@@ -6,7 +6,7 @@ public enum Action {
 
     DELETE_CASCADE_ALL, DELETE_CASCADE, DELETE_NO_CASCADE;
 
-    public static String STATUS_HEADER = "action";
+    public static final String STATUS_HEADER = "action";
 
     public static Optional<Action> fromString(String val) {
         try {
