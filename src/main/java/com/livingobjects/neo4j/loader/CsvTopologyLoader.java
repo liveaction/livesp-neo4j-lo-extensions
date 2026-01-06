@@ -737,7 +737,7 @@ public final class CsvTopologyLoader {
                 .orElse(null);
 
         if (value != null) {
-            if (!value.equals(KEEP_VALUE_TOKEN) || !header.propertyName.equals(Action.STATUS_HEADER)) {
+            if (!value.equals(KEEP_VALUE_TOKEN)) {
                 elementNode.setProperty(header.propertyName, value);
             }
         } else {
