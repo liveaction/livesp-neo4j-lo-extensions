@@ -17,7 +17,7 @@
 
     <groupId>com.livingobjects.neo4j</groupId>
     <artifactId>neo4j-lo-extensions</artifactId>
-    <version>1.27.0</version>
+    <version>1.27.1</version>
 
     <packaging>bundle</packaging>
 
@@ -30,7 +30,7 @@
         <jsr305.version>3.0.2</jsr305.version>
         <opencsv.version>5.10</opencsv.version>
         <junit.version>4.13.2</junit.version>
-        <assertj-core.version>3.27.3</assertj-core.version>
+        <assertj-core.version>3.27.7</assertj-core.version>
     </properties>
 
     <dependencies>
