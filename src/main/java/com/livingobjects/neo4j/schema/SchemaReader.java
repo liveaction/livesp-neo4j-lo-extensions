@@ -77,14 +77,11 @@ public class SchemaReader {
         Optional<String> tableName = segment.hasProperty("tableName") ?
                 Optional.ofNullable(segment.getProperty("tableName")).map(Object::toString) :
                 Optional.empty();
-        Integer topCount = null;
-        Integer nbParentsToAggregate = null;
-        if (segment.hasProperty("topCount")) {
-            topCount = Integer.parseInt(segment.getProperty("topCount").toString());
-            nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate", null))
-                    .map(val -> Integer.parseInt(val.toString()))
-                    .orElse(0);
-        }
+        Integer topCount = segment.hasProperty("topCount") ? Integer.parseInt(segment.getProperty("topCount").toString()) : null;
+        Integer nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate", null))
+                .map(val -> Integer.parseInt(val.toString()))
+                .or(() -> topCount != null ? Optional.of(0) : Optional.empty())
+                .orElse(null);
 
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
