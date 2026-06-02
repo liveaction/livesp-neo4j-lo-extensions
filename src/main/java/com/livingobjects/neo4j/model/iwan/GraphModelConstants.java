@@ -1,6 +1,7 @@
 package com.livingobjects.neo4j.model.iwan;
 
 import com.google.common.collect.ImmutableSet;
+import com.livingobjects.neo4j.loader.Action;
 import com.livingobjects.neo4j.loader.Scope;
 
 public final class GraphModelConstants {
@@ -39,6 +40,7 @@ public final class GraphModelConstants {
     public static final String OVERRIDE = "override";
     public static final String CONTEXT = "context";
 
-    public static final ImmutableSet<String> RESERVED_PROPERTIES = ImmutableSet.of(TAG, SCOPE, _TYPE, CREATED_AT, UPDATED_AT, CREATED_BY, UPDATED_BY);
+    public static final ImmutableSet<String> RESERVED_PROPERTIES =
+            ImmutableSet.of(Action.STATUS_HEADER, TAG, SCOPE, _TYPE, CREATED_AT, UPDATED_AT, CREATED_BY, UPDATED_BY);
 
 }

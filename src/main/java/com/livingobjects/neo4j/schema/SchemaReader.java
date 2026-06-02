@@ -47,7 +47,7 @@ public class SchemaReader {
             if (firstMemdexPath != null) {
                 Node segment = firstMemdexPath.getEndNode();
                 Optional<MemdexPathNode> memdexPathNode = readMemdexPath(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
-                if (!memdexPathNode.isPresent()) {
+                if (memdexPathNode.isEmpty()) {
                     log.warn("No counter for realm '%s'. Realm is ignored.", name);
                 }
                 return memdexPathNode
@@ -66,20 +66,22 @@ public class SchemaReader {
                 return Optional.empty();
             }
         } catch (NotFoundException e) {
+            log.warn("Error when reading realm %s", name, e);
             throw new IllegalStateException(String.format("Malformed RealmTemplate '%s' : more than one root MdxPath relationships found.", name));
         }
     }
 
     Optional<MemdexPathNode> readMemdexPath(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
         String segmentName = segment.getProperty("path").toString();
-        Integer topCount = null;
-        Integer nbParentsToAggregate = null;
-        if (segment.hasProperty("topCount")) {
-            topCount = Integer.parseInt(segment.getProperty("topCount").toString());
-            nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate", null))
-                    .map(val -> Integer.parseInt(val.toString()))
-                    .orElse(0);
-        }
+
+        Optional<String> tableName = segment.hasProperty("tableName") ?
+                Optional.ofNullable(segment.getProperty("tableName")).map(Object::toString) :
+                Optional.empty();
+        Integer topCount = segment.hasProperty("topCount") ? Integer.parseInt(segment.getProperty("topCount").toString()) : null;
+        Integer nbParentsToAggregate = Optional.ofNullable(segment.getProperty("nbParentsToAggregate", null))
+                .map(val -> Integer.parseInt(val.toString()))
+                .or(() -> topCount != null ? Optional.of(0) : Optional.empty())
+                .orElse(null);
 
         List<String> counters = readAllCounters(segment, onlyUnamanagedCounters, countersDefinitionBuilder);
 
@@ -94,7 +96,7 @@ public class SchemaReader {
         if (counters.isEmpty() && children.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new MemdexPathNode(segmentName, attribute, counters, children, topCount, nbParentsToAggregate));
+        return Optional.of(new MemdexPathNode(segmentName, tableName, attribute, counters, children, topCount, nbParentsToAggregate));
     }
 
     public static ImmutableList<String> readAllCounters(Node segment, boolean onlyUnamanagedCounters, CountersDefinition.Builder countersDefinitionBuilder) {
@@ -158,7 +160,7 @@ public class SchemaReader {
             Map<String, Object> properties = attributeNode.getProperties(_TYPE, NAME);
             String attribute = properties.get(_TYPE).toString() + KEYTYPE_SEPARATOR + properties.get(NAME).toString();
             if (specializer != null) {
-                attribute = attribute + KEYTYPE_SEPARATOR + specializer.toString();
+                attribute = attribute + KEYTYPE_SEPARATOR + specializer;
             }
             attributes.add(attribute);
         });

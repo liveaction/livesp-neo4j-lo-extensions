@@ -331,7 +331,7 @@ public final class MetaSchema {
                         .anyMatch(tuple -> tuple._2().equals(reltype)))
                 .flatMap(e -> e.getValue().stream()
                         .filter(tuple -> tuple._2().equals(reltype))
-                        .map(tuple -> new CrossRelationship(e.getKey(), tuple._1, tuple._2)))
+                        .map(tuple -> new CrossRelationship(tuple._1, e.getKey(), tuple._2)))
                 .collect(MoreCollectors.onlyElement());
     }
 

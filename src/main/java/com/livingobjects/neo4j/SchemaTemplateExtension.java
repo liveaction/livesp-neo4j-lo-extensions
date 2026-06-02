@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.Lists;
 import com.livingobjects.neo4j.model.iwan.Labels;
 import com.livingobjects.neo4j.model.iwan.RelationshipTypes;
@@ -44,17 +45,14 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
-
-
     private final GraphDatabaseService graphDb;
     private final ObjectMapper json = new ObjectMapper();
     private final Log log;
 
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
     public SchemaTemplateExtension(@Context DatabaseManagementService dbms, @Context Log log) {
         this.graphDb = dbms.database(dbms.listDatabases().get(0));
         this.log = log;
+        json.registerModule(new Jdk8Module());
     }
 
     @POST
@@ -75,7 +73,7 @@ public class SchemaTemplateExtension {
     @PUT
     @Produces({"application/json", "text/plain"})
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response updateSchema(String jsonBody    ) throws IOException {
+    public Response updateSchema(String jsonBody) throws IOException {
         try (JsonParser jsonParser = json.getFactory().createParser(jsonBody)) {
             SchemaLoader schemaLoader = new SchemaLoader(graphDb, log);
             SchemaAndPlanetsUpdate schemaAndPlanetsUpdate = jsonParser.readValueAs(SchemaAndPlanetsUpdate.class);
@@ -94,12 +92,6 @@ public class SchemaTemplateExtension {
         try {
             SchemaReader schemaReader = new SchemaReader(log);
             try (Transaction tx = graphDb.beginTx()) {
-                try (Transaction tx2 = graphDb.beginTx()) {
-                    Node node = tx2.findNode(Labels.SCHEMA, ID, schemaId);
-                }
-                Node node = tx.findNode(Labels.SCHEMA, ID, schemaId);
-            }
-            try (Transaction tx = graphDb.beginTx()) {
                 Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
 
                 if (schemaNode == null) {
@@ -107,11 +99,11 @@ public class SchemaTemplateExtension {
                 }
             }
 
-        StreamingOutput stream = outputStream -> {
-            List<Node> realmNodes = Lists.newArrayList();
-            try (JsonGenerator jg = json.getFactory().createGenerator(outputStream, JsonEncoding.UTF8);
-                 Transaction tx = graphDb.beginTx()) {
-                Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
+            StreamingOutput stream = outputStream -> {
+                List<Node> realmNodes = Lists.newArrayList();
+                try (JsonGenerator jg = json.getFactory().createGenerator(outputStream, JsonEncoding.UTF8);
+                     Transaction tx = graphDb.beginTx()) {
+                    Node schemaNode = tx.findNode(Labels.SCHEMA, ID, schemaId);
 
                     if (schemaNode == null) {
                         throw new NoSuchElementException("Schema " + schemaId + " not found in database !");
@@ -182,8 +174,8 @@ public class SchemaTemplateExtension {
     private Response errorResponse(Throwable cause) throws IOException {
         String code = cause.getClass().getName();
         Neo4jErrorResult error = new Neo4jErrorResult(code, cause.getMessage());
-        String json = JSON_MAPPER.writeValueAsString(error);
-        return Response.serverError().entity(json).type(MediaType.APPLICATION_JSON_TYPE).build();
+        String result = json.writeValueAsString(error);
+        return Response.serverError().entity(result).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
 
 }
