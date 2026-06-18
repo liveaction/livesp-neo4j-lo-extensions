@@ -37,6 +37,7 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.logging.Log;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -336,14 +337,12 @@ public final class SchemaLoader {
 
     private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
         if (!SchemaReader.isManaged(counterNode)) {
-
-            providedRelationship.delete();
             if (!counterNode.hasRelationship(INCOMING, VAR)) {
-                if (!counterNode.hasRelationship(OUTGOING, PROVIDED)) {
+                    providedRelationship.delete();
                     counterNode.delete();
-                }
+                } else  {
+                counterNode.setProperty("deleteAttempt", Instant.now().toEpochMilli());
             }
-
             return true;
         }
         return false;
