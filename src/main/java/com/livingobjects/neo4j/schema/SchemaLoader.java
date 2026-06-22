@@ -338,9 +338,12 @@ public final class SchemaLoader {
     private boolean deleteCounter(Relationship providedRelationship, Node counterNode) {
         if (!SchemaReader.isManaged(counterNode)) {
             if (!counterNode.hasRelationship(INCOMING, VAR)) {
-                    providedRelationship.delete();
+                providedRelationship.delete();
+                List<Relationship> rels = counterNode.getRelationships(OUTGOING, PROVIDED).stream().toList();
+                if (rels.isEmpty()) {
                     counterNode.delete();
-                } else  {
+                }
+            } else {
                 counterNode.setProperty("deleteAttempt", Instant.now().toEpochMilli());
             }
             return true;
@@ -663,7 +666,7 @@ public final class SchemaLoader {
             segmentNode.setProperty("topCount", memdexPathNode.topCount);
         }
         Optional.ofNullable(memdexPathNode.nbParentsToAggregate)
-                .or(() -> memdexPathNode.topCount != null ? Optional.of(0) :  Optional.empty())
+                .or(() -> memdexPathNode.topCount != null ? Optional.of(0) : Optional.empty())
                 .ifPresent(nbParentsToAggregate -> segmentNode.setProperty("nbParentsToAggregate", nbParentsToAggregate));
 
         memdexPathNode.tableName.ifPresent(s -> segmentNode.setProperty("tableName", s));
