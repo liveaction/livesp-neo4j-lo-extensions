@@ -1,6 +1,5 @@
 package com.livingobjects.neo4j.model.export.query;
 
-import com.google.common.base.MoreObjects;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Objects;
@@ -33,9 +32,6 @@ public final class Column {
 
     @Override
     public String toString() {
-        return MoreObjects.toStringHelper(this)
-                .add("keyAttribute", keyAttribute)
-                .add("property", property)
-                .toString();
+        return "%s.%s".formatted(keyAttribute, property);
     }
 }
