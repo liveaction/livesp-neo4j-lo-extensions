@@ -17,6 +17,7 @@ import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.loader.MetaSchema;
+import com.livingobjects.neo4j.metrics.PmtMetrics;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.LineageListNaturalComparator;
@@ -109,11 +110,17 @@ public final class ExportExtension {
     private final MetaSchema metaSchema;
     private final Log log;
 
+    // Don't clean up this "unused" variable:
+    // No startup entry point is available in the Neo4j extension,
+    // so we need to reference the metrics somewhere for them to start the server anb be exposed
+    private final PmtMetrics metrics;
+
     public ExportExtension(@Context DatabaseManagementService dbms, @Context Log log) {
         this.graphDb = dbms.database(dbms.listDatabases().get(0));
         this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
         this.planetFactory = new PlanetFactory(graphDb);
         this.log = log;
+        this.metrics = PmtMetrics.get(log);
         try (Transaction tx = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(tx);
         }

@@ -29,6 +29,7 @@
         <guava.version>31.0.1-jre</guava.version>
         <jsr305.version>3.0.2</jsr305.version>
         <opencsv.version>5.10</opencsv.version>
+        <prometheus.version>1.8.0</prometheus.version>
         <junit.version>4.13.2</junit.version>
         <assertj-core.version>3.27.7</assertj-core.version>
     </properties>
@@ -85,6 +86,23 @@
             <artifactId>neo4j-harness</artifactId>
             <version>${neo4j.version}</version>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Metrics -->
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>prometheus-metrics-core</artifactId>
+            <version>${prometheus.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>prometheus-metrics-instrumentation-jvm</artifactId>
+            <version>${prometheus.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>prometheus-metrics-exporter-httpserver</artifactId>
+            <version>${prometheus.version}</version>
         </dependency>
     </dependencies>
 

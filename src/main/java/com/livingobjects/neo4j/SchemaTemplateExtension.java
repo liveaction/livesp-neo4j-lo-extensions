@@ -45,6 +45,7 @@ import static com.livingobjects.neo4j.model.iwan.GraphModelConstants.VERSION;
 
 @Path("/schema")
 public class SchemaTemplateExtension {
+
     private final GraphDatabaseService graphDb;
     private final ObjectMapper json = new ObjectMapper();
     private final Log log;
