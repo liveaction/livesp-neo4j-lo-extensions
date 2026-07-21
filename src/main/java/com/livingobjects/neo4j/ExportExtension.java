@@ -17,6 +17,7 @@ import com.livingobjects.neo4j.helper.PlanetFactory;
 import com.livingobjects.neo4j.helper.PropertyConverter;
 import com.livingobjects.neo4j.helper.TemplatedPlanetFactory;
 import com.livingobjects.neo4j.loader.MetaSchema;
+import com.livingobjects.neo4j.metrics.PmtMetrics;
 import com.livingobjects.neo4j.model.export.CrossRelationship;
 import com.livingobjects.neo4j.model.export.Lineage;
 import com.livingobjects.neo4j.model.export.LineageListNaturalComparator;
@@ -114,6 +115,7 @@ public final class ExportExtension {
         this.templatedPlanetFactory = new TemplatedPlanetFactory(graphDb);
         this.planetFactory = new PlanetFactory(graphDb);
         this.log = log;
+        PmtMetrics.get(log);
         try (Transaction tx = graphDb.beginTx()) {
             this.metaSchema = new MetaSchema(tx);
         }
