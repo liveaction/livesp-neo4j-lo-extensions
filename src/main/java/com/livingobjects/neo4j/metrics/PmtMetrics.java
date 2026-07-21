@@ -28,7 +28,7 @@ import java.io.IOException;
  */
 public class PmtMetrics {
 
-    private static final int PORT = 9435;
+    private static final int PORT = 9440;
 
     private static PmtMetrics INSTANCE;
 
