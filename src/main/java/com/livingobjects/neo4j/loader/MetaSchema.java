@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -53,6 +54,11 @@ public final class MetaSchema {
     private final ImmutableMap<String, ImmutableSet<Tuple2<String, String>>> crossAttributesRelations;
 
     private final ImmutableList<ImmutableList<String>> metaLineages;
+
+    // metaLineages/parentRelations describe the static schema and never change for the lifetime of this instance
+    // (one instance is built per transaction), so their derived lookups below are safe to memoize.
+    private final Map<String, ImmutableList<ImmutableList<String>>> metaLineagesForTypeCache = new ConcurrentHashMap<>();
+    private final Map<List<String>, ImmutableList<ImmutableList<String>>> upwardPathCache = new ConcurrentHashMap<>();
 
     // Comparator for 2 attributes: o1 > o2 => o2 -[:Parent*0..n]-> o1
     private final Function<Transaction, Comparator<String>> lineageComparator = tx -> (o1, o2) -> {
@@ -315,10 +321,12 @@ public final class MetaSchema {
     }
 
     public ImmutableList<ImmutableList<String>> getMetaLineagesForType(String type) {
-        List<ImmutableList<String>> result = metaLineages.stream()
-                .filter(lineage -> lineage.contains(type))
-                .collect(Collectors.toList());
-        return ImmutableList.copyOf(result);
+        return metaLineagesForTypeCache.computeIfAbsent(type, t -> {
+            List<ImmutableList<String>> result = metaLineages.stream()
+                    .filter(lineage -> lineage.contains(t))
+                    .collect(Collectors.toList());
+            return ImmutableList.copyOf(result);
+        });
     }
 
     /**
@@ -344,8 +352,13 @@ public final class MetaSchema {
         if (destType.equals(originType)) {
             return ImmutableList.of(ImmutableList.of());
         }
-        return ImmutableList.copyOf(getParentRelations(tx)
-                .get(originType)
+        List<String> cacheKey = ImmutableList.of(originType, destType);
+        ImmutableList<ImmutableList<String>> cached = upwardPathCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        // Recursive: computeIfAbsent must not be used here, it would re-enter this same ConcurrentHashMap.
+        ImmutableList<ImmutableList<String>> computed = ImmutableList.copyOf(resolveParentRelations(tx, originType)
                 .stream()
                 .map(Relationship::getEndNode)
                 .map(this::getKeyAttribute)
@@ -357,6 +370,18 @@ public final class MetaSchema {
                                         .addAll(path)
                                         .build()))
                 .collect(Collectors.toList()));
+        upwardPathCache.put(cacheKey, computed);
+        return computed;
+    }
+
+    /**
+     * Resolves the parent relationships of a single keyAttribute, without rebuilding the relationships of every
+     * other keyAttribute in the schema like {@link #getParentRelations(Transaction)} does.
+     */
+    private ImmutableList<Relationship> resolveParentRelations(Transaction tx, String keyAttribute) {
+        return parentRelations.getOrDefault(keyAttribute, ImmutableList.of()).stream()
+                .map(tx::getRelationshipById)
+                .collect(ImmutableList.toImmutableList());
     }
 
     private boolean recursiveLineageComparator(Transaction tx, String o1, String o2) {
