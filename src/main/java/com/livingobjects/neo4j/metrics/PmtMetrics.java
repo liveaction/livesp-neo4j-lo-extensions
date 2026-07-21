@@ -42,15 +42,15 @@ public class PmtMetrics {
 
     private PmtMetrics(Log log) {
         try {
-            log.info("Will start Prometheus HTTP server on port {}", PORT);
+            log.debug("Will start Prometheus HTTP server on port %s".formatted(PORT));
             HTTPServer.builder()
                     .port(PORT)
                     .buildAndStart();
-            log.info("Prometheus HTTP server started on port {}", PORT);
+            log.debug("Prometheus HTTP server started on port %s".formatted(PORT));
 
             JvmMetrics.builder().register();
         } catch (IOException e) {
-            log.error("Could not start Prometheus HTTP server on port {}", PORT, e);
+            log.error("Could not start Prometheus HTTP server on port %s".formatted(PORT), e);
             throw new RuntimeException(e);
         }
     }
