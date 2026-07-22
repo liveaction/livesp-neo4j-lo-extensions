@@ -88,7 +88,7 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
                     fail(e.getLocalizedMessage());
                 }
             } else {
-                readPathAsQuery(cp);
+                readPathAsQuery(path);
             }
         }
         return this;
@@ -124,6 +124,10 @@ public class WithNeo4jImpermanentDatabase extends ExternalResource {
 
     public GraphDatabaseService getGraphDatabaseService() {
         return db;
+    }
+
+    public DatabaseManagementService getDatabaseManagementService() {
+        return databaseManagementService;
     }
 
     @Override
